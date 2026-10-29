@@ -113,8 +113,13 @@ def test_timeout_kills_term_ignoring_descendant_and_reaps_group(tmp_path,monkeyp
     pid=int(text.split('CHILD_PID=')[1].splitlines()[0])
     status=Path('/proc')/str(pid)/'stat'
     until=time.monotonic()+1.
-    while status.exists() and status.read_text().split()[2]!='Z' and time.monotonic()<until:time.sleep(.01)
-    assert not status.exists() or status.read_text().split()[2]=='Z'
+    def alive():
+        try:
+            return status.read_text().split()[2]!='Z'
+        except (FileNotFoundError, ProcessLookupError):
+            return False
+    while alive() and time.monotonic()<until:time.sleep(.01)
+    assert not alive()
     assert c.close()['clean_shutdown']
 
 

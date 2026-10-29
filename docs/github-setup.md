@@ -93,3 +93,7 @@ khi stage. CI chạy checker với tracked index sau checkout.
 Quy trình Git theo [GitHub Docs](https://docs.github.com/en/migrations/importing-source-code/using-the-command-line-to-import-source-code/adding-locally-hosted-code-to-github).
 Các action được đối chiếu tag chính thức của [checkout](https://github.com/actions/checkout)
 và[setup-python](https://github.com/actions/setup-python), không tự suy phiên bản từ báo cáo cũ.
+
+CPU dependency compatibility: NumPy 1.26.x is currently supported (NumPy 2 is
+excluded after a fresh CI failure in huge-integer capsule indexing). Pillow is
+required for appearance RGB crops; installed by the core package.

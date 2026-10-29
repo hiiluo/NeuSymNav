@@ -623,3 +623,23 @@ payload-staged.json,review/}. Guide: docs/github-setup.md; public runtime summar
 docs/results/long-demo-2026-10-29.md. Commit/push and remote CI verification are
 next; this checkpoint does not claim remote CI success or fresh-machine native
 readiness. Prior runtime/P10 limitations remain unchanged.
+
+
+### GitHub publication and fresh-runner compatibility — 2026-10-29
+
+Implemented/published: initial source commit625885f pushed to public
+https://github.com/hiiluo/NeuSymNav (main), remote SHA independently matches;
+SSH origin tracks main, working tree clean at publication. Source-only initial
+payload339files/3053966bytes; ignored assets/native closure preserved locally.
+Initial hosted CI40843647243 failed despite local1540pass: undeclared Pillow,
+NumPy2 huge-int promotion, and /proc process-exit read races. Diagnostic follow-up
+0226b95/run40844028506 exposed exact failure annotations without credentials.
+
+Fix: declare Pillow>=10,<13 and supported NumPy>=1.26,<2 (verified host1.26.4),
+handle only ENOENT/ESRCH during test /proc reads as exited, keeping all cleanup
+assertions. No production source change or benchmark pin change; NumPy2 support
+is not claimed. Fresh targeted appearance/capsule/detector/region suite92passed,
+exit0/20.51s. CI retains failure exit status and bounded failure annotations.
+Logs: runs/github-setup-20261029/ci-diagnostic-annotations.json and review/.
+Remote rerun of compatibility fix remains pending at this checkpoint; see the
+repository Actions tab for its live verdict. Runtime/P10 evidence is unchanged.

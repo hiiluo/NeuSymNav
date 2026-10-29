@@ -214,7 +214,10 @@ def test_process_group_cleanup_kills_term_ignoring_descendant(tmp_path,action):
     started=time.monotonic();child_pid=None
     def alive():
         stat=Path('/proc')/str(child_pid)/'stat'
-        return stat.exists() and stat.read_text().split()[2]!='Z'
+        try:
+            return stat.read_text().split()[2]!='Z'
+        except (FileNotFoundError, ProcessLookupError):
+            return False
     try:
         deadline=time.monotonic()+3
         while not pidfile.exists() and time.monotonic()<deadline:time.sleep(.01)

@@ -63,3 +63,7 @@ Host CPU dùng Python 3.12.3 và `.venv/` đã có trong folder này. Lệnh ki�
 Xem [hướng dẫn chạy](docs/running.md) cho preflight, live run, replay và UI. Template live yêu cầu điền interpreter/asset paths, SHA-256 và floor calibration thật; giá trị thiếu chặn launch. Replay fixture CPU không chứng nhận Habitat/model inference hoặc chất lượng graph thật. Appearance giữ optional/off mặc định.
 
 [Đề xuất môi trường runtime](docs/runtime-environment-proposal.md) ghi kết quả dò interpreter và dependency/dung lượng dự trù trước khi cài. Habitat, detector, DuDe và GPU đã có evidence native theo từng checkpoint; appearance giữ optional. Các môi trường hiện hành và quyền cài đặt đã thực hiện được ghi trong implementation-status.md; không suy nghiệm thu P10 từ một lượt demo.
+
+CPU dependency compatibility: NumPy 1.26.x is currently supported (NumPy 2 is
+excluded after a fresh CI failure in huge-integer capsule indexing). Pillow is
+required for appearance RGB crops; installed by the core package.
