@@ -26,7 +26,21 @@ jobs:
       - name: Check tracked source payload
         run: python tools/check_github_payload.py
       - name: Run CPU suite
-        run: python -m pytest tests -q -m 'not native'
+        run: |
+          python - <<'PYTEST'
+          import subprocess
+          import sys
+          result = subprocess.run(
+              [sys.executable, "-m", "pytest", "tests", "-q", "-m", "not native", "--tb=short"],
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+          )
+          print(result.stdout, end="")
+          if result.returncode:
+              tail = "\n".join(result.stdout.splitlines()[-120:])
+              escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print("::error title=CPU test failure::" + escaped)
+          sys.exit(result.returncode)
+          PYTEST
       - name: Check source-only CLI
         run: |
           neusymnav --help
