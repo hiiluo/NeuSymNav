@@ -1,0 +1,209 @@
+{
+  "aggregation_inputs": [
+    [
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.6,
+      0.8
+    ],
+    [
+      -0.8,
+      0.6
+    ]
+  ],
+  "aggregation_outputs": [
+    [
+      1.0,
+      0.0
+    ],
+    [
+      0.7071067811865475,
+      0.7071067811865475
+    ],
+    [
+      0.6729091089384948,
+      0.7397251726875333
+    ],
+    [
+      0.3968081215369753,
+      0.9179015822419618
+    ]
+  ],
+  "near_cancel_source_output": [
+    0.0,
+    0.75
+  ],
+  "score_cases": [
+    {
+      "shift": 0.0,
+      "visual": null,
+      "geometry": 1.0,
+      "geometry_appearance": 1.0
+    },
+    {
+      "shift": 0.0,
+      "visual": [
+        1.0,
+        0.0
+      ],
+      "geometry": 1.0,
+      "geometry_appearance": 1.0
+    },
+    {
+      "shift": 0.0,
+      "visual": [
+        0.0,
+        1.0
+      ],
+      "geometry": 1.0,
+      "geometry_appearance": 0.7499999999999999
+    },
+    {
+      "shift": 0.0,
+      "visual": [
+        0.6,
+        0.8
+      ],
+      "geometry": 1.0,
+      "geometry_appearance": 0.9166666666666665
+    },
+    {
+      "shift": 0.02,
+      "visual": null,
+      "geometry": 0.9137168334960951,
+      "geometry_appearance": 0.9137168334960951
+    },
+    {
+      "shift": 0.02,
+      "visual": [
+        1.0,
+        0.0
+      ],
+      "geometry": 0.9137168334960951,
+      "geometry_appearance": 0.9352876251220712
+    },
+    {
+      "shift": 0.02,
+      "visual": [
+        0.0,
+        1.0
+      ],
+      "geometry": 0.9137168334960951,
+      "geometry_appearance": 0.6852876251220713
+    },
+    {
+      "shift": 0.02,
+      "visual": [
+        0.6,
+        0.8
+      ],
+      "geometry": 0.9137168334960951,
+      "geometry_appearance": 0.8519542917887379
+    },
+    {
+      "shift": 0.07,
+      "visual": null,
+      "geometry": 0.7989433532489564,
+      "geometry_appearance": 0.7989433532489564
+    },
+    {
+      "shift": 0.07,
+      "visual": [
+        1.0,
+        0.0
+      ],
+      "geometry": 0.7989433532489564,
+      "geometry_appearance": 0.8492075149367173
+    },
+    {
+      "shift": 0.07,
+      "visual": [
+        0.0,
+        1.0
+      ],
+      "geometry": 0.7989433532489564,
+      "geometry_appearance": 0.5992075149367172
+    },
+    {
+      "shift": 0.07,
+      "visual": [
+        0.6,
+        0.8
+      ],
+      "geometry": 0.7989433532489564,
+      "geometry_appearance": 0.7658741816033838
+    },
+    {
+      "shift": 0.15,
+      "visual": null,
+      "geometry": 0.20217688657087782,
+      "geometry_appearance": 0.20217688657087782
+    },
+    {
+      "shift": 0.15,
+      "visual": [
+        1.0,
+        0.0
+      ],
+      "geometry": 0.20217688657087782,
+      "geometry_appearance": 0.4016326649281583
+    },
+    {
+      "shift": 0.15,
+      "visual": [
+        0.0,
+        1.0
+      ],
+      "geometry": 0.20217688657087782,
+      "geometry_appearance": 0.15163266492815833
+    },
+    {
+      "shift": 0.15,
+      "visual": [
+        0.6,
+        0.8
+      ],
+      "geometry": 0.20217688657087782,
+      "geometry_appearance": 0.318299331594825
+    },
+    {
+      "shift": 0.5,
+      "visual": null,
+      "geometry": null,
+      "geometry_appearance": null
+    },
+    {
+      "shift": 0.5,
+      "visual": [
+        1.0,
+        0.0
+      ],
+      "geometry": null,
+      "geometry_appearance": null
+    },
+    {
+      "shift": 0.5,
+      "visual": [
+        0.0,
+        1.0
+      ],
+      "geometry": null,
+      "geometry_appearance": null
+    },
+    {
+      "shift": 0.5,
+      "visual": [
+        0.6,
+        0.8
+      ],
+      "geometry": null,
+      "geometry_appearance": null
+    }
+  ]
+}

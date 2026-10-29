@@ -1,0 +1,193 @@
+{
+  "provenance": {
+    "runtime/online_verification.py": "60f0e6f88ef6629f992b31ae02cf39b1119728406821fa55cfd3fdd0b3d1cf9a",
+    "perception/verification.py": "e19ff4ae3191f834fa67841cb796e9eb50bf8f61089451de455f8e4cce613c6e",
+    "perception/best_view.py": "80937cda2ff91541aae21cc7dbf5a1724dfb734bf4f2d850d995862cad6d715e",
+    "association/negative_evidence.py": "27098cdf3d55b89f2fe44a8af1159a11b37f9b19a56d4e4612956b120ac651d3",
+    "association/fusion.py": "183d0b6b6ec52461fd16059bf684fda0b1aad2f1c68ed7c7da87ca288d7cb05c",
+    "scene_graph/view_provenance.py": "48e9feb63c69d8b77923f66f5c123ab836c198fbb03167bc98fd6927f746c5fb"
+  },
+  "negative_cases": {
+    "clear": [
+      {
+        "projected_bbox_xyxy": [
+          12,
+          12,
+          20,
+          20
+        ],
+        "object_revision": 1,
+        "camera_position_world": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "occluded": [],
+    "invalid": [],
+    "touching": [],
+    "incomplete": [],
+    "saturated": []
+  },
+  "verification_trace": [
+    {
+      "frame": 0,
+      "kind": "detected",
+      "x": -0.3,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    },
+    {
+      "frame": 1,
+      "kind": "detected",
+      "x": 0.0,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    },
+    {
+      "frame": 2,
+      "kind": "detected",
+      "x": 0.3,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    },
+    {
+      "frame": 3,
+      "kind": "tracked",
+      "x": 0.3,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    },
+    {
+      "frame": 4,
+      "kind": "refined",
+      "x": 0.6,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    },
+    {
+      "frame": 5,
+      "kind": "detected",
+      "x": 0.0,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    },
+    {
+      "frame": 6,
+      "kind": "detected",
+      "x": 0.3,
+      "label": "chair",
+      "score": 0.9,
+      "depth": 1.0,
+      "mask": 1.0
+    }
+  ],
+  "verification_outputs": [
+    {
+      "status": "candidate",
+      "label": "chair",
+      "detected_count": 1,
+      "independent_views": 1,
+      "evidence_alpha": 1.9,
+      "evidence_beta": 1.1
+    },
+    {
+      "status": "tracked",
+      "label": "chair",
+      "detected_count": 2,
+      "independent_views": 2,
+      "evidence_alpha": 2.8,
+      "evidence_beta": 1.2000000000000002
+    },
+    {
+      "status": "tracked",
+      "label": "chair",
+      "detected_count": 3,
+      "independent_views": 3,
+      "evidence_alpha": 3.6999999999999997,
+      "evidence_beta": 1.3000000000000003
+    },
+    {
+      "status": "tracked",
+      "label": "chair",
+      "detected_count": 3,
+      "independent_views": 3,
+      "evidence_alpha": 3.6999999999999997,
+      "evidence_beta": 1.3000000000000003
+    },
+    {
+      "status": "tracked",
+      "label": "chair",
+      "detected_count": 3,
+      "independent_views": 3,
+      "evidence_alpha": 3.6999999999999997,
+      "evidence_beta": 1.3000000000000003
+    },
+    {
+      "status": "tracked",
+      "label": "chair",
+      "detected_count": 4,
+      "independent_views": 3,
+      "evidence_alpha": 3.6999999999999997,
+      "evidence_beta": 1.3000000000000003
+    },
+    {
+      "status": "verified",
+      "label": "chair",
+      "detected_count": 5,
+      "independent_views": 3,
+      "evidence_alpha": 3.6999999999999997,
+      "evidence_beta": 1.3000000000000003
+    }
+  ],
+  "quality": {
+    "depth_quality": 0.5333333333333333,
+    "mask_quality": 0.9375,
+    "quality": 0.4
+  },
+  "gallery_trace": [
+    [
+      0,
+      0.0,
+      0.5
+    ],
+    [
+      1,
+      0.1,
+      0.8
+    ],
+    [
+      2,
+      0.5,
+      0.7
+    ],
+    [
+      3,
+      1.0,
+      0.6
+    ],
+    [
+      4,
+      2.0,
+      0.9
+    ]
+  ],
+  "gallery_frames": [
+    4,
+    1,
+    2
+  ]
+}

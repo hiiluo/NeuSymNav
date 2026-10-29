@@ -1,0 +1,70 @@
+{
+  "label": "synthetic_inputs_executed_against_unmodified_unified_scene_graph_function_ASTs",
+  "steps": [
+    {
+      "bounds": [
+        0.2,
+        0.2,
+        0.8,
+        0.8
+      ],
+      "status": "assigned",
+      "region_id": "r1",
+      "candidates": [
+        "r1"
+      ]
+    },
+    {
+      "bounds": [
+        0.8,
+        0.2,
+        1.2,
+        0.8
+      ],
+      "status": "ambiguous",
+      "region_id": null,
+      "candidates": [
+        "r1",
+        "r2"
+      ]
+    },
+    {
+      "bounds": [
+        3.0,
+        3.0,
+        4.0,
+        4.0
+      ],
+      "status": "unassigned",
+      "region_id": null,
+      "candidates": []
+    },
+    {
+      "bounds": [
+        0.0,
+        0.2,
+        0.8,
+        0.8
+      ],
+      "status": "ambiguous",
+      "region_id": null,
+      "candidates": [
+        "r1"
+      ]
+    },
+    {
+      "bounds": [
+        0.2,
+        0.2,
+        2.2,
+        0.8
+      ],
+      "status": "ambiguous",
+      "region_id": null,
+      "candidates": [
+        "r1",
+        "r2"
+      ]
+    }
+  ]
+}

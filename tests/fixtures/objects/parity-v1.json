@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "oracle": "original source algorithms executed independently; JIT disabled",
+  "source_hashes": {
+    "association/matching.py": "e25dbf1e03e95e8224a8f7de8b62281f8f1a4bd799e2a3ea982f3a4afd46a251",
+    "association/voxel_fusion.py": "ab7c7b43f9cdb7e6867d7ef31f9a1b1bf161caff8ff59883c607fbc7fbb11192",
+    "mapping/projection.py": "30571f2a40f9270dc34bb26b1885b2cad978f7195fdc55802e1eb6fc51ff8be3"
+  },
+  "association_trace": {
+    "first_count": 2,
+    "second_count": 2,
+    "second_matches_first_indices": [
+      1,
+      0
+    ],
+    "can_merge_simultaneous": false,
+    "point_counts": [
+      8,
+      8
+    ],
+    "ambiguous_indices": [
+      0
+    ],
+    "ambiguous_assigned": [
+      null
+    ]
+  },
+  "component": {
+    "depths": [
+      1.0,
+      1.01,
+      1.02,
+      1.03,
+      2.5,
+      4.5
+    ],
+    "keep": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "voxel": {
+    "points": [
+      [
+        0.001,
+        0.002,
+        0.003
+      ],
+      [
+        0.011,
+        0.012,
+        0.013
+      ],
+      [
+        0.04,
+        0.05,
+        0.06
+      ],
+      [
+        -0.01,
+        -0.02,
+        -0.03
+      ]
+    ],
+    "means": [
+      [
+        -0.01,
+        -0.02,
+        -0.03
+      ],
+      [
+        0.006,
+        0.007,
+        0.008
+      ],
+      [
+        0.04,
+        0.05,
+        0.06
+      ]
+    ],
+    "counts": [
+      1,
+      2,
+      1
+    ]
+  }
+}

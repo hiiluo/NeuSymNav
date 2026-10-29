@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "path_base": "NeuSymNav project root",
+  "profile": "core-frontier-yoloe11s",
+  "interpreters": {
+    "host": ".venv/bin/python",
+    "sensor": null,
+    "detector": null,
+    "appearance": null,
+    "native": null,
+    "ui": null
+  },
+  "executables": {
+    "sensor_worker": null,
+    "detector_worker": null,
+    "appearance_worker": null,
+    "native_region_worker": null,
+    "ui": null
+  },
+  "assets": {
+    "detector_model": null,
+    "detector_text_encoder": null,
+    "appearance_checkpoint": null,
+    "scene": null,
+    "navmesh_route_only": null
+  }
+}

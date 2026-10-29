@@ -1,0 +1,1081 @@
+{
+  "copy_policy": "byte-for-byte copies; no source symlinks; custom top-level CMakeLists.txt is the only build adaptation",
+  "files": [
+    {
+      "license": {
+        "status": "MIT declared by baseline; scope for selected incremental package remains unresolved"
+      },
+      "path": "upstream/OccuSG-LICENSE",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/LICENSE",
+      "source_provenance_sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+      "source_sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+      "vendored_sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+    },
+    {
+      "license": {
+        "path": "makefile",
+        "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/FIST/header.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/header.h",
+      "source_provenance_sha256": "2956448698395415625562865b596fd0831492692930947446bfdd6bd85d833a",
+      "source_sha256": "2956448698395415625562865b596fd0831492692930947446bfdd6bd85d833a",
+      "vendored_sha256": "2956448698395415625562865b596fd0831492692930947446bfdd6bd85d833a"
+    },
+    {
+      "license": {
+        "path": "makefile",
+        "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/FIST/libFIST.linux64.a",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/libFIST.linux64.a",
+      "source_provenance_sha256": "84875da959aae5a1abdddc993075d0f91d4afdbdda1a29dd856f77254a63c684",
+      "source_sha256": "84875da959aae5a1abdddc993075d0f91d4afdbdda1a29dd856f77254a63c684",
+      "vendored_sha256": "84875da959aae5a1abdddc993075d0f91d4afdbdda1a29dd856f77254a63c684"
+    },
+    {
+      "license": {
+        "status": "restrictive_notice_preserved; no distribution claim"
+      },
+      "path": "upstream/Third_Party/dude_final/FIST/makefile",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/makefile",
+      "source_provenance_sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+      "source_sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+      "vendored_sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4"
+    },
+    {
+      "license": {
+        "path": "makefile",
+        "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/FIST/triangulate.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/triangulate.h",
+      "source_provenance_sha256": "8cfc23dcbe9ab3d9dfba36b59f248e67c7be369e9c1ceac4021f5a47713fab99",
+      "source_sha256": "8cfc23dcbe9ab3d9dfba36b59f248e67c7be369e9c1ceac4021f5a47713fab99",
+      "vendored_sha256": "8cfc23dcbe9ab3d9dfba36b59f248e67c7be369e9c1ceac4021f5a47713fab99"
+    },
+    {
+      "license": {
+        "path": "../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/README",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/README",
+      "source_provenance_sha256": "5cfdeb1971f20eef44c89402d1589d9d23afb3dabf09934d13157179be491042",
+      "source_sha256": "5cfdeb1971f20eef44c89402d1589d9d23afb3dabf09934d13157179be491042",
+      "vendored_sha256": "5cfdeb1971f20eef44c89402d1589d9d23afb3dabf09934d13157179be491042"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Basic.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Basic.cpp",
+      "source_provenance_sha256": "0507463ee7018bb682ff040613cd0e0d086985616dca0391b2de117ceaf2ec8b",
+      "source_sha256": "0507463ee7018bb682ff040613cd0e0d086985616dca0391b2de117ceaf2ec8b",
+      "vendored_sha256": "0507463ee7018bb682ff040613cd0e0d086985616dca0391b2de117ceaf2ec8b"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Basic.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Basic.h",
+      "source_provenance_sha256": "e82697a8ed241500b4503e073ccb54c5753e23ee95edbac3a71bc05080260eaf",
+      "source_sha256": "e82697a8ed241500b4503e073ccb54c5753e23ee95edbac3a71bc05080260eaf",
+      "vendored_sha256": "e82697a8ed241500b4503e073ccb54c5753e23ee95edbac3a71bc05080260eaf"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Matrix.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Matrix.h",
+      "source_provenance_sha256": "d0142b6ea771fff3306cd750d61867919c5ef54601739e6bd00db882b370d0c0",
+      "source_sha256": "d0142b6ea771fff3306cd750d61867919c5ef54601739e6bd00db882b370d0c0",
+      "vendored_sha256": "d0142b6ea771fff3306cd750d61867919c5ef54601739e6bd00db882b370d0c0"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Point.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Point.h",
+      "source_provenance_sha256": "fa88f135670e7e34d2d267bfcd2ed3e8d59c8a61e2c4128d7d88f3b42b379f67",
+      "source_sha256": "fa88f135670e7e34d2d267bfcd2ed3e8d59c8a61e2c4128d7d88f3b42b379f67",
+      "vendored_sha256": "fa88f135670e7e34d2d267bfcd2ed3e8d59c8a61e2c4128d7d88f3b42b379f67"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Quaternion.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Quaternion.cpp",
+      "source_provenance_sha256": "f0ee21704415454f9ed2d9c02586fa78513ab78a06cee64c035c89083352041d",
+      "source_sha256": "f0ee21704415454f9ed2d9c02586fa78513ab78a06cee64c035c89083352041d",
+      "vendored_sha256": "f0ee21704415454f9ed2d9c02586fa78513ab78a06cee64c035c89083352041d"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Quaternion.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Quaternion.h",
+      "source_provenance_sha256": "2c057e40174b7285f7ea7951feb2293a5f4f1bb8921761f2e4d98557d6ca0a09",
+      "source_sha256": "2c057e40174b7285f7ea7951feb2293a5f4f1bb8921761f2e4d98557d6ca0a09",
+      "vendored_sha256": "2c057e40174b7285f7ea7951feb2293a5f4f1bb8921761f2e4d98557d6ca0a09"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/mathtool/Vector.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool/Vector.h",
+      "source_provenance_sha256": "5d28960494005dc89060bcd6829a08a539b1e8aaec4928405866d18057b59ad8",
+      "source_sha256": "5d28960494005dc89060bcd6829a08a539b1e8aaec4928405866d18057b59ad8",
+      "vendored_sha256": "5d28960494005dc89060bcd6829a08a539b1e8aaec4928405866d18057b59ad8"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/Graph.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/Graph.h",
+      "source_provenance_sha256": "7574f68cbe0ad596e36ccd947a4ceed4e1d4eb5f45b1bd5b65a362d2db09abf7",
+      "source_sha256": "7574f68cbe0ad596e36ccd947a4ceed4e1d4eb5f45b1bd5b65a362d2db09abf7",
+      "vendored_sha256": "7574f68cbe0ad596e36ccd947a4ceed4e1d4eb5f45b1bd5b65a362d2db09abf7"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/bpc.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/bpc.cpp",
+      "source_provenance_sha256": "6235cad7af27d6e776e5a325f740a3f3e8ae2b204c1c9c77cc8a343cce35c3cd",
+      "source_sha256": "6235cad7af27d6e776e5a325f740a3f3e8ae2b204c1c9c77cc8a343cce35c3cd",
+      "vendored_sha256": "6235cad7af27d6e776e5a325f740a3f3e8ae2b204c1c9c77cc8a343cce35c3cd"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/bpc.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/bpc.h",
+      "source_provenance_sha256": "0da099264a2714242085f12a3a97dbea7e35d1938e0555cd84521012ebabb917",
+      "source_sha256": "0da099264a2714242085f12a3a97dbea7e35d1938e0555cd84521012ebabb917",
+      "vendored_sha256": "0da099264a2714242085f12a3a97dbea7e35d1938e0555cd84521012ebabb917"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/cdt2.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/cdt2.cpp",
+      "source_provenance_sha256": "96c1dafb7f2f098f9ff526f1566083037f2ef05392329e6c8f1f329529420478",
+      "source_sha256": "96c1dafb7f2f098f9ff526f1566083037f2ef05392329e6c8f1f329529420478",
+      "vendored_sha256": "96c1dafb7f2f098f9ff526f1566083037f2ef05392329e6c8f1f329529420478"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/cdt2.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/cdt2.h",
+      "source_provenance_sha256": "d815c2f6011e0fa0557def4ca9f244c2358a48a24aea898403c2fb0915f7b969",
+      "source_sha256": "d815c2f6011e0fa0557def4ca9f244c2358a48a24aea898403c2fb0915f7b969",
+      "vendored_sha256": "d815c2f6011e0fa0557def4ca9f244c2358a48a24aea898403c2fb0915f7b969"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/chull.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/chull.cpp",
+      "source_provenance_sha256": "88b0dbfb33d14723baf813fe86bc1837a5aa1030de7f846fdb92a5d1dd8de8fc",
+      "source_sha256": "88b0dbfb33d14723baf813fe86bc1837a5aa1030de7f846fdb92a5d1dd8de8fc",
+      "vendored_sha256": "88b0dbfb33d14723baf813fe86bc1837a5aa1030de7f846fdb92a5d1dd8de8fc"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/chull.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/chull.h",
+      "source_provenance_sha256": "f54e416a4bc8262e37ed9c8052f80c1c2a91b973a329c61bcbe9a17652a2ed5c",
+      "source_sha256": "f54e416a4bc8262e37ed9c8052f80c1c2a91b973a329c61bcbe9a17652a2ed5c",
+      "vendored_sha256": "f54e416a4bc8262e37ed9c8052f80c1c2a91b973a329c61bcbe9a17652a2ed5c"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/compile_option.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/compile_option.h",
+      "source_provenance_sha256": "1753563218317368184457d9137d79a5ec3eebe36cd36a6cd4f816a70c613c8d",
+      "source_sha256": "1753563218317368184457d9137d79a5ec3eebe36cd36a6cd4f816a70c613c8d",
+      "vendored_sha256": "1753563218317368184457d9137d79a5ec3eebe36cd36a6cd4f816a70c613c8d"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/cutset.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/cutset.cpp",
+      "source_provenance_sha256": "7f6bc5ece10f84600c77deea77a6447680deca576f218739214e309ab2e7152c",
+      "source_sha256": "7f6bc5ece10f84600c77deea77a6447680deca576f218739214e309ab2e7152c",
+      "vendored_sha256": "7f6bc5ece10f84600c77deea77a6447680deca576f218739214e309ab2e7152c"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/cutset.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/cutset.h",
+      "source_provenance_sha256": "6ed7bde22a91ce819adfba83f30fa5813e2dbc4f0f1c8a1ea5d23fdd2e07f35f",
+      "source_sha256": "6ed7bde22a91ce819adfba83f30fa5813e2dbc4f0f1c8a1ea5d23fdd2e07f35f",
+      "vendored_sha256": "6ed7bde22a91ce819adfba83f30fa5813e2dbc4f0f1c8a1ea5d23fdd2e07f35f"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/diagonal2.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/diagonal2.cpp",
+      "source_provenance_sha256": "93b95b3ba8f0e515ead79ed89e03ab6481ec072b52be5824bc87d73dcf26230d",
+      "source_sha256": "93b95b3ba8f0e515ead79ed89e03ab6481ec072b52be5824bc87d73dcf26230d",
+      "vendored_sha256": "93b95b3ba8f0e515ead79ed89e03ab6481ec072b52be5824bc87d73dcf26230d"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/diagonal2.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/diagonal2.h",
+      "source_provenance_sha256": "33cb066e9c65c90b4213f1bc5d88291e376c39d9961c64364ded7d95e6a2105a",
+      "source_sha256": "33cb066e9c65c90b4213f1bc5d88291e376c39d9961c64364ded7d95e6a2105a",
+      "vendored_sha256": "33cb066e9c65c90b4213f1bc5d88291e376c39d9961c64364ded7d95e6a2105a"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dp_approx.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dp_approx.cpp",
+      "source_provenance_sha256": "51d9aac9677ff50a073e99e0d51955b8866a65147c2506a93b32721548040f11",
+      "source_sha256": "51d9aac9677ff50a073e99e0d51955b8866a65147c2506a93b32721548040f11",
+      "vendored_sha256": "51d9aac9677ff50a073e99e0d51955b8866a65147c2506a93b32721548040f11"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dp_approx.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dp_approx.h",
+      "source_provenance_sha256": "87c682a0780c94da0a5fbb8aaac22169c401d9b31e9cb0d055ea3ff7a520ab2b",
+      "source_sha256": "87c682a0780c94da0a5fbb8aaac22169c401d9b31e9cb0d055ea3ff7a520ab2b",
+      "vendored_sha256": "87c682a0780c94da0a5fbb8aaac22169c401d9b31e9cb0d055ea3ff7a520ab2b"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/draw.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/draw.h",
+      "source_provenance_sha256": "05bb733d187c53311bfb2048ca32478ecd4f035cd2f8345095eed1b306206abc",
+      "source_sha256": "05bb733d187c53311bfb2048ca32478ecd4f035cd2f8345095eed1b306206abc",
+      "vendored_sha256": "05bb733d187c53311bfb2048ca32478ecd4f035cd2f8345095eed1b306206abc"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/draw/draw_decoration.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/draw/draw_decoration.h",
+      "source_provenance_sha256": "d2d7f58bda14d25aaf29d106be3c431e945ff180f8446a201c00073f219525d0",
+      "source_sha256": "d2d7f58bda14d25aaf29d106be3c431e945ff180f8446a201c00073f219525d0",
+      "vendored_sha256": "d2d7f58bda14d25aaf29d106be3c431e945ff180f8446a201c00073f219525d0"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/draw/draw_option.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/draw/draw_option.h",
+      "source_provenance_sha256": "b7b6a9f1369b6b75d122266b1ede2d9dd4bc4f7a68d19536400c5bcc7e5c2706",
+      "source_sha256": "b7b6a9f1369b6b75d122266b1ede2d9dd4bc4f7a68d19536400c5bcc7e5c2706",
+      "vendored_sha256": "b7b6a9f1369b6b75d122266b1ede2d9dd4bc4f7a68d19536400c5bcc7e5c2706"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/drawPS.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/drawPS.cpp",
+      "source_provenance_sha256": "cb114f9fb98a9572d0571b3b01de7a1dd220727e3872a5128648091047072e87",
+      "source_sha256": "cb114f9fb98a9572d0571b3b01de7a1dd220727e3872a5128648091047072e87",
+      "vendored_sha256": "cb114f9fb98a9572d0571b3b01de7a1dd220727e3872a5128648091047072e87"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/drawPS.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/drawPS.h",
+      "source_provenance_sha256": "9df7d04fa87b8b0cd87939096cb5256b586e7481326ffc01343def7bbb62c39d",
+      "source_sha256": "9df7d04fa87b8b0cd87939096cb5256b586e7481326ffc01343def7bbb62c39d",
+      "vendored_sha256": "9df7d04fa87b8b0cd87939096cb5256b586e7481326ffc01343def7bbb62c39d"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude.cpp",
+      "source_provenance_sha256": "5a6687f90305bba91faf8c8b84b54ce684d2e2e5965aefba9c60d01131e47c00",
+      "source_sha256": "5a6687f90305bba91faf8c8b84b54ce684d2e2e5965aefba9c60d01131e47c00",
+      "vendored_sha256": "5a6687f90305bba91faf8c8b84b54ce684d2e2e5965aefba9c60d01131e47c00"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude.h",
+      "source_provenance_sha256": "8c46345f05989de2de4705f9c156967acccf038e87a60e0bb653c7ac44a2c073",
+      "source_sha256": "8c46345f05989de2de4705f9c156967acccf038e87a60e0bb653c7ac44a2c073",
+      "vendored_sha256": "8c46345f05989de2de4705f9c156967acccf038e87a60e0bb653c7ac44a2c073"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude_cut.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude_cut.cpp",
+      "source_provenance_sha256": "b21a1fed89af78cf1ef00f7dc1060844ae33fc2f50eb853fb4645e4aaf7c2b8a",
+      "source_sha256": "b21a1fed89af78cf1ef00f7dc1060844ae33fc2f50eb853fb4645e4aaf7c2b8a",
+      "vendored_sha256": "b21a1fed89af78cf1ef00f7dc1060844ae33fc2f50eb853fb4645e4aaf7c2b8a"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude_cut.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude_cut.h",
+      "source_provenance_sha256": "8399fdc41acdf210931b7a9f36242c45a3ea382c1e14216cb3284657b5dacf6e",
+      "source_sha256": "8399fdc41acdf210931b7a9f36242c45a3ea382c1e14216cb3284657b5dacf6e",
+      "vendored_sha256": "8399fdc41acdf210931b7a9f36242c45a3ea382c1e14216cb3284657b5dacf6e"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude_param.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude_param.h",
+      "source_provenance_sha256": "f50e2aac0da76ec01407e8b5bda45a092485afbee202da1d6b4123e430da63a3",
+      "source_sha256": "f50e2aac0da76ec01407e8b5bda45a092485afbee202da1d6b4123e430da63a3",
+      "vendored_sha256": "f50e2aac0da76ec01407e8b5bda45a092485afbee202da1d6b4123e430da63a3"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude_use.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude_use.cpp",
+      "source_provenance_sha256": "9af0cbc20ab3a626686904bf0d30fb6a374d201ec90db53e17d74b737c86d7a3",
+      "source_sha256": "9af0cbc20ab3a626686904bf0d30fb6a374d201ec90db53e17d74b737c86d7a3",
+      "vendored_sha256": "9af0cbc20ab3a626686904bf0d30fb6a374d201ec90db53e17d74b737c86d7a3"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude_use.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude_use.h",
+      "source_provenance_sha256": "5fde350cadbf539ba2cb49586526173d27320b10238ed66ec6964bc0e6cb0998",
+      "source_sha256": "5fde350cadbf539ba2cb49586526173d27320b10238ed66ec6964bc0e6cb0998",
+      "vendored_sha256": "5fde350cadbf539ba2cb49586526173d27320b10238ed66ec6964bc0e6cb0998"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/dude_util.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/dude_util.h",
+      "source_provenance_sha256": "9abf52718c1bdd37d27d4e26f7b56e7cead596b97793a9b433ccd9089822d6d6",
+      "source_sha256": "9abf52718c1bdd37d27d4e26f7b56e7cead596b97793a9b433ccd9089822d6d6",
+      "vendored_sha256": "9abf52718c1bdd37d27d4e26f7b56e7cead596b97793a9b433ccd9089822d6d6"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/eigen.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/eigen.h",
+      "source_provenance_sha256": "4092de196e96b9ece806028facb92b2257602b1b8db0d035db4ef4de3ba37149",
+      "source_sha256": "4092de196e96b9ece806028facb92b2257602b1b8db0d035db4ef4de3ba37149",
+      "vendored_sha256": "4092de196e96b9ece806028facb92b2257602b1b8db0d035db4ef4de3ba37149"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/gettime.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/gettime.h",
+      "source_provenance_sha256": "7764838ebacff876b73c81615a64ce29a3ba33075d9222d45408c20516b86075",
+      "source_sha256": "7764838ebacff876b73c81615a64ce29a3ba33075d9222d45408c20516b86075",
+      "vendored_sha256": "7764838ebacff876b73c81615a64ce29a3ba33075d9222d45408c20516b86075"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/graph/BaseGraph.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/graph/BaseGraph.h",
+      "source_provenance_sha256": "e168f135c4ddef4c4d3f4642649c91da23aedcf3e0d722bc94c9447f76d4bd70",
+      "source_sha256": "e168f135c4ddef4c4d3f4642649c91da23aedcf3e0d722bc94c9447f76d4bd70",
+      "vendored_sha256": "e168f135c4ddef4c4d3f4642649c91da23aedcf3e0d722bc94c9447f76d4bd70"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/graph/BasicDefns.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/graph/BasicDefns.h",
+      "source_provenance_sha256": "685e0ee0c88954ae68e36b83ad44492ff4032af356f297a83a5acc97080a0f03",
+      "source_sha256": "685e0ee0c88954ae68e36b83ad44492ff4032af356f297a83a5acc97080a0f03",
+      "vendored_sha256": "685e0ee0c88954ae68e36b83ad44492ff4032af356f297a83a5acc97080a0f03"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/graph/Defines.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/graph/Defines.h",
+      "source_provenance_sha256": "a4d9d92ab007e5d75436f4fdfd7baa193dec29326de9edba3a5ed30e88cb88ec",
+      "source_sha256": "a4d9d92ab007e5d75436f4fdfd7baa193dec29326de9edba3a5ed30e88cb88ec",
+      "vendored_sha256": "a4d9d92ab007e5d75436f4fdfd7baa193dec29326de9edba3a5ed30e88cb88ec"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/graph/Graph.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/graph/Graph.h",
+      "source_provenance_sha256": "43a6c267ab0400102a2dba762eae632b52c549361af6a209b0b41b3aa9c5b41b",
+      "source_sha256": "43a6c267ab0400102a2dba762eae632b52c549361af6a209b0b41b3aa9c5b41b",
+      "vendored_sha256": "43a6c267ab0400102a2dba762eae632b52c549361af6a209b0b41b3aa9c5b41b"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/graph/GraphAlgo.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/graph/GraphAlgo.h",
+      "source_provenance_sha256": "4f6ea8dbda5be7d8fcb41a01b02639095bbb2ac4211b27de03aadce1fbbc8d0e",
+      "source_sha256": "4f6ea8dbda5be7d8fcb41a01b02639095bbb2ac4211b27de03aadce1fbbc8d0e",
+      "vendored_sha256": "4f6ea8dbda5be7d8fcb41a01b02639095bbb2ac4211b27de03aadce1fbbc8d0e"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/holecutconcavity.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/holecutconcavity.cpp",
+      "source_provenance_sha256": "e6b555585d8d504083bbee9e10f99c27f24cc15e4dde054b78e22191bf030e6a",
+      "source_sha256": "e6b555585d8d504083bbee9e10f99c27f24cc15e4dde054b78e22191bf030e6a",
+      "vendored_sha256": "e6b555585d8d504083bbee9e10f99c27f24cc15e4dde054b78e22191bf030e6a"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/holecutconcavity.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/holecutconcavity.h",
+      "source_provenance_sha256": "9d11da478dae6b8c12e31fbc41d5a428a16bad66917abc48bae79feafb37c0aa",
+      "source_sha256": "9d11da478dae6b8c12e31fbc41d5a428a16bad66917abc48bae79feafb37c0aa",
+      "vendored_sha256": "9d11da478dae6b8c12e31fbc41d5a428a16bad66917abc48bae79feafb37c0aa"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/holediag.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/holediag.cpp",
+      "source_provenance_sha256": "a2696d24a61f8a1a978830f0d7bec054ff10856e73f2469adb6e8fe055603396",
+      "source_sha256": "a2696d24a61f8a1a978830f0d7bec054ff10856e73f2469adb6e8fe055603396",
+      "vendored_sha256": "a2696d24a61f8a1a978830f0d7bec054ff10856e73f2469adb6e8fe055603396"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/holediag.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/holediag.h",
+      "source_provenance_sha256": "f4140453a21ab990e62b6eeb3855582678c39ece2d7cb070ed38d9f1116f8f26",
+      "source_sha256": "f4140453a21ab990e62b6eeb3855582678c39ece2d7cb070ed38d9f1116f8f26",
+      "vendored_sha256": "f4140453a21ab990e62b6eeb3855582678c39ece2d7cb070ed38d9f1116f8f26"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/intersection.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/intersection.h",
+      "source_provenance_sha256": "8f51780aeea6b55584e9ac5d473935453ece36994ef1599178bf4929a587cd7d",
+      "source_sha256": "8f51780aeea6b55584e9ac5d473935453ece36994ef1599178bf4929a587cd7d",
+      "vendored_sha256": "8f51780aeea6b55584e9ac5d473935453ece36994ef1599178bf4929a587cd7d"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/knapsack.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/knapsack.cpp",
+      "source_provenance_sha256": "7661b4c91eef66e3b9d47e28e097ae0128af4811b6eb4fd644c816fb1171d9f2",
+      "source_sha256": "7661b4c91eef66e3b9d47e28e097ae0128af4811b6eb4fd644c816fb1171d9f2",
+      "vendored_sha256": "7661b4c91eef66e3b9d47e28e097ae0128af4811b6eb4fd644c816fb1171d9f2"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/knapsack.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/knapsack.h",
+      "source_provenance_sha256": "230b5410570d18d7cb3779e5aea0bc93fb71d9f8c1ed6f97a79b7f72b5c7338e",
+      "source_sha256": "230b5410570d18d7cb3779e5aea0bc93fb71d9f8c1ed6f97a79b7f72b5c7338e",
+      "vendored_sha256": "230b5410570d18d7cb3779e5aea0bc93fb71d9f8c1ed6f97a79b7f72b5c7338e"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/main.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/main.cpp",
+      "source_provenance_sha256": "a7c7068a75e58fa01b0981302e0d2edd7f78b8cc51a548f83a8a143edc8d4045",
+      "source_sha256": "a7c7068a75e58fa01b0981302e0d2edd7f78b8cc51a548f83a8a143edc8d4045",
+      "vendored_sha256": "a7c7068a75e58fa01b0981302e0d2edd7f78b8cc51a548f83a8a143edc8d4045"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/main.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/main.h",
+      "source_provenance_sha256": "bc84e5d6562d411efbd2c2ed37e30edd8668d4801f74c24fb0301fb9223f4036",
+      "source_sha256": "bc84e5d6562d411efbd2c2ed37e30edd8668d4801f74c24fb0301fb9223f4036",
+      "vendored_sha256": "bc84e5d6562d411efbd2c2ed37e30edd8668d4801f74c24fb0301fb9223f4036"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/poly_approx.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/poly_approx.cpp",
+      "source_provenance_sha256": "f2800c1210c42a102178cb09652ee1d805c34bfb974ba7116ab64f3bf9fe3a3d",
+      "source_sha256": "f2800c1210c42a102178cb09652ee1d805c34bfb974ba7116ab64f3bf9fe3a3d",
+      "vendored_sha256": "f2800c1210c42a102178cb09652ee1d805c34bfb974ba7116ab64f3bf9fe3a3d"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/poly_approx.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/poly_approx.h",
+      "source_provenance_sha256": "d06fbb52fb48c908643e3896282d4841fc0c73aeafa56a118622fffbb8ce6a14",
+      "source_sha256": "d06fbb52fb48c908643e3896282d4841fc0c73aeafa56a118622fffbb8ce6a14",
+      "vendored_sha256": "d06fbb52fb48c908643e3896282d4841fc0c73aeafa56a118622fffbb8ce6a14"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/polygon.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/polygon.cpp",
+      "source_provenance_sha256": "e6d879a748629537ba4d25f5513ceae31503d7bb3ff7e1c1919fe720e27d4ebc",
+      "source_sha256": "e6d879a748629537ba4d25f5513ceae31503d7bb3ff7e1c1919fe720e27d4ebc",
+      "vendored_sha256": "e6d879a748629537ba4d25f5513ceae31503d7bb3ff7e1c1919fe720e27d4ebc"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/polygon.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/polygon.h",
+      "source_provenance_sha256": "d45c5b8e4854a9cf7fc4891812e10e459a1651eea5e8cdc4f8dcebb8676eb7f4",
+      "source_sha256": "d45c5b8e4854a9cf7fc4891812e10e459a1651eea5e8cdc4f8dcebb8676eb7f4",
+      "vendored_sha256": "d45c5b8e4854a9cf7fc4891812e10e459a1651eea5e8cdc4f8dcebb8676eb7f4"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/polyline.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/polyline.cpp",
+      "source_provenance_sha256": "6d03e3913b45502005c92a041a020fcd856d186b11b29e9ac6c6cd12b651f6b9",
+      "source_sha256": "6d03e3913b45502005c92a041a020fcd856d186b11b29e9ac6c6cd12b651f6b9",
+      "vendored_sha256": "6d03e3913b45502005c92a041a020fcd856d186b11b29e9ac6c6cd12b651f6b9"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/polyline.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/polyline.h",
+      "source_provenance_sha256": "6208f60c4557ce99409f45e6f3c4803328a875a2d91950132c3ea1a849db8991",
+      "source_sha256": "6208f60c4557ce99409f45e6f3c4803328a875a2d91950132c3ea1a849db8991",
+      "vendored_sha256": "6208f60c4557ce99409f45e6f3c4803328a875a2d91950132c3ea1a849db8991"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/simple_svg_1.0.0.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/simple_svg_1.0.0.h",
+      "source_provenance_sha256": "0ca4a2e1ca7bdc3421491b5e206ce3e3b5c95162ee45bec969c2ad369134f884",
+      "source_sha256": "0ca4a2e1ca7bdc3421491b5e206ce3e3b5c95162ee45bec969c2ad369134f884",
+      "vendored_sha256": "0ca4a2e1ca7bdc3421491b5e206ce3e3b5c95162ee45bec969c2ad369134f884"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d.cpp",
+      "source_provenance_sha256": "83ee66ad8c7c43faf93f1fc629ec331b57862075c60ca7779f30b48934127497",
+      "source_sha256": "83ee66ad8c7c43faf93f1fc629ec331b57862075c60ca7779f30b48934127497",
+      "vendored_sha256": "83ee66ad8c7c43faf93f1fc629ec331b57862075c60ca7779f30b48934127497"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d.h",
+      "source_provenance_sha256": "d1413f13f24ab0b93fea6215be6f94946781ac08c1caf93c49b177a6d669b9ae",
+      "source_sha256": "d1413f13f24ab0b93fea6215be6f94946781ac08c1caf93c49b177a6d669b9ae",
+      "vendored_sha256": "d1413f13f24ab0b93fea6215be6f94946781ac08c1caf93c49b177a6d669b9ae"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_data.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_data.h",
+      "source_provenance_sha256": "562b40c8a2015ffa23832d78ae54ca546b43c07c4a9712ca4f9cf1d2c029f61b",
+      "source_sha256": "562b40c8a2015ffa23832d78ae54ca546b43c07c4a9712ca4f9cf1d2c029f61b",
+      "vendored_sha256": "562b40c8a2015ffa23832d78ae54ca546b43c07c4a9712ca4f9cf1d2c029f61b"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_decomp.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_decomp.cpp",
+      "source_provenance_sha256": "4063130eea68e142c89d028ea390e43011c377e1307b68496ce8ddbb4a80086b",
+      "source_sha256": "4063130eea68e142c89d028ea390e43011c377e1307b68496ce8ddbb4a80086b",
+      "vendored_sha256": "4063130eea68e142c89d028ea390e43011c377e1307b68496ce8ddbb4a80086b"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_decomp.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_decomp.h",
+      "source_provenance_sha256": "c9b629641d9ebc5146470887c139093df250f37d1af070724087e8c447f2f12b",
+      "source_sha256": "c9b629641d9ebc5146470887c139093df250f37d1af070724087e8c447f2f12b",
+      "vendored_sha256": "c9b629641d9ebc5146470887c139093df250f37d1af070724087e8c447f2f12b"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_eigen.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_eigen.h",
+      "source_provenance_sha256": "337112aa4ea54035179104ffd0f03800ec2a216d8a94cf77e9000b844549f7ae",
+      "source_sha256": "337112aa4ea54035179104ffd0f03800ec2a216d8a94cf77e9000b844549f7ae",
+      "vendored_sha256": "337112aa4ea54035179104ffd0f03800ec2a216d8a94cf77e9000b844549f7ae"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_skeleton.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_skeleton.cpp",
+      "source_provenance_sha256": "cb222d59a62e292459a5b391cdcaa9b25aa767123aeed38e71862d2e988d34c3",
+      "source_sha256": "cb222d59a62e292459a5b391cdcaa9b25aa767123aeed38e71862d2e988d34c3",
+      "vendored_sha256": "cb222d59a62e292459a5b391cdcaa9b25aa767123aeed38e71862d2e988d34c3"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_skeleton.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_skeleton.h",
+      "source_provenance_sha256": "a1c041c15f1dda1d21966801a276020f7899c0068320f58ed2d55866b4217bbc",
+      "source_sha256": "a1c041c15f1dda1d21966801a276020f7899c0068320f58ed2d55866b4217bbc",
+      "vendored_sha256": "a1c041c15f1dda1d21966801a276020f7899c0068320f58ed2d55866b4217bbc"
+    },
+    {
+      "license": {
+        "path": "../../../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/Third_Party/dude_final/src/skeleton/SE2d_util.h",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src/skeleton/SE2d_util.h",
+      "source_provenance_sha256": "f4155e653a7ca2c96e86b82a428612644317fa93c0b6e03ae7472e7e610e607f",
+      "source_sha256": "f4155e653a7ca2c96e86b82a428612644317fa93c0b6e03ae7472e7e610e607f",
+      "vendored_sha256": "f4155e653a7ca2c96e86b82a428612644317fa93c0b6e03ae7472e7e610e607f"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/basic_region_tracker.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/basic_region_tracker.hpp",
+      "source_provenance_sha256": "2dbf624ef0900beac02bfa36f3f8f8121371db1d100e9d1568f23d1ba7c4df2a",
+      "source_sha256": "2dbf624ef0900beac02bfa36f3f8f8121371db1d100e9d1568f23d1ba7c4df2a",
+      "vendored_sha256": "2dbf624ef0900beac02bfa36f3f8f8121371db1d100e9d1568f23d1ba7c4df2a"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/dude_ros_logging.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/dude_ros_logging.hpp",
+      "source_provenance_sha256": "b1ec2233dbcd49f2b627b3200128a161788e28ca65bf96d617e8399782cb7e65",
+      "source_sha256": "b1ec2233dbcd49f2b627b3200128a161788e28ca65bf96d617e8399782cb7e65",
+      "vendored_sha256": "b1ec2233dbcd49f2b627b3200128a161788e28ca65bf96d617e8399782cb7e65"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/inc_decomp.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/inc_decomp.cpp",
+      "source_provenance_sha256": "321d4a117313a895a1d0e4cafbb3ffe2f280cf1ae13c3d14a9f2e4da6a6ed2c2",
+      "source_sha256": "321d4a117313a895a1d0e4cafbb3ffe2f280cf1ae13c3d14a9f2e4da6a6ed2c2",
+      "vendored_sha256": "321d4a117313a895a1d0e4cafbb3ffe2f280cf1ae13c3d14a9f2e4da6a6ed2c2"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/inc_decomp.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/inc_decomp.hpp",
+      "source_provenance_sha256": "309cf20bb183b9997f5085a78dd689d59fa0bfd583850cce133fadf973ee66c0",
+      "source_sha256": "309cf20bb183b9997f5085a78dd689d59fa0bfd583850cce133fadf973ee66c0",
+      "vendored_sha256": "309cf20bb183b9997f5085a78dd689d59fa0bfd583850cce133fadf973ee66c0"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/region_geometry_utils.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/region_geometry_utils.hpp",
+      "source_provenance_sha256": "ea0c37c32f77c75f572be644d038a7a4eeabd79d3b7475562fba64ddffe67a5f",
+      "source_sha256": "ea0c37c32f77c75f572be644d038a7a4eeabd79d3b7475562fba64ddffe67a5f",
+      "vendored_sha256": "ea0c37c32f77c75f572be644d038a7a4eeabd79d3b7475562fba64ddffe67a5f"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/region_ros_utils.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/region_ros_utils.hpp",
+      "source_provenance_sha256": "20d05721337f7e009131404fa29162d65f8e579033747b577afac6ab4827be99",
+      "source_sha256": "20d05721337f7e009131404fa29162d65f8e579033747b577afac6ab4827be99",
+      "vendored_sha256": "20d05721337f7e009131404fa29162d65f8e579033747b577afac6ab4827be99"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/wrapper.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/wrapper.cpp",
+      "source_provenance_sha256": "df9c00bd9be1ed6674a78b9386b3c118d7b898d08987e98d1e046eccc3f3d140",
+      "source_sha256": "df9c00bd9be1ed6674a78b9386b3c118d7b898d08987e98d1e046eccc3f3d140",
+      "vendored_sha256": "df9c00bd9be1ed6674a78b9386b3c118d7b898d08987e98d1e046eccc3f3d140"
+    },
+    {
+      "license": {
+        "path": "../../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/include/wrapper.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include/wrapper.hpp",
+      "source_provenance_sha256": "507804a7f551fe8d892b8e7cbce57084bd0e5d54bd317fdbb1e347d0609ed6d8",
+      "source_sha256": "507804a7f551fe8d892b8e7cbce57084bd0e5d54bd317fdbb1e347d0609ed6d8",
+      "vendored_sha256": "507804a7f551fe8d892b8e7cbce57084bd0e5d54bd317fdbb1e347d0609ed6d8"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/CMakeLists.txt",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/CMakeLists.txt",
+      "source_provenance_sha256": "436689f6ac182389cb64e8e215b98fae94d6ed993eef654ea93c1c6fca45b7f5",
+      "source_sha256": "436689f6ac182389cb64e8e215b98fae94d6ed993eef654ea93c1c6fca45b7f5",
+      "vendored_sha256": "436689f6ac182389cb64e8e215b98fae94d6ed993eef654ea93c1c6fca45b7f5"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/globals.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/globals.cpp",
+      "source_provenance_sha256": "7bac8174bb810797d675e4b748773b524b53c80961efb6d59580b211cb21a14a",
+      "source_sha256": "7bac8174bb810797d675e4b748773b524b53c80961efb6d59580b211cb21a14a",
+      "vendored_sha256": "7bac8174bb810797d675e4b748773b524b53c80961efb6d59580b211cb21a14a"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/include/dude_ros_logging.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/include/dude_ros_logging.hpp",
+      "source_provenance_sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e",
+      "source_sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e",
+      "vendored_sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/include/m4_non_ros_logging.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/include/m4_non_ros_logging.hpp",
+      "source_provenance_sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e",
+      "source_sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e",
+      "vendored_sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/preprocessing.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/preprocessing.cpp",
+      "source_provenance_sha256": "87b266d4b58dcbe0f1dd91611680178926913baf866ae79f9ab12556d38848ec",
+      "source_sha256": "87b266d4b58dcbe0f1dd91611680178926913baf866ae79f9ab12556d38848ec",
+      "vendored_sha256": "87b266d4b58dcbe0f1dd91611680178926913baf866ae79f9ab12556d38848ec"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/preprocessing.hpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/preprocessing.hpp",
+      "source_provenance_sha256": "67e666f165d08a8033111b672b03d0d8e5f996e00bc9da6a7efee78835a24210",
+      "source_sha256": "67e666f165d08a8033111b672b03d0d8e5f996e00bc9da6a7efee78835a24210",
+      "vendored_sha256": "67e666f165d08a8033111b672b03d0d8e5f996e00bc9da6a7efee78835a24210"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/source_reference.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/source_reference.cpp",
+      "source_provenance_sha256": "c45d05c9dec4bac2c45ceb13d4434f297e74bc40d01a014afc551274147fcf31",
+      "source_sha256": "c45d05c9dec4bac2c45ceb13d4434f297e74bc40d01a014afc551274147fcf31",
+      "vendored_sha256": "c45d05c9dec4bac2c45ceb13d4434f297e74bc40d01a014afc551274147fcf31"
+    },
+    {
+      "license": {
+        "path": null,
+        "sha256": null,
+        "status": "not_found"
+      },
+      "path": "upstream/native/dude/worker.cpp",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/worker.cpp",
+      "source_provenance_sha256": "e6201e95d9ba60b5413365e81997513ca65066b20d9524cee7fffe020bb56699",
+      "source_sha256": "e6201e95d9ba60b5413365e81997513ca65066b20d9524cee7fffe020bb56699",
+      "vendored_sha256": "e6201e95d9ba60b5413365e81997513ca65066b20d9524cee7fffe020bb56699"
+    },
+    {
+      "license": {
+        "path": "../../../LICENSE",
+        "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03",
+        "status": "notice_present"
+      },
+      "path": "upstream/package.xml",
+      "source": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/package.xml",
+      "source_provenance_sha256": "9fb6f77bc706a546eab8c4009c77e61c0fcdb1e1dbddfa95051d31786e1f19d7",
+      "source_sha256": "9fb6f77bc706a546eab8c4009c77e61c0fcdb1e1dbddfa95051d31786e1f19d7",
+      "vendored_sha256": "9fb6f77bc706a546eab8c4009c77e61c0fcdb1e1dbddfa95051d31786e1f19d7"
+    }
+  ],
+  "notices": {
+    "fist_archive_sha256": "84875da959aae5a1abdddc993075d0f91d4afdbdda1a29dd856f77254a63c684",
+    "fist_notice_source": "upstream/Third_Party/dude_final/FIST/makefile",
+    "fist_notice_source_line_range": "943-953",
+    "fist_notice_source_sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+    "license_state": "DuDe incremental package metadata says TODO; bundled FIST notice restricts use. Redistribution/publishing rights are unresolved.",
+    "p00_path_discrepancy": "P00 initially attributed the FIST restriction to the root dude_final README. That attribution has been corrected in THIRD_PARTY_NOTICES.md and docs/source-provenance.json; the actual notice is in FIST/makefile."
+  },
+  "schema_version": 1,
+  "selected_source_root": "../3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+  "selected_upstream_root": "../3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2",
+  "snapshot": "docs/source-provenance.json; 2026-10-27 P00 selected source inventory"
+}

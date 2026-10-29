@@ -1,0 +1,16 @@
+{
+  "object_ids": [
+    "0aa4a5c2-aff5-5f7f-9d6e-4ccf6d090e17"
+  ],
+  "events": [
+    {
+      "event_id": "a1c738303238f0416a288485c5ca46369dcca05878d9a9f3d4c187b2ca0e0441",
+      "object_id": "0aa4a5c2-aff5-5f7f-9d6e-4ccf6d090e17",
+      "source": {
+        "episode_id": "p09-fixture",
+        "frame_index": 0,
+        "sensor_id": "rgbd"
+      }
+    }
+  ]
+}

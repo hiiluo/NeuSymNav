@@ -1,0 +1,81 @@
+[
+  {
+    "error": "ValueError",
+    "message": "body moved outside forward segment",
+    "proof": {
+      "schema_version": 1,
+      "command_sha256": "cf292d0733007736d67e5a03f1bfcdf3de25e5bbef74400d2a59be8767c1b0ff",
+      "source": {
+        "schema_version": "runtime_measurement_source_v1",
+        "key": {
+          "episode_id": "p10-native-runtime10-00802-seed-0",
+          "sensor_id": "downward-depth",
+          "frame_index": 5
+        },
+        "capture_monotonic_ns": 3283648330804,
+        "clock_domain": "host_monotonic:a55344dc-0b04-4bb9-a86d-5cc8f2570ef9",
+        "pose_version": 2,
+        "calibration_id": "habitat:794aa7e6afdee97666d72bc1ff12a01592fcf0d0821ac740f2924c131c4d8288"
+      },
+      "map_revision": 3,
+      "source_pose_version": 2,
+      "actions": [
+        {
+          "index": 0,
+          "action": "move_forward",
+          "amount": 0.0011951623508512177,
+          "pre_step_monotonic_ns": 3283714508158,
+          "post_step_monotonic_ns": 3283714638644,
+          "pose_version_before": 2,
+          "pose_version_after": 3,
+          "body_before_xy": [
+            2.7526586055755615,
+            5.162430286407471
+          ],
+          "body_after_xy": [
+            2.7514634132385254,
+            5.162425994873047
+          ],
+          "yaw_before_rad": -3.1380968235830613,
+          "yaw_after_rad": -3.1380968235830613
+        },
+        {
+          "index": 1,
+          "action": "turn_left",
+          "amount": 0.35854870080947876,
+          "pre_step_monotonic_ns": 3283715981195,
+          "post_step_monotonic_ns": 3283716058802,
+          "pose_version_before": 3,
+          "pose_version_after": 4,
+          "body_before_xy": [
+            2.7514634132385254,
+            5.162425994873047
+          ],
+          "body_after_xy": [
+            2.7514634132385254,
+            5.162425994873047
+          ],
+          "yaw_before_rad": -3.1380968235830613,
+          "yaw_after_rad": -3.131838991139355
+        }
+      ],
+      "complete": true,
+      "reason": "executed"
+    },
+    "command": {
+      "source": {
+        "episode_id": "p10-native-runtime10-00802-seed-0",
+        "sensor_id": "downward-depth",
+        "frame_index": 5
+      },
+      "map_revision": 3,
+      "issued_monotonic_ns": 3283702208512,
+      "deadline_monotonic_ns": 3283802208512,
+      "clock_domain": "host_monotonic:a55344dc-0b04-4bb9-a86d-5cc8f2570ef9",
+      "linear_mps": 0.0267653781,
+      "yaw_radps": 0.14014319201585523,
+      "reason": "tracking",
+      "source_capture_monotonic_ns": 3283648330804
+    }
+  }
+]

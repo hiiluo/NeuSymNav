@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "source": {
+    "integration_v2/perception_feature_sessions.py": "a4217272ce443c2db96d98b47e09c4258cb2ab66fc215ab4aa4b6fc14844c2e2",
+    "scripts/extract_u2_appearance.py": "58b2590aa7c0c0aff1d167dc1bf250bf5944288725e4ab2fe61893f470edda06",
+    "ref_ConceptGraph/concept-graphs/conceptgraph/slam/utils.py": "8015d5ac2ad539eb98bec057cc94d3c5b3d091850b4102a60faf58779845a712",
+    "ref_ConceptGraph/concept-graphs/conceptgraph/slam/mapping.py": "30be9f67f6237326240ffe8bd31c27a6ca431d6b35c5cf7d444c62fdb9d266ed"
+  },
+  "image": {
+    "height": 48,
+    "width": 64,
+    "rgb_pattern": [
+      "r = (3*x) % 256",
+      "g = (5*y) % 256",
+      "b = (7*(x+y)) % 256"
+    ],
+    "sha256": "e84db16e16adabb640b617597d2870cca24f50505a2416aee525800b889165fb"
+  },
+  "bbox_crop": {
+    "bbox_xyxy_float": [10.25, 8.75, 23.5, 22.5],
+    "padding_px": 20,
+    "crop_box_xyxy_float": [0.0, 0.0, 43.5, 42.5],
+    "crop_shape_hwc": [42, 44, 3],
+    "crop_sha256": "a3682bba7e7512fed1158a4572d71806b56392cb4a206c796e60e38f0b4d2d59"
+  },
+  "mask_crop": {
+    "mask_rect_yx_exclusive": [14, 20, 17, 24],
+    "mask_packed_sha256": "eb94ec752c975ce80a5f07927e29710053b33a4540fc6556a7bef6b6bbb20211",
+    "derived_bbox_xyxy_float": [17.0, 14.0, 24.0, 20.0],
+    "padding_px": 20,
+    "crop_box_xyxy_float": [0.0, 0.0, 44.0, 40.0],
+    "crop_shape_hwc": [40, 44, 3],
+    "crop_sha256": "e553d983771c54c715130e45376b079c9166b7b7daf3838c40da15008479ada1"
+  },
+  "policy": "RGB pixels remain unchanged inside the padded crop; mask only identifies the detection bounds and cache identity."
+}

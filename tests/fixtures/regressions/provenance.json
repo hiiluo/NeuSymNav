@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "Exact small regression inputs copied from retained NeuSymNav evidence; no native source, binaries, models or dataset payloads. Original run artifacts remain unchanged.",
+  "records": [
+    {
+      "fixture": "collision-filter-00802.json",
+      "source": "runs/p10-native-preparation/collision-filter-00802/report.json",
+      "sha256": "13eb7fc5f8b1793f3cdc9bce42ba81901ebf6efb1c86d939a1bbe432d182b725",
+      "bytes": 2313
+    },
+    {
+      "fixture": "runtime10-invalid-proofs.json",
+      "source": "runs/p10-native-preparation/diagnose-00802-runtime10-first-failure/invalid-proofs.json",
+      "sha256": "93443d56b3a8440f4d1c3ab9fb83f55f12b90a2b36d1e89c0ef91408fabfe8af",
+      "bytes": 2575
+    },
+    {
+      "fixture": "appearance-parity-oracle.json",
+      "source": "runs/p05-owner/parity-oracle.json",
+      "sha256": "6ea081978152a7bc961be0950b27f21a614a6dab7a775add8e5169cb6292355a",
+      "bytes": 3591
+    },
+    {
+      "fixture": "legacy-appearance.yaml",
+      "source": "runs/p09-launcher/original-config/appearance.yaml",
+      "sha256": "c5c6a2559087f48983002875f5c687bb75f2547527f18332dc9f86892231f2b0",
+      "bytes": 1696
+    }
+  ]
+}

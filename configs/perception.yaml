@@ -1,0 +1,25 @@
+schema_version: 1
+detector:
+  adapter: neusymnav.perception.yoloe.YOLOEDetector
+  model: YOLOE11s
+  detector_profile_id: yoloe11s-r480-local-v1
+  checkpoint_path: null # Explicit existing local yoloe-11s-seg.pt; no downloads.
+  mobileclip_path: null # Explicit existing local mobileclip_blt.ts.
+  checkpoint_license: AGPL-3.0; verify local asset provenance
+  taxonomy_path: configs/taxonomy-v1.json
+  imgsz: 480
+  max_detections: 30
+  confidence_threshold: 0.25
+  device: cpu
+projector:
+  min_points: 30
+  max_points: 4096
+object_owner:
+  primary_sensor_id: rgbd
+  floor_id: null # Required calibrated single floor identity.
+  clock_domain: null # Required host boot/replay identity; inject matching now_ns.
+  association_mode: geometry
+  semantic_ttl_ms: 750
+  max_tracks: 1000
+  max_voxels_per_track: 4096
+  voxel_m: 0.03

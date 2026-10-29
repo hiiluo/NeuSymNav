@@ -1,0 +1,57 @@
+# Local interpreters, caches and build products
+/.venv/
+/.runtime/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+/build/
+/dist/
+CMakeFiles/
+CMakeCache.txt
+*.o
+*.a
+*.so
+*.so.*
+
+# Generated recordings, datasets and model weights stay local
+/runs/
+/data/
+/datasets/
+/models/
+/checkpoints/
+/local-assets/
+/configs/*.local.json
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+*.glb
+*.navmesh
+
+# This copied dependency closure contains redistribution-restricted components.
+# Retain source inventory/build recipe; provision upstream separately with rights.
+/native/dude/upstream/
+
+# Credentials and machine/editor state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/.aws/
+/.ssh/
+.git-credentials
+/.codex/
+/.agents/
+/.idea/
+/.vscode/
+.DS_Store
+core
+core.*

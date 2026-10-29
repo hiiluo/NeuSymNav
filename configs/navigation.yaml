@@ -1,0 +1,46 @@
+# Example profile, blocked until robot and scene calibrations are supplied.
+# No Habitat bootstrap or native motion validation has been performed.
+schema_version: 1
+profile_id: measured-floor-cylinder-v1
+runtime_validated: false
+robot:
+  geometry_id: example-cylinder-r020-h150-margin005-tol005-v1
+  radius_m: 0.20
+  height_m: 1.50
+  margin_m: 0.05
+  # Surfaces strictly below this tolerance may be classified as floor.
+  # Requires sensor noise and low-obstacle validation before native motion.
+  near_ground_tolerance_m: 0.05
+floor:
+  floor_z_m: null
+  floor_datum_source: null
+  calibration_hash: null
+  required: true
+mapping:
+  resolution_m: 0.05
+  tile_size_cells: 64
+  height_bin_m: 0.05
+  min_depth_m: 0.15
+  max_depth_m: 5.0
+  sampling_stride: 4
+  snapshot_radius_m: 8.0
+  max_snapshot_cells: 1000000
+  max_active_tiles: null
+navigation_sensor:
+  sensor_id: navigation-depth
+  modality: depth_only
+  optical_axis_world: [0.0, 0.0, -1.0]
+  # Configure actual height/FOV/K/extrinsics, then pass measured coverage gate.
+  calibration_required: true
+safety:
+  live_clock_domain_required: true
+  max_depth_age_ns: 300000000
+  command_horizon_ns: 100000000
+  bootstrap_corridor_m: 0.30
+  max_linear_mps: 0.20
+  max_yaw_radps: 0.5235987755982988
+provenance:
+  source_manifest: runs/p03/source-provenance.json
+  algorithm_oracles: tests/fixtures/navigation/oracles-v1.json
+  near_ground_policy: first_height_bin_ignored_floor_tolerance_declared
+  safety_policy: measured_floor_and_all_body_bins_plus_swept_footprint

@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "mode": "live",
+  "profile": "baseline",
+  "episode": {
+    "id": "p10-native-runtime6-00802-seed-0",
+    "primary_sensor_id": "primary-rgbd",
+    "floor_id": "floor-0"
+  },
+  "floor": {
+    "z_m": -0.004564523696899414,
+    "datum_source": "native-depth-calibration-v1:/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/p10-native-preparation/sensor-calibration-00802-medium-nav/calibration.json",
+    "calibration_sha256": "112e58998f5566e903614ebafeb8f6a44bc84a6c7f725cba52163439e0fd7a6e"
+  },
+  "workers": {
+    "sensor": {
+      "python": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/sensor/bin/python",
+        "sha256": "0490e8e5cdc006d49a90b2c1e404b107831888e3e15acc3ed5ed270575a77d79"
+      },
+      "script": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/sensors/habitat_worker.py",
+        "sha256": "bd062eaebafffaae81503d679214d769764a91f5ff15af734f54ba54d3802a61"
+      },
+      "timeout_s": 10.0
+    },
+    "detector": {
+      "python": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/detector/bin/python",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      },
+      "script": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/perception/detector_worker.py",
+        "sha256": "fb6acbdbb752d5977755abdef6170a3c04968b84a2681d94bc938eefd5726f2b"
+      },
+      "timeout_s": 5.0,
+      "startup_timeout_s": 60.0
+    },
+    "region": {
+      "executable": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/p06-native/build/occusg_dude_worker",
+        "sha256": "c03c10d71a28e8fa7a2943de5d6d75cdad962d20101209e8e1c844645b7c366b"
+      }
+    }
+  },
+  "detector": {
+    "checkpoint": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/data/models/yoloe/yoloe-11s-seg.pt",
+      "sha256": "8e439445c87338b79d9ce21dec109f4621e26df67e94d26ea1a98c1e64dce3e3"
+    },
+    "encoder": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/data/models/yoloe/mobileclip_blt.ts",
+      "sha256": "a67804d1b0f07b8b9a20c1761ec0847f34660f5fa338ec70e8f3fce68ed95e54"
+    },
+    "taxonomy": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/configs/taxonomy-v1.json",
+      "sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    },
+    "checkpoint_license": "AGPL-3.0",
+    "imgsz": 480,
+    "max_detections": 30,
+    "confidence_threshold": 0.25,
+    "device": "cuda:0"
+  },
+  "navigation": {
+    "robot": {
+      "geometry_id": "cylinder-v1",
+      "radius_m": 0.2,
+      "height_m": 1.5,
+      "margin_m": 0.05,
+      "near_ground_tolerance_m": 0.05
+    },
+    "mapper": {
+      "resolution_m": 0.05,
+      "sampling_stride": 1,
+      "snapshot_radius_m": 2.0
+    }
+  },
+  "appearance_mode": "off",
+  "ui": {
+    "enabled": false
+  },
+  "budgets": {
+    "byte_cap": 33554432,
+    "raw_cap": 2147483648,
+    "total_cap": 8589934592,
+    "shutdown_timeout_s": 5.0,
+    "archive_cap": 1073741824
+  },
+  "replay": {
+    "allow_incomplete": false
+  },
+  "sensor_config": {
+    "initial_position": [
+      2.7533261776,
+      0.124,
+      -5.162430286
+    ],
+    "initial_rotation_xyzw": [
+      0.0,
+      0.7071067811865475,
+      0.0,
+      0.7071067811865476
+    ],
+    "gpu_device_id": 0,
+    "primary": {
+      "sensor_id": "primary-rgbd",
+      "rgb_uuid": "color_sensor",
+      "depth_uuid": "depth_sensor",
+      "resolution_hw": [
+        120,
+        160
+      ],
+      "position_xyz": [
+        0.0,
+        1.2,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 90.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    },
+    "navigation": {
+      "sensor_id": "downward-depth",
+      "depth_uuid": "navigation_depth_sensor",
+      "resolution_hw": [
+        180,
+        240
+      ],
+      "position_xyz": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        -1.5707963267948966,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 120.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    },
+    "seed": 0,
+    "scene": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/3DSG/assets/scenes/hm3d-00802/wcojb4TFT35.basis.glb",
+      "sha256": "075e243b372458df4055a55e27c93885ba44ae8c36b4bc4446e0393c60c14540"
+    },
+    "scene_dataset": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/3DSG/assets/scenes/hm3d-00802/demo.scene_dataset_config.json",
+      "sha256": "22d0485c749193e19e4ac0502610d51a9022183a3387f36395630ae6dd30a9f4"
+    },
+    "floor_datum": {
+      "source_convention": "new_y_up_v1",
+      "source_floor_y_m": -0.004564523696899414,
+      "canonical_floor_z_m": -0.004564523696899414,
+      "provenance": "native measured downward depth calibration v1 112e58998f5566e903614ebafeb8f6a44bc84a6c7f725cba52163439e0fd7a6e"
+    }
+  },
+  "measurements": {
+    "enabled": true,
+    "rss_cap_bytes": 10737418240,
+    "gpu_cap_bytes": 5368709120,
+    "sample_cap": 65536,
+    "capture_cap": 65536,
+    "trace_byte_cap": 67108864,
+    "gpu_executable": {
+      "path": "/usr/bin/nvidia-smi",
+      "sha256": "b5f7f696f1d8b7ad033ebb4fedbda38afd58f9913ad8c31f0bf23066ec9dc62c"
+    },
+    "gpu_uuid": "GPU-8ffd4877-4094-2b68-4daa-c1e35c2742e1"
+  }
+}

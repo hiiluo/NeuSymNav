@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "suite_id": "neusymnav-p10-core-pilot-v1",
+  "scope": "native_core",
+  "requested_scene_count": 2,
+  "duration_s": 300,
+  "scenes": [
+    {
+      "scene_id": "hm3d-00802-wcojb4TFT35",
+      "input_kind": "scene",
+      "input": {
+        "path": "../../../3DSG/assets/scenes/hm3d-00802/wcojb4TFT35.basis.glb",
+        "sha256": "075e243b372458df4055a55e27c93885ba44ae8c36b4bc4446e0393c60c14540"
+      },
+      "offline_gt": null
+    }
+  ],
+  "seeds": [
+    0,
+    1
+  ],
+  "profile": {
+    "id": "core-frontier-yoloe11s",
+    "appearance_mode": "off",
+    "config": {
+      "path": "../baseline.yaml",
+      "sha256": "44ec305935f302514c49bf48cd184ab95ecea5c312e45e19fe8346b7c1f5cec9"
+    },
+    "model": {
+      "path": "../../../NewOH3DSG/data/models/yoloe/yoloe-11s-seg.pt",
+      "sha256": "8e439445c87338b79d9ce21dec109f4621e26df67e94d26ea1a98c1e64dce3e3"
+    },
+    "taxonomy": {
+      "path": "../taxonomy-v1.json",
+      "sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    },
+    "configured_resolution_hw": [
+      240,
+      320
+    ]
+  },
+  "budgets": {
+    "rss_bytes": 10737418240,
+    "vram_bytes": 5368709120,
+    "raw_bytes": 2147483648,
+    "export_bytes": 8589934592
+  },
+  "attempts": [
+    {
+      "scene_id": "hm3d-00802-wcojb4TFT35",
+      "seed": 0,
+      "result": null,
+      "missing_reason": "Native attempt not launched: no Habitat-Sim/Torch/Ultralytics runtime, unusable NVIDIA device, missing explicit scene floor calibration/worker interpreter configuration; no download/install authorized. Only one pinned scene available."
+    },
+    {
+      "scene_id": "hm3d-00802-wcojb4TFT35",
+      "seed": 1,
+      "result": null,
+      "missing_reason": "Native attempt not launched: no Habitat-Sim/Torch/Ultralytics runtime, unusable NVIDIA device, missing explicit scene floor calibration/worker interpreter configuration; no download/install authorized. Only one pinned scene available."
+    }
+  ],
+  "comparators": {
+    "legacy_new": {
+      "status": "missing",
+      "reason": "No compatible versioned, input/model/config-pinned legacy New output artifact found; do not rerun its source runtime or install dependencies.",
+      "artifact": null
+    },
+    "legacy_cg": {
+      "status": "missing",
+      "reason": "No compatible CG/3DSG output with same frozen RGB-D/pose recording and versioned provenance; native trajectories cannot establish direct association gains.",
+      "artifact": null
+    },
+    "appearance_on": {
+      "status": "blocked",
+      "reason": "No compatible manifest-pinned OpenCLIP checkpoint, open_clip/Torch unavailable; off/on paired replay and identity support absent. Keep optional, default off, no quality promotion.",
+      "artifact": null
+    }
+  }
+}

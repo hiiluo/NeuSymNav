@@ -1,0 +1,27 @@
+schema_version: 1
+profile: geometry-only
+clock: pinned_host_boot_monotonic
+fast_lane:
+  depth_max_age_ms: 300
+  semantic_max_age_ms: 750
+  inference_start_max_age_ms: 250
+  navigation_pending: latest_only
+graph_lane:
+  inflight: 1
+  pending: 2
+  protected_pending: 1
+  payload_cap_bytes: 33554432
+  historical_inference: true
+  accepted_evidence: retain_until_graph_and_verification_ack
+  recovery: original_source_identity_same_clock_domain
+display:
+  refresh_interval_ms: 100
+  age_basis: original_capture_not_publication
+  verification_age: oldest_committed_gallery_capture
+storage:
+  raw_cap_bytes: 2147483648
+  total_run_cap_bytes: 8589934592
+  quota_policy: stop_admission_preserve_evidence
+shutdown:
+  retry_side_effects: false
+  report_unreaped_workers: true

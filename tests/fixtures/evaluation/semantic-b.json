@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "scene_id": "fixture",
+  "input_sha256": "d818f1066152a5099c1ff210faf27319f4d030bb0e3383ba6b3e7de5c00f1dc5",
+  "coordinate_convention": "canonical_z_up_m_v1",
+  "provenance": "Analytic planar synthetic fixture annotation: observed points lie at z=3; XY bounds \u00b111/12 m. Only an XY footprint diagnostic, not 3D volume or real-scene accuracy.",
+  "objects": [
+    {
+      "gt_id": "synthetic-gt-1",
+      "raw_label": "couch",
+      "bounds": [
+        [
+          -0.9166666666666666,
+          -0.9166666666666666,
+          3.0
+        ],
+        [
+          0.9166666666666666,
+          0.9166666666666666,
+          3.0
+        ]
+      ]
+    }
+  ],
+  "visible_object_ids": [
+    "synthetic-gt-1"
+  ],
+  "geometry_metric": "aabb_xy_iou_v1"
+}

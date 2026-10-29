@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "mode": "live",
+  "profile": "baseline",
+  "episode": {
+    "id": "demo-yoloe26m-640x480-long-00861",
+    "primary_sensor_id": "primary-rgbd",
+    "floor_id": "floor-0"
+  },
+  "floor": {
+    "z_m": -1.6228199005126949,
+    "datum_source": "native-depth-calibration-v1:/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/p10-native-preparation/sensor-calibration-00861-medium-nav/calibration.json",
+    "calibration_sha256": "0ee174c07739af6917f239b7c34893371e1ed92dbde24d523934c560c23406ad"
+  },
+  "workers": {
+    "sensor": {
+      "python": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/sensor/bin/python",
+        "sha256": "0490e8e5cdc006d49a90b2c1e404b107831888e3e15acc3ed5ed270575a77d79"
+      },
+      "script": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/sensors/habitat_worker.py",
+        "sha256": "14335d7d02d017ba51b13cae155d07f7075f48f6315381f34f9e15f1fc48d1be"
+      },
+      "timeout_s": 10.0
+    },
+    "detector": {
+      "python": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/detector26/bin/python",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      },
+      "script": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/perception/detector_worker.py",
+        "sha256": "fb6acbdbb752d5977755abdef6170a3c04968b84a2681d94bc938eefd5726f2b"
+      },
+      "timeout_s": 5.0,
+      "startup_timeout_s": 60.0
+    },
+    "region": {
+      "executable": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/p06-native/build/occusg_dude_worker",
+        "sha256": "c03c10d71a28e8fa7a2943de5d6d75cdad962d20101209e8e1c844645b7c366b"
+      }
+    },
+    "ui": {
+      "python": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/host/bin/python",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      },
+      "script": {
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/runtime/ui_transport.py",
+        "sha256": "89dffe6701bcd30f4cbd7320f3ae57a1c72dcd2252d24c7c8c6241a069787df1"
+      }
+    }
+  },
+  "detector": {
+    "checkpoint": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/data/models/yoloe/yoloe-26m-seg.pt",
+      "sha256": "585f5ec9028fd358035da8d860c27c56be285a795cba2076fba536a4391c2c83"
+    },
+    "encoder": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/data/models/yoloe/mobileclip2_b.ts",
+      "sha256": "35d7f213e4d75f38514e4656ad3cb91158bd33e3805d8ac349f23b186f66982f"
+    },
+    "taxonomy": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/configs/taxonomy-v1.json",
+      "sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    },
+    "checkpoint_license": "AGPL-3.0",
+    "imgsz": 640,
+    "max_detections": 30,
+    "confidence_threshold": 0.25,
+    "device": "cuda:0"
+  },
+  "navigation": {
+    "robot": {
+      "geometry_id": "cylinder-v1",
+      "radius_m": 0.2,
+      "height_m": 1.5,
+      "margin_m": 0.05,
+      "near_ground_tolerance_m": 0.05
+    },
+    "mapper": {
+      "resolution_m": 0.05,
+      "sampling_stride": 1,
+      "snapshot_radius_m": 2.0,
+      "raycast_workers": 4
+    }
+  },
+  "appearance_mode": "off",
+  "ui": {
+    "enabled": true,
+    "publish_hz": 2
+  },
+  "budgets": {
+    "byte_cap": 33554432,
+    "raw_cap": 25769803776,
+    "total_cap": 34359738368,
+    "shutdown_timeout_s": 30.0,
+    "archive_cap": 12884901888
+  },
+  "replay": {
+    "allow_incomplete": false
+  },
+  "sensor_config": {
+    "initial_position": [
+      0.0588863343000412,
+      -1.5928866863250732,
+      0.2093828022480011
+    ],
+    "initial_rotation_xyzw": [
+      0.0,
+      0.08718022540757568,
+      0.0,
+      0.9961925558334013
+    ],
+    "gpu_device_id": 0,
+    "primary": {
+      "sensor_id": "primary-rgbd",
+      "rgb_uuid": "color_sensor",
+      "depth_uuid": "depth_sensor",
+      "resolution_hw": [
+        480,
+        640
+      ],
+      "position_xyz": [
+        0.0,
+        1.2,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 90.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    },
+    "navigation": {
+      "sensor_id": "downward-depth",
+      "depth_uuid": "navigation_depth_sensor",
+      "resolution_hw": [
+        180,
+        240
+      ],
+      "position_xyz": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        -1.5707963267948966,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 120.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    },
+    "seed": 0,
+    "scene": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/data/versioned_data/hm3d-0.2/hm3d/example/00861-GLAQ4DNUx5U/GLAQ4DNUx5U.basis.glb",
+      "sha256": "d2271f8fbf57aad34a2d1e03565d5bb9e85503e05eb5f8b9fd47fa66d8983577"
+    },
+    "scene_dataset": {
+      "path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/data/versioned_data/hm3d-0.2/hm3d/example/hm3d_example_basis.scene_dataset_config.json",
+      "sha256": "738e29db938749bbca8ebe045dcc587ede741d4a52d60a182a2bee822dc75347"
+    },
+    "floor_datum": {
+      "source_convention": "new_y_up_v1",
+      "source_floor_y_m": -1.6228199005126949,
+      "canonical_floor_z_m": -1.6228199005126949,
+      "provenance": "native measured downward depth calibration v1 0ee174c07739af6917f239b7c34893371e1ed92dbde24d523934c560c23406ad"
+    },
+    "motion_adapter": "planar_fixed_y_v1"
+  },
+  "measurements": {
+    "enabled": true,
+    "rss_cap_bytes": 10737418240,
+    "gpu_cap_bytes": 5368709120,
+    "sample_cap": 65536,
+    "capture_cap": 65536,
+    "trace_byte_cap": 536870912,
+    "gpu_executable": {
+      "path": "/usr/bin/nvidia-smi",
+      "sha256": "b5f7f696f1d8b7ad033ebb4fedbda38afd58f9913ad8c31f0bf23066ec9dc62c"
+    },
+    "gpu_uuid": "GPU-8ffd4877-4094-2b68-4daa-c1e35c2742e1",
+    "rss_sample_timeout_s": 1.0,
+    "rss_retry_wait_s": 0.2,
+    "proof_record_cap": 20000
+  },
+  "keyframe_sampling": "capacity_deferred",
+  "long_demo": {
+    "max_duration_s": 600,
+    "payload_format": "npz_v2"
+  },
+  "runtime": {
+    "primary_hz": 5,
+    "navigation_hz": 20,
+    "control_sample_cap": 20000
+  }
+}

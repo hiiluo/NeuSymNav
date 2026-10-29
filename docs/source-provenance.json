@@ -1,0 +1,3181 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-27T12:59:29+00:00",
+  "workspace": "NeuSym-Nav/NeuSymNav and read-only sibling sources",
+  "snapshot_method": "SHA-256 of current filesystem bytes; no source Git commit assumed",
+  "scope": {
+    "selected_source_files": 202,
+    "deferred_source_files": 0,
+    "source_inventory_is_exhaustive": false,
+    "omitted": [
+      "unselected source modules",
+      "runs and caches",
+      "datasets and unrelated model weights",
+      "generated binaries except the selected FIST archive"
+    ]
+  },
+  "source_resolution": {
+    "newoh3dsg": "../NewOH3DSG; selected core, association, map, graph, runtime and recording modules",
+    "fusion_python": "../3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg",
+    "fusion_integration": "../3DSG/projects/Fusion_Concept_OccuSG/integration_v2",
+    "native_dude": "../3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+    "native_upstream": "../3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2",
+    "resolution_rule": "Use Fusion standalone_sg for Python region/contracts source; build native DuDe only from Rebuild_3DScene_OccuSG. Do not mix the two standalone_sg package roots on one sys.path.",
+    "source_git_commit": null
+  },
+  "baseline_profiles": [
+    {
+      "id": "core-frontier-yoloe11s",
+      "selection": "selected candidate",
+      "detector": "YOLOE11s",
+      "appearance": "off",
+      "scene": "HM3D v0.2 minival 00802 local candidate",
+      "runtime_status": "blocked: habitat_sim, torch, and ultralytics are unavailable in the probed interpreters; no runtime workload executed",
+      "quality_status": "not validated in NeuSymNav"
+    },
+    {
+      "id": "appearance-openclip",
+      "selection": "deferred optional profile",
+      "detector": "YOLOE11s",
+      "appearance": "OpenCLIP ViT-B/32",
+      "runtime_status": "blocked: open_clip is unavailable; manifest-pinned safetensors checkpoint is absent and alternate local checkpoint compatibility is unverified",
+      "quality_status": "not validated in NeuSymNav"
+    },
+    {
+      "id": "geometry-only",
+      "selection": "deferred ablation profile",
+      "detector": "same canonical owner with appearance off; deterministic fixture detector for CPU correctness tests",
+      "appearance": "off",
+      "runtime_status": "contract/fixture profile only until later task integration",
+      "quality_status": "not validated in NeuSymNav"
+    }
+  ],
+  "runtime_probe": {
+    "host_python": ".venv/bin/python 3.12.3; neusymnav, numpy, scipy imports passed",
+    "alternate_interpreters": [
+      {
+        "path": "/home/hiiluo08/miniforge3/bin/python",
+        "optional_imports_missing": [
+          "habitat_sim",
+          "torch",
+          "ultralytics",
+          "open_clip"
+        ],
+        "probe_log": "runs/p00-main/alternate-runtime-probe.log",
+        "python_version": "3.13.13"
+      },
+      {
+        "path": "/home/hiiluo08/.local/share/uv/python/cpython-3.10.21-linux-x86_64-gnu/bin/python",
+        "optional_imports_missing": [
+          "habitat_sim",
+          "torch",
+          "ultralytics",
+          "open_clip"
+        ],
+        "probe_log": "runs/p00-main/alternate-runtime-probe.log",
+        "python_version": "3.10.21"
+      }
+    ],
+    "scope": "read-only bounded environment and declared-config audit; no GPU inference or environment installation",
+    "environment_audit": "runs/p00-main/environment-audit.json",
+    "environment_search_scope": [
+      "Works",
+      "Desktop",
+      "Documents",
+      ".local",
+      ".conda",
+      "miniforge3/envs",
+      "Conda environments.txt",
+      "source runtime configs"
+    ],
+    "known_interpreters_optional_imports_missing": [
+      "habitat_sim",
+      "torch",
+      "ultralytics",
+      "open_clip"
+    ],
+    "declared_legacy_runtime_paths": "checked and absent; see environment-audit.json",
+    "native_worker": "prebuilt candidate present and ldd dependencies resolved; execution not run"
+  },
+  "assets": [
+    {
+      "path": "NewOH3DSG/data/models/yoloe/yoloe-11s-seg.pt",
+      "present": true,
+      "selection": "selected",
+      "reason": "YOLOE11s is the proposed detector baseline; model execution remains blocked by missing imports.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "declared_AGPL-3.0_in_selected_backend_config",
+        "evidence": "NewOH3DSG/configs/perception/selected_backend.json"
+      },
+      "sha256": "8e439445c87338b79d9ce21dec109f4621e26df67e94d26ea1a98c1e64dce3e3",
+      "size_bytes": 27803986
+    },
+    {
+      "path": "NewOH3DSG/data/models/yoloe/mobileclip_blt.ts",
+      "present": true,
+      "selection": "selected",
+      "reason": "Text encoder referenced by the selected YOLOE11s profile.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "not_found_in_selected_profile",
+        "evidence": "NewOH3DSG/configs/perception/selected_backend.json"
+      },
+      "sha256": "a67804d1b0f07b8b9a20c1761ec0847f34660f5fa338ec70e8f3fce68ed95e54",
+      "size_bytes": 599764649
+    },
+    {
+      "path": "3DSG/assets/scenes/hm3d-00802/wcojb4TFT35.basis.glb",
+      "present": true,
+      "selection": "selected",
+      "reason": "Available HM3D v0.2 minival scene candidate for sensor replay; Habitat runtime is missing.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "academic_noncommercial_note_in_route_config",
+        "evidence": "3DSG/projects/Rebuild_3DScene_OccuSG/configs/habitat/hm3d_minival_v02_00802_main_route.json"
+      },
+      "sha256": "075e243b372458df4055a55e27c93885ba44ae8c36b4bc4446e0393c60c14540",
+      "size_bytes": 46195688
+    },
+    {
+      "path": "3DSG/assets/scenes/hm3d-00802/wcojb4TFT35.basis.navmesh",
+      "present": true,
+      "selection": "selected",
+      "reason": "Route-only support asset; prohibited as predictor/map free-space input by architecture.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "academic_noncommercial_note_in_route_config",
+        "evidence": "3DSG/projects/Rebuild_3DScene_OccuSG/configs/habitat/hm3d_minival_v02_00802_main_route.json"
+      },
+      "sha256": "ae5ddd8ca77480eea3c401059844ae1ccc42d9cce75770a25b0d79b02d077232",
+      "size_bytes": 44728
+    },
+    {
+      "path": "3DSG/assets/scenes/hm3d-00802/demo.scene_dataset_config.json",
+      "present": true,
+      "selection": "selected",
+      "reason": "HM3D scene dataset metadata pinned by ASSET_MANIFEST; no Habitat load performed.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "academic_noncommercial_note_in_route_config",
+        "evidence": "3DSG/projects/Rebuild_3DScene_OccuSG/configs/habitat/hm3d_minival_v02_00802_main_route.json"
+      },
+      "sha256": "22d0485c749193e19e4ac0502610d51a9022183a3387f36395630ae6dd30a9f4",
+      "size_bytes": 503,
+      "expected_sha256_from_ASSET_MANIFEST": "22d0485c749193e19e4ac0502610d51a9022183a3387f36395630ae6dd30a9f4",
+      "expected_size_bytes_from_ASSET_MANIFEST": 503
+    },
+    {
+      "path": "3DSG/assets/models/openclip/checkpoint_metadata.json",
+      "present": true,
+      "selection": "deferred",
+      "reason": "Metadata for the declared optional OpenCLIP appearance profile; profile remains off for the baseline.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "not_assessed_in_P00",
+        "evidence": null
+      },
+      "sha256": "f25cb4ac28807fc8734ab5d1db2764ead5a2db902c301d59eae6656bb9c1db04",
+      "size_bytes": 645,
+      "expected_sha256_from_ASSET_MANIFEST": "f25cb4ac28807fc8734ab5d1db2764ead5a2db902c301d59eae6656bb9c1db04",
+      "expected_size_bytes_from_ASSET_MANIFEST": 645
+    },
+    {
+      "path": "3DSG/assets/models/openclip/open_clip_model.safetensors",
+      "present": false,
+      "selection": "deferred",
+      "reason": "OpenCLIP checkpoint declared in the local asset manifest but absent; appearance profile is optional.",
+      "origin": "declared local asset path",
+      "license": {
+        "status": "not_assessed_in_P00",
+        "evidence": null
+      },
+      "sha256": null,
+      "size_bytes": null,
+      "expected_sha256_from_ASSET_MANIFEST": "e6d1bd7789aa45192b3bf90570a789b478bae1b74ebcce7eddd908e83a2b7c31",
+      "expected_size_bytes_from_ASSET_MANIFEST": 605143284,
+      "technical_status": "missing at declared path"
+    },
+    {
+      "path": "NewOH3DSG/weights/clip/ViT-B-32.pt",
+      "present": true,
+      "selection": "deferred",
+      "reason": "Alternate local CLIP checkpoint; format/model compatibility with declared OpenCLIP safetensors is unverified.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "not_assessed_in_P00",
+        "evidence": null
+      },
+      "sha256": "40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af",
+      "size_bytes": 353976522,
+      "compatibility": "unverified"
+    },
+    {
+      "path": "3DSG/prebuilt/linux-x86_64/bin/occusg_dude_worker",
+      "present": true,
+      "selection": "selected candidate",
+      "reason": "Prebuilt native DuDe worker candidate listed by ASSET_MANIFEST; not invoked in P00.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "native_source_and_FIST_rights_unresolved; no redistribution permission inferred",
+        "evidence": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/package.xml and Third_Party/dude_final/FIST/makefile"
+      },
+      "sha256": "e41f5824c70b968f65b71a448ff46dde47450cb4a3027892f31c569717a96125",
+      "size_bytes": 787712,
+      "expected_sha256_from_ASSET_MANIFEST": "e41f5824c70b968f65b71a448ff46dde47450cb4a3027892f31c569717a96125",
+      "expected_size_bytes_from_ASSET_MANIFEST": 787712,
+      "technical_status": "present; dynamic libraries resolved by ldd; execution and parity unverified"
+    },
+    {
+      "path": "3DSG/prebuilt/linux-x86_64/lib/libgmp.so.10",
+      "present": true,
+      "selection": "selected native dependency",
+      "reason": "Bundled library declared by ASSET_MANIFEST and resolved by the native worker ldd probe.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "GMP license status not assessed in P00",
+        "evidence": null
+      },
+      "sha256": "0ccdfb6d6f5c039465f6d002cf7e4c072d48ac6a2cffc8dd6c748dec31592804",
+      "size_bytes": 534896,
+      "expected_sha256_from_ASSET_MANIFEST": "0ccdfb6d6f5c039465f6d002cf7e4c072d48ac6a2cffc8dd6c748dec31592804",
+      "expected_size_bytes_from_ASSET_MANIFEST": 534896
+    },
+    {
+      "path": "3DSG/prebuilt/linux-x86_64/lib/libmpfr.so.6",
+      "present": true,
+      "selection": "selected native dependency",
+      "reason": "Bundled library declared by ASSET_MANIFEST and resolved by the native worker ldd probe.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "MPFR license status not assessed in P00",
+        "evidence": null
+      },
+      "sha256": "2156351fa3dedd04a7381c6ac7a8a26efa2d6fb08b80f8a2d644ccdd653710ae",
+      "size_bytes": 760464,
+      "expected_sha256_from_ASSET_MANIFEST": "2156351fa3dedd04a7381c6ac7a8a26efa2d6fb08b80f8a2d644ccdd653710ae",
+      "expected_size_bytes_from_ASSET_MANIFEST": 760464
+    },
+    {
+      "path": "3DSG/prebuilt/linux-x86_64/bin/standalone_sg_octomap_fixture_runner",
+      "present": true,
+      "selection": "deferred",
+      "reason": "Native fixture runner listed in ASSET_MANIFEST; deferred pending later worker/runtime tasks.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "native source/dependency rights unresolved",
+        "evidence": null
+      },
+      "sha256": "c132c842d42e0d4127dff0f34721dbfa703c688f66e7cf4f12d655137e3a62c1",
+      "size_bytes": 371064,
+      "expected_sha256_from_ASSET_MANIFEST": "c132c842d42e0d4127dff0f34721dbfa703c688f66e7cf4f12d655137e3a62c1",
+      "expected_size_bytes_from_ASSET_MANIFEST": 371064,
+      "technical_status": "not invoked in P00"
+    },
+    {
+      "path": "3DSG/assets/models/yolo11n-seg.onnx",
+      "present": true,
+      "selection": "deferred",
+      "reason": "Legacy/reference detector asset; YOLOE11s is the proposed NeuSymNav baseline.",
+      "origin": "locally present workspace asset",
+      "license": {
+        "status": "AGPL-3.0_note_in_reference_profile_local_use_only",
+        "evidence": "3DSG/projects/Rebuild_3DScene_OccuSG/configs/perception/yolo11n_seg_replica_cad_dev.json"
+      },
+      "sha256": "0bc32bc92e985b881141ef9bd2216e2a746f70519d0d24da9fc85decc4428cf4",
+      "size_bytes": 11763717
+    }
+  ],
+  "licenses": [
+    {
+      "component": "NewOH3DSG source",
+      "status": "no top-level LICENSE/NOTICE found in selected source scope",
+      "action": "retain filesystem hashes; do not infer redistribution permission"
+    },
+    {
+      "component": "Fusion standalone_sg and integration_v2 source",
+      "status": "no top-level LICENSE/NOTICE found in selected source scope",
+      "action": "retain filesystem hashes; do not infer redistribution permission"
+    },
+    {
+      "component": "ConceptGraphs mapping reference",
+      "status": "MIT license file present",
+      "evidence": "../3DSG/projects/Fusion_Concept_OccuSG/ref_ConceptGraph/concept-graphs/LICENSE"
+    },
+    {
+      "component": "OccuSG baseline source",
+      "status": "MIT license file present; does not resolve separately bundled dependencies",
+      "evidence": "../3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/LICENSE"
+    },
+    {
+      "component": "Incremental DuDe package",
+      "status": "package.xml declares TODO; no package-specific license resolved",
+      "evidence": "../3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/package.xml"
+    },
+    {
+      "component": "FIST archive and headers",
+      "status": "bundled FIST/makefile notice restricts use to non-commercial internal institutional/academic use; duplication, alteration, sale, redistribution require prior written consent; commercial use requires a commercial license",
+      "evidence": "../3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/makefile",
+      "archive_sha256": "84875da959aae5a1abdddc993075d0f91d4afdbdda1a29dd856f77254a63c684",
+      "permission_inferred": false,
+      "notice_sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4"
+    },
+    {
+      "component": "mathtool",
+      "status": "license file referenced by upstream metadata but absent from inspected package scope",
+      "permission_inferred": false
+    },
+    {
+      "component": "CGAL",
+      "status": "required by Rebuild native DuDe CMake target; ../3DSG/third_party/m4-prefix exists, but package-specific licensing and prefix compatibility remain unresolved",
+      "permission_inferred": false
+    },
+    {
+      "component": "OctoMap",
+      "status": "New BSD per Rebuild source lock and installed system package; deferred extension, not the selected DuDe target",
+      "version": "1.9.7+dfsg-3.1build3"
+    },
+    {
+      "component": "HM3D v0.2 minival scene",
+      "status": "local route config records academic non-commercial use and publication EULA notice; semantic GT files are absent from selected asset directory",
+      "permission_inferred": false
+    }
+  ],
+  "inventory": {
+    "schema_version": 1,
+    "files": [
+      {
+        "root": "3DSG/ASSET_MANIFEST.json",
+        "path": "ASSET_MANIFEST.json",
+        "sha256": "b08780754bad94e8d96e882fc262cf1e59879494d1eb3e2adae1b23e77c58d4c",
+        "size_bytes": 2235,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/prebuilt/linux-x86_64/SHA256SUMS.json",
+        "path": "SHA256SUMS.json",
+        "sha256": "9ca5d20519698ceaaf217207b68fcdd494db85d6b2f0b171f445a87e9c2a36cf",
+        "size_bytes": 581,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/contracts.py",
+        "path": "contracts.py",
+        "sha256": "565636ed266b96eab6e038ccff1c8a67eb90f1ca8d519274b47f741e24d15009",
+        "size_bytes": 9860,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/controller.py",
+        "path": "controller.py",
+        "sha256": "c0100413743cabf909910378f967688099794f8faa36f9592b63465ee6c1eb4b",
+        "size_bytes": 18215,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/depth_safety.py",
+        "path": "depth_safety.py",
+        "sha256": "f1bcfd9a88f3233abb1ea0677b321909b76998fe2bd270b047ed56d3e22d6b9c",
+        "size_bytes": 5224,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/desktop.py",
+        "path": "desktop.py",
+        "sha256": "a48ce73ae2d3694dedab70ee35fa29761956877a37264def48ea5af0b1aa017a",
+        "size_bytes": 34054,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/frontier.py",
+        "path": "frontier.py",
+        "sha256": "57f6a8a5d6d8a39ecba958d9fbafd5ab25306b7658c5309992079bcf4b2bd446",
+        "size_bytes": 16999,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/graph_bridge.py",
+        "path": "graph_bridge.py",
+        "sha256": "b750fc3bd13b276426488d7a0bdf22d1980f5ff9278d97f7304ce0822cca4402",
+        "size_bytes": 12651,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/habitat_factory.py",
+        "path": "habitat_factory.py",
+        "sha256": "9d561893840e143d0b7c6b1dfee1a470d043836c9edcc5a449b42b28fb0eeb0e",
+        "size_bytes": 24963,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/habitat_online.py",
+        "path": "habitat_online.py",
+        "sha256": "49a858027df442ba4afb235e7474bdd637a01230d8a96bb43feb9aa1c5d0fb58",
+        "size_bytes": 13550,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/keyframe_policy.py",
+        "path": "keyframe_policy.py",
+        "sha256": "3a6cf7379673ae885666895b75377fc70bdb605e5b230f28b748229cfccede2f",
+        "size_bytes": 2611,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/keyframe_scheduler.py",
+        "path": "keyframe_scheduler.py",
+        "sha256": "5c00bead9a39263681ea55968990651c8390c3b675afbd4133abc529bfdb514a",
+        "size_bytes": 11516,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/keyframe_store.py",
+        "path": "keyframe_store.py",
+        "sha256": "bed116384f5acb66f9188cd48ebccd109a70e5741fb9f7c492bf2bac8796b1dc",
+        "size_bytes": 14887,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/live_dashboard.py",
+        "path": "live_dashboard.py",
+        "sha256": "c523a690cfea80cf91f74776a1709c934d7a4f6f433d627e48e0b1e0903630e1",
+        "size_bytes": 11934,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/planner.py",
+        "path": "planner.py",
+        "sha256": "c90640d0b5c7838ea8f1357a1a560e70e4d04aa6ccf82dc8108f0161f7454c31",
+        "size_bytes": 15743,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/policy.py",
+        "path": "policy.py",
+        "sha256": "8fcc0d245c52cd13fa9485791726ef83765b1835fb68cb5f0b7694a354b6c009",
+        "size_bytes": 26955,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/3DSG/exploration/scene_graph_provider.py",
+        "path": "scene_graph_provider.py",
+        "sha256": "21036b301ed4b4574f6d6e14eb0ca4ae60fe35c6521bd37d4629db80d349132c",
+        "size_bytes": 7280,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/integration_v2/perception_feature_sessions.py",
+        "path": "perception_feature_sessions.py",
+        "sha256": "a4217272ce443c2db96d98b47e09c4258cb2ab66fc215ab4aa4b6fc14844c2e2",
+        "size_bytes": 21495,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/integration_v2/unified_scene_graph.py",
+        "path": "unified_scene_graph.py",
+        "sha256": "bbe7dd46ba6dd24103963eca73e02ecd3f4be9edb45c224235515d8f9e893258",
+        "size_bytes": 21827,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/ref_ConceptGraph/concept-graphs/conceptgraph/slam/mapping.py",
+        "path": "mapping.py",
+        "sha256": "30be9f67f6237326240ffe8bd31c27a6ca431d6b35c5cf7d444c62fdb9d266ed",
+        "size_bytes": 3774,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../LICENSE",
+          "sha256": "bbb50dd0e42f0180461db2088dc07e6374d3ad4fe6961167b07093000894a509"
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/ref_ConceptGraph/concept-graphs/conceptgraph/slam/utils.py",
+        "path": "utils.py",
+        "sha256": "8015d5ac2ad539eb98bec057cc94d3c5b3d091850b4102a60faf58779845a712",
+        "size_bytes": 22383,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../LICENSE",
+          "sha256": "bbb50dd0e42f0180461db2088dc07e6374d3ad4fe6961167b07093000894a509"
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/scripts/extract_u2_appearance.py",
+        "path": "extract_u2_appearance.py",
+        "sha256": "58b2590aa7c0c0aff1d167dc1bf250bf5944288725e4ab2fe61893f470edda06",
+        "size_bytes": 23572,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/config/schema.py",
+        "path": "schema.py",
+        "sha256": "2688cff63eb7c5972f51530162e21ae482daf7854f4b532cd584e61403929252",
+        "size_bytes": 30980,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/contracts",
+        "path": "__init__.py",
+        "sha256": "ae4b546d8b7b77d4e918255043b26a14b62b1322f88238d2c52589def394b7e1",
+        "size_bytes": 642,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/contracts",
+        "path": "errors.py",
+        "sha256": "3e890c18c944ca0cd7378fd76475503da6c938a61159914e67f3495ba2bbfca3",
+        "size_bytes": 105,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/contracts",
+        "path": "frames.py",
+        "sha256": "61dbfaffe8ac14f06a5b75a83c2e7ee31ffb1cbe1330ec407aa56bf83a012f01",
+        "size_bytes": 7156,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/contracts",
+        "path": "objects.py",
+        "sha256": "421c2f25b31845cd544ec33a50b02e54bdcb77cd6a70ecea063fbe360b3b6de2",
+        "size_bytes": 5391,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/contracts",
+        "path": "regions.py",
+        "sha256": "243d43c415de7f03b59ea603961ec41000391685dd7f27cedb082e35deb1337c",
+        "size_bytes": 6410,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/geometry",
+        "path": "__init__.py",
+        "sha256": "6cbbd602946d5a676d41067624843d7480f8e244f76657b955f370219a3a5e73",
+        "size_bytes": 583,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/geometry",
+        "path": "backproject.py",
+        "sha256": "a6aa41dc45bcfaf15a862870e128bb212a98ee9322a98e35e63387f8ec123a60",
+        "size_bytes": 4892,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/geometry",
+        "path": "grid.py",
+        "sha256": "f064d42b4e2f54550a0155eaf623032c51c16c401c05adfa8ff7d4887da2ef4c",
+        "size_bytes": 1249,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/geometry",
+        "path": "simulator_frames.py",
+        "sha256": "b11371d703e16afba66919efe1907417f4c243f73db2c77b5304acf9a0afaabf",
+        "size_bytes": 1625,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/geometry",
+        "path": "transforms.py",
+        "sha256": "4478fa7e545eb6188eb27409d43c0a650570b930d93cf0d5962acc4e54c26c0c",
+        "size_bytes": 1314,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "__init__.py",
+        "sha256": "b91abd64c9c2603154e04955d8b775ac3fc1189651bac577badee50d9eea4c01",
+        "size_bytes": 323,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "association.py",
+        "sha256": "44d157ba59158f22a21748c347919e580584992b2989c3cb98cb83ffa9941203",
+        "size_bytes": 9282,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "duplicate_partition_review.py",
+        "sha256": "a2e0b07c79b8091e9fd75603450b7c2ded1af6b1728ec77bbe2b8ed4c6234dd8",
+        "size_bytes": 4759,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "lifecycle.py",
+        "sha256": "3778c1e13d7b41863a35cc32e3f913247532dae65ce9947ffdf3ca38141bf54f",
+        "size_bytes": 16341,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "object_geometry_fusion.py",
+        "sha256": "6d3ab0275642f68d962d2324f6be3117073ffb1ef93636c96a0f04d50c56109d",
+        "size_bytes": 9412,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "pixel_visibility.py",
+        "sha256": "08d4cd2b19e5e78581efd229b8c9d38dd8f23375c163172b41720ff2eafd5d4e",
+        "size_bytes": 6624,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "profile_comparison.py",
+        "sha256": "1c7da27619842fa3f548ec20f1f7486e76f39c27510093a8600bfc543293fa8e",
+        "size_bytes": 7241,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "same_frame_duplicates.py",
+        "sha256": "467ca1a330a471c9735e0bbb4bc1dd076ff417d15316a052085410886f212a38",
+        "size_bytes": 9566,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "same_frame_duplicates_v2.py",
+        "sha256": "2936863eb5d088e5ed6376eb4fd5196744653a795388ceb14ef7478bd68c428c",
+        "size_bytes": 8994,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "surface_support.py",
+        "sha256": "236f4f682d433dbf8a81c58f46b51ca168f99663a8a448953dee82a4b5a02bec",
+        "size_bytes": 3580,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "u3_experimental.py",
+        "sha256": "2b013f58ba14aecb06708cd9e0efb895f661ea8d0589a48911ec2ba2a154a8f9",
+        "size_bytes": 22262,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/objects",
+        "path": "u5_backends.py",
+        "sha256": "d86147246ad8f513d7e27aaa7b891732e9e3f054c3978d8242d5ba72ab337133",
+        "size_bytes": 17711,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/regions",
+        "path": "__init__.py",
+        "sha256": "9fc484388c43f1493579571b65c7da026f2fcfd2ade0858a1f78fb0b68bbfb01",
+        "size_bytes": 267,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/regions",
+        "path": "dude_client.py",
+        "sha256": "ef668a755ca112f86a609c56ba45171f6f2ca2ada1d683677d9d6bf265180a7b",
+        "size_bytes": 16380,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/regions",
+        "path": "guard.py",
+        "sha256": "be156c82e6a1ae2859736602b0b4416d331669a5593c3346754c116009caa6aa",
+        "size_bytes": 4957,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/regions",
+        "path": "pipeline.py",
+        "sha256": "145652b2a99d3211e411820517faa7a475330fa0c9f60cc8d178a06e35e446a7",
+        "size_bytes": 3114,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/regions",
+        "path": "tracker.py",
+        "sha256": "ce5a0f602c277ac8234ab7cb0af0099ec7994bdd90eae3011a8bc4b1e814c015",
+        "size_bytes": 8575,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/rooms",
+        "path": "__init__.py",
+        "sha256": "447088bae431e765f381dca4990a7961841eea184b3a427383e0ca62569ec2cb",
+        "size_bytes": 409,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/rooms",
+        "path": "anchoring.py",
+        "sha256": "08d4c45d9bf3163c1721ade7885a2c001bca1bb6ca79e2545194b838107e6f57",
+        "size_bytes": 8205,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/rooms",
+        "path": "geometry.py",
+        "sha256": "9dc57f7e390151a44a8161ffbd74a071ba369e429a6ed4b9722d6e45649791da",
+        "size_bytes": 4827,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/rooms",
+        "path": "membership.py",
+        "sha256": "2c2ac4e67a538cc0f07d4226813c97f4c583f7699f61d540f21cb42856f7b76d",
+        "size_bytes": 6212,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Fusion_Concept_OccuSG/src/standalone_sg/rooms",
+        "path": "relink.py",
+        "sha256": "a51f18209bc59e99a183ff094e8e2427784e071e0c2864ce9199fb6beca896c0",
+        "size_bytes": 2050,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/configs/habitat/hm3d_minival_v02_00802_main_route.json",
+        "path": "hm3d_minival_v02_00802_main_route.json",
+        "sha256": "3ea1a21f6870e1ef292ec2774efa551b9ede6128b72438d20c2b5568db46b691",
+        "size_bytes": 5743,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/configs/perception/yolo11n_seg_replica_cad_dev.json",
+        "path": "yolo11n_seg_replica_cad_dev.json",
+        "sha256": "ec64d9e8c508d54b313abf8495b15631fa95e047e894131db5c5fec7c2dfd0b3",
+        "size_bytes": 2493,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/locks/sources.json",
+        "path": "sources.json",
+        "sha256": "a717323522bded8d1e846125b740889f748ca38a6b842de8b71c95039a346a3c",
+        "size_bytes": 27420,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/CMakeLists.txt",
+        "path": "CMakeLists.txt",
+        "sha256": "e9ec29edbcfac8a997b60acb5e29d0937570b1098fabf943ddd416b883ea05ea",
+        "size_bytes": 2283,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "CMakeLists.txt",
+        "sha256": "436689f6ac182389cb64e8e215b98fae94d6ed993eef654ea93c1c6fca45b7f5",
+        "size_bytes": 3290,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "globals.cpp",
+        "sha256": "7bac8174bb810797d675e4b748773b524b53c80961efb6d59580b211cb21a14a",
+        "size_bytes": 88,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "include/dude_ros_logging.hpp",
+        "sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e",
+        "size_bytes": 1181,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "include/m4_non_ros_logging.hpp",
+        "sha256": "c6b3bdbfeb908f3727218fcfb69309f92738c6c1b9b6474d626bd0bba042a52e",
+        "size_bytes": 1181,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "preprocessing.cpp",
+        "sha256": "87b266d4b58dcbe0f1dd91611680178926913baf866ae79f9ab12556d38848ec",
+        "size_bytes": 2956,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "preprocessing.hpp",
+        "sha256": "67e666f165d08a8033111b672b03d0d8e5f996e00bc9da6a7efee78835a24210",
+        "size_bytes": 450,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "source_reference.cpp",
+        "sha256": "c45d05c9dec4bac2c45ceb13d4434f297e74bc40d01a014afc551274147fcf31",
+        "size_bytes": 6293,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude",
+        "path": "worker.cpp",
+        "sha256": "e6201e95d9ba60b5413365e81997513ca65066b20d9524cee7fffe020bb56699",
+        "size_bytes": 11316,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/native/dude/CMakeLists.txt",
+        "path": "CMakeLists.txt",
+        "sha256": "436689f6ac182389cb64e8e215b98fae94d6ed993eef654ea93c1c6fca45b7f5",
+        "size_bytes": 3290,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/header.h",
+        "path": "header.h",
+        "sha256": "2956448698395415625562865b596fd0831492692930947446bfdd6bd85d833a",
+        "size_bytes": 13567,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "makefile",
+          "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/libFIST.linux64.a",
+        "path": "libFIST.linux64.a",
+        "sha256": "84875da959aae5a1abdddc993075d0f91d4afdbdda1a29dd856f77254a63c684",
+        "size_bytes": 595382,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "makefile",
+          "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/makefile",
+        "path": "makefile",
+        "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4",
+        "size_bytes": 56773,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "makefile",
+          "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/FIST/triangulate.h",
+        "path": "triangulate.h",
+        "sha256": "8cfc23dcbe9ab3d9dfba36b59f248e67c7be369e9c1ceac4021f5a47713fab99",
+        "size_bytes": 2323,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "makefile",
+          "sha256": "ad396e09dad80a0d3d487cfd8ce122dc77cd4129a22b31dd61ec1a22f874b0c4"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/README",
+        "path": "README",
+        "sha256": "5cfdeb1971f20eef44c89402d1589d9d23afb3dabf09934d13157179be491042",
+        "size_bytes": 2281,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Basic.cpp",
+        "sha256": "0507463ee7018bb682ff040613cd0e0d086985616dca0391b2de117ceaf2ec8b",
+        "size_bytes": 6743,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Basic.h",
+        "sha256": "e82697a8ed241500b4503e073ccb54c5753e23ee95edbac3a71bc05080260eaf",
+        "size_bytes": 4114,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Matrix.h",
+        "sha256": "d0142b6ea771fff3306cd750d61867919c5ef54601739e6bd00db882b370d0c0",
+        "size_bytes": 24559,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Point.h",
+        "sha256": "fa88f135670e7e34d2d267bfcd2ed3e8d59c8a61e2c4128d7d88f3b42b379f67",
+        "size_bytes": 3659,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Quaternion.cpp",
+        "sha256": "f0ee21704415454f9ed2d9c02586fa78513ab78a06cee64c035c89083352041d",
+        "size_bytes": 640,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Quaternion.h",
+        "sha256": "2c057e40174b7285f7ea7951feb2293a5f4f1bb8921761f2e4d98557d6ca0a09",
+        "size_bytes": 5928,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/mathtool",
+        "path": "Vector.h",
+        "sha256": "5d28960494005dc89060bcd6829a08a539b1e8aaec4928405866d18057b59ad8",
+        "size_bytes": 6627,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "Graph.h",
+        "sha256": "7574f68cbe0ad596e36ccd947a4ceed4e1d4eb5f45b1bd5b65a362d2db09abf7",
+        "size_bytes": 175189,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "bpc.cpp",
+        "sha256": "6235cad7af27d6e776e5a325f740a3f3e8ae2b204c1c9c77cc8a343cce35c3cd",
+        "size_bytes": 20231,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "bpc.h",
+        "sha256": "0da099264a2714242085f12a3a97dbea7e35d1938e0555cd84521012ebabb917",
+        "size_bytes": 3791,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "cdt2.cpp",
+        "sha256": "96c1dafb7f2f098f9ff526f1566083037f2ef05392329e6c8f1f329529420478",
+        "size_bytes": 3011,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "cdt2.h",
+        "sha256": "d815c2f6011e0fa0557def4ca9f244c2358a48a24aea898403c2fb0915f7b969",
+        "size_bytes": 225,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "chull.cpp",
+        "sha256": "88b0dbfb33d14723baf813fe86bc1837a5aa1030de7f846fdb92a5d1dd8de8fc",
+        "size_bytes": 3126,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "chull.h",
+        "sha256": "f54e416a4bc8262e37ed9c8052f80c1c2a91b973a329c61bcbe9a17652a2ed5c",
+        "size_bytes": 892,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "compile_option.h",
+        "sha256": "1753563218317368184457d9137d79a5ec3eebe36cd36a6cd4f816a70c613c8d",
+        "size_bytes": 184,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "cutset.cpp",
+        "sha256": "7f6bc5ece10f84600c77deea77a6447680deca576f218739214e309ab2e7152c",
+        "size_bytes": 30810,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "cutset.h",
+        "sha256": "6ed7bde22a91ce819adfba83f30fa5813e2dbc4f0f1c8a1ea5d23fdd2e07f35f",
+        "size_bytes": 2656,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "diagonal2.cpp",
+        "sha256": "93b95b3ba8f0e515ead79ed89e03ab6481ec072b52be5824bc87d73dcf26230d",
+        "size_bytes": 4793,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "diagonal2.h",
+        "sha256": "33cb066e9c65c90b4213f1bc5d88291e376c39d9961c64364ded7d95e6a2105a",
+        "size_bytes": 2002,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dp_approx.cpp",
+        "sha256": "51d9aac9677ff50a073e99e0d51955b8866a65147c2506a93b32721548040f11",
+        "size_bytes": 1805,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dp_approx.h",
+        "sha256": "87c682a0780c94da0a5fbb8aaac22169c401d9b31e9cb0d055ea3ff7a520ab2b",
+        "size_bytes": 715,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "draw.h",
+        "sha256": "05bb733d187c53311bfb2048ca32478ecd4f035cd2f8345095eed1b306206abc",
+        "size_bytes": 19788,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "draw/draw_decoration.h",
+        "sha256": "d2d7f58bda14d25aaf29d106be3c431e945ff180f8446a201c00073f219525d0",
+        "size_bytes": 1859,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "draw/draw_option.h",
+        "sha256": "b7b6a9f1369b6b75d122266b1ede2d9dd4bc4f7a68d19536400c5bcc7e5c2706",
+        "size_bytes": 1589,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "drawPS.cpp",
+        "sha256": "cb114f9fb98a9572d0571b3b01de7a1dd220727e3872a5128648091047072e87",
+        "size_bytes": 10389,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "drawPS.h",
+        "sha256": "9df7d04fa87b8b0cd87939096cb5256b586e7481326ffc01343def7bbb62c39d",
+        "size_bytes": 134,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude.cpp",
+        "sha256": "5a6687f90305bba91faf8c8b84b54ce684d2e2e5965aefba9c60d01131e47c00",
+        "size_bytes": 41397,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude.h",
+        "sha256": "8c46345f05989de2de4705f9c156967acccf038e87a60e0bb653c7ac44a2c073",
+        "size_bytes": 5470,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude_cut.cpp",
+        "sha256": "b21a1fed89af78cf1ef00f7dc1060844ae33fc2f50eb853fb4645e4aaf7c2b8a",
+        "size_bytes": 23661,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude_cut.h",
+        "sha256": "8399fdc41acdf210931b7a9f36242c45a3ea382c1e14216cb3284657b5dacf6e",
+        "size_bytes": 1668,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude_param.h",
+        "sha256": "f50e2aac0da76ec01407e8b5bda45a092485afbee202da1d6b4123e430da63a3",
+        "size_bytes": 524,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude_use.cpp",
+        "sha256": "9af0cbc20ab3a626686904bf0d30fb6a374d201ec90db53e17d74b737c86d7a3",
+        "size_bytes": 16938,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude_use.h",
+        "sha256": "5fde350cadbf539ba2cb49586526173d27320b10238ed66ec6964bc0e6cb0998",
+        "size_bytes": 1227,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "dude_util.h",
+        "sha256": "9abf52718c1bdd37d27d4e26f7b56e7cead596b97793a9b433ccd9089822d6d6",
+        "size_bytes": 1083,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "eigen.h",
+        "sha256": "4092de196e96b9ece806028facb92b2257602b1b8db0d035db4ef4de3ba37149",
+        "size_bytes": 3539,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "gettime.h",
+        "sha256": "7764838ebacff876b73c81615a64ce29a3ba33075d9222d45408c20516b86075",
+        "size_bytes": 841,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "graph/BaseGraph.h",
+        "sha256": "e168f135c4ddef4c4d3f4642649c91da23aedcf3e0d722bc94c9447f76d4bd70",
+        "size_bytes": 92419,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "graph/BasicDefns.h",
+        "sha256": "685e0ee0c88954ae68e36b83ad44492ff4032af356f297a83a5acc97080a0f03",
+        "size_bytes": 1206,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "graph/Defines.h",
+        "sha256": "a4d9d92ab007e5d75436f4fdfd7baa193dec29326de9edba3a5ed30e88cb88ec",
+        "size_bytes": 2286,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "graph/Graph.h",
+        "sha256": "43a6c267ab0400102a2dba762eae632b52c549361af6a209b0b41b3aa9c5b41b",
+        "size_bytes": 69113,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "graph/GraphAlgo.h",
+        "sha256": "4f6ea8dbda5be7d8fcb41a01b02639095bbb2ac4211b27de03aadce1fbbc8d0e",
+        "size_bytes": 69928,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "holecutconcavity.cpp",
+        "sha256": "e6b555585d8d504083bbee9e10f99c27f24cc15e4dde054b78e22191bf030e6a",
+        "size_bytes": 7100,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "holecutconcavity.h",
+        "sha256": "9d11da478dae6b8c12e31fbc41d5a428a16bad66917abc48bae79feafb37c0aa",
+        "size_bytes": 1031,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "holediag.cpp",
+        "sha256": "a2696d24a61f8a1a978830f0d7bec054ff10856e73f2469adb6e8fe055603396",
+        "size_bytes": 10321,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "holediag.h",
+        "sha256": "f4140453a21ab990e62b6eeb3855582678c39ece2d7cb070ed38d9f1116f8f26",
+        "size_bytes": 2282,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "intersection.h",
+        "sha256": "8f51780aeea6b55584e9ac5d473935453ece36994ef1599178bf4929a587cd7d",
+        "size_bytes": 14916,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "knapsack.cpp",
+        "sha256": "7661b4c91eef66e3b9d47e28e097ae0128af4811b6eb4fd644c816fb1171d9f2",
+        "size_bytes": 16132,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "knapsack.h",
+        "sha256": "230b5410570d18d7cb3779e5aea0bc93fb71d9f8c1ed6f97a79b7f72b5c7338e",
+        "size_bytes": 2117,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "main.cpp",
+        "sha256": "a7c7068a75e58fa01b0981302e0d2edd7f78b8cc51a548f83a8a143edc8d4045",
+        "size_bytes": 9071,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "main.h",
+        "sha256": "bc84e5d6562d411efbd2c2ed37e30edd8668d4801f74c24fb0301fb9223f4036",
+        "size_bytes": 27524,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "poly_approx.cpp",
+        "sha256": "f2800c1210c42a102178cb09652ee1d805c34bfb974ba7116ab64f3bf9fe3a3d",
+        "size_bytes": 6710,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "poly_approx.h",
+        "sha256": "d06fbb52fb48c908643e3896282d4841fc0c73aeafa56a118622fffbb8ce6a14",
+        "size_bytes": 310,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "polygon.cpp",
+        "sha256": "e6d879a748629537ba4d25f5513ceae31503d7bb3ff7e1c1919fe720e27d4ebc",
+        "size_bytes": 23074,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "polygon.h",
+        "sha256": "d45c5b8e4854a9cf7fc4891812e10e459a1651eea5e8cdc4f8dcebb8676eb7f4",
+        "size_bytes": 10727,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "polyline.cpp",
+        "sha256": "6d03e3913b45502005c92a041a020fcd856d186b11b29e9ac6c6cd12b651f6b9",
+        "size_bytes": 8278,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "polyline.h",
+        "sha256": "6208f60c4557ce99409f45e6f3c4803328a875a2d91950132c3ea1a849db8991",
+        "size_bytes": 3492,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "simple_svg_1.0.0.h",
+        "sha256": "0ca4a2e1ca7bdc3421491b5e206ce3e3b5c95162ee45bec969c2ad369134f884",
+        "size_bytes": 23332,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d.cpp",
+        "sha256": "83ee66ad8c7c43faf93f1fc629ec331b57862075c60ca7779f30b48934127497",
+        "size_bytes": 8803,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d.h",
+        "sha256": "d1413f13f24ab0b93fea6215be6f94946781ac08c1caf93c49b177a6d669b9ae",
+        "size_bytes": 1846,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_data.h",
+        "sha256": "562b40c8a2015ffa23832d78ae54ca546b43c07c4a9712ca4f9cf1d2c029f61b",
+        "size_bytes": 4148,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_decomp.cpp",
+        "sha256": "4063130eea68e142c89d028ea390e43011c377e1307b68496ce8ddbb4a80086b",
+        "size_bytes": 9719,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_decomp.h",
+        "sha256": "c9b629641d9ebc5146470887c139093df250f37d1af070724087e8c447f2f12b",
+        "size_bytes": 598,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_eigen.h",
+        "sha256": "337112aa4ea54035179104ffd0f03800ec2a216d8a94cf77e9000b844549f7ae",
+        "size_bytes": 3384,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_skeleton.cpp",
+        "sha256": "cb222d59a62e292459a5b391cdcaa9b25aa767123aeed38e71862d2e988d34c3",
+        "size_bytes": 9305,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_skeleton.h",
+        "sha256": "a1c041c15f1dda1d21966801a276020f7899c0068320f58ed2d55866b4217bbc",
+        "size_bytes": 1064,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/Third_Party/dude_final/src",
+        "path": "skeleton/SE2d_util.h",
+        "sha256": "f4155e653a7ca2c96e86b82a428612644317fa93c0b6e03ae7472e7e610e607f",
+        "size_bytes": 951,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "basic_region_tracker.hpp",
+        "sha256": "2dbf624ef0900beac02bfa36f3f8f8121371db1d100e9d1568f23d1ba7c4df2a",
+        "size_bytes": 11122,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "dude_ros_logging.hpp",
+        "sha256": "b1ec2233dbcd49f2b627b3200128a161788e28ca65bf96d617e8399782cb7e65",
+        "size_bytes": 7713,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "inc_decomp.cpp",
+        "sha256": "321d4a117313a895a1d0e4cafbb3ffe2f280cf1ae13c3d14a9f2e4da6a6ed2c2",
+        "size_bytes": 31692,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "inc_decomp.hpp",
+        "sha256": "309cf20bb183b9997f5085a78dd689d59fa0bfd583850cce133fadf973ee66c0",
+        "size_bytes": 1353,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "region_geometry_utils.hpp",
+        "sha256": "ea0c37c32f77c75f572be644d038a7a4eeabd79d3b7475562fba64ddffe67a5f",
+        "size_bytes": 5773,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "region_ros_utils.hpp",
+        "sha256": "20d05721337f7e009131404fa29162d65f8e579033747b577afac6ab4827be99",
+        "size_bytes": 1364,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "wrapper.cpp",
+        "sha256": "df9c00bd9be1ed6674a78b9386b3c118d7b898d08987e98d1e046eccc3f3d140",
+        "size_bytes": 17879,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/include",
+        "path": "wrapper.hpp",
+        "sha256": "507804a7f551fe8d892b8e7cbce57084bd0e5d54bd317fdbb1e347d0609ed6d8",
+        "size_bytes": 2425,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "3DSG/projects/Rebuild_3DScene_OccuSG/ref_OccuSG/OccuSG/src/incremental_dude_ros2/incremental_dude_ros2/package.xml",
+        "path": "package.xml",
+        "sha256": "9fb6f77bc706a546eab8c4009c77e61c0fcdb1e1dbddfa95051d31786e1f19d7",
+        "size_bytes": 1043,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "notice_present",
+          "path": "../../../LICENSE",
+          "sha256": "dc8146c4057261769f4d41b2763b0ec4ff638ebfe46a508bc6074f9d78aeac03"
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "__init__.py",
+        "sha256": "b862a9fff8e967a1a633f92605f4145fbae74f4a8710118137b36ca7bcf5c432",
+        "size_bytes": 46,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "duplicate_sweep.py",
+        "sha256": "deb9faa83132eb1266f356fd0971d35600162592192fb1304b6c015e56b61b19",
+        "size_bytes": 6112,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "fusion.py",
+        "sha256": "183d0b6b6ec52461fd16059bf684fda0b1aad2f1c68ed7c7da87ca288d7cb05c",
+        "size_bytes": 19079,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "live.py",
+        "sha256": "41c1e9fc9be88aa9037cfe26e300266bf19b2769b01e220bc4472951054f39f2",
+        "size_bytes": 4205,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "matching.py",
+        "sha256": "e25dbf1e03e95e8224a8f7de8b62281f8f1a4bd799e2a3ea982f3a4afd46a251",
+        "size_bytes": 37089,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "negative_evidence.py",
+        "sha256": "27098cdf3d55b89f2fe44a8af1159a11b37f9b19a56d4e4612956b120ac651d3",
+        "size_bytes": 5423,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/association",
+        "path": "voxel_fusion.py",
+        "sha256": "ab7c7b43f9cdb7e6867d7ef31f9a1b1bf161caff8ff59883c607fbc7fbb11192",
+        "size_bytes": 2874,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/configs/evaluation/indoor-v1-taxonomy.json",
+        "path": "indoor-v1-taxonomy.json",
+        "sha256": "76ae8b899df35d877c75b81aadc6ec9e46fa54a3630c6411ee42d25355729f78",
+        "size_bytes": 2615,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/configs/perception/selected_backend.json",
+        "path": "selected_backend.json",
+        "sha256": "c82cf32d23002565c3f2afffd7db3b238f0010edf0ac72fe16274e90e6cc61dc",
+        "size_bytes": 3652,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/core",
+        "path": "__init__.py",
+        "sha256": "5cc09ec98e0be2a53c4deac8416dcd3febd837f5c55b319e3fc9a677be816a01",
+        "size_bytes": 61,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/core",
+        "path": "geometry.py",
+        "sha256": "451f52be046052b2244fbcd78dec86afa033ec979cc6f9a88ef9a276d575585b",
+        "size_bytes": 1766,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/core",
+        "path": "types.py",
+        "sha256": "7c91e5102168ba8ab6820c6c511f6352260d3128d428055133242a8eaac4a444",
+        "size_bytes": 3850,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/evaluation/graph_metrics.py",
+        "path": "graph_metrics.py",
+        "sha256": "f2ba3d4e893a4173e70d3dde93d60daf7b5178473abb86b4f6c080e33bc8e85b",
+        "size_bytes": 35419,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/evaluation/gt_isolation.py",
+        "path": "gt_isolation.py",
+        "sha256": "82299e7dd0ea2cb610f404e16999f83655b50ec368e9f3f60e6e4ffe0cfeed05",
+        "size_bytes": 5191,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/evaluation/m3_box_quality.py",
+        "path": "m3_box_quality.py",
+        "sha256": "b03e4f9205280b71bfe2d6ff16537ec8587ed77da8b37c6e6477503581a127b4",
+        "size_bytes": 2738,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/evaluation/metrics.py",
+        "path": "metrics.py",
+        "sha256": "52eb5452f5a2b91674987f97850d68016ddff4deb660457a71984bcd88d0d1fc",
+        "size_bytes": 15052,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/evaluation/protocol.py",
+        "path": "protocol.py",
+        "sha256": "885919445a88f98a33183c0d80b5327a231f8e0c2e2836c287581a04d7fdfc01",
+        "size_bytes": 5347,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/evaluation/replay_integrity.py",
+        "path": "replay_integrity.py",
+        "sha256": "565ba576f233de2115748721345a2a9d7a6834c4c869b419a487a33db896d2d1",
+        "size_bytes": 1567,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/mapping/grid.py",
+        "path": "grid.py",
+        "sha256": "012471bbe585f89b91505f8ad52ab3a222b12053c3538179ed68e1a83f754320",
+        "size_bytes": 2223,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/mapping/occupancy.py",
+        "path": "occupancy.py",
+        "sha256": "fba9d4cc64a427b19c26727e973e46fb156a0ee87d74b64077802ce0b78240f2",
+        "size_bytes": 35578,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/mapping/projection.py",
+        "path": "projection.py",
+        "sha256": "30571f2a40f9270dc34bb26b1885b2cad978f7195fdc55802e1eb6fc51ff8be3",
+        "size_bytes": 15402,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/mapping/raycast_kernel.py",
+        "path": "raycast_kernel.py",
+        "sha256": "4dd49d5545b80f431f3de6ed0ac75087db095f1307c18d04eee2abdd0ab08bd7",
+        "size_bytes": 10733,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/mapping/tile_archive.py",
+        "path": "tile_archive.py",
+        "sha256": "4899e0b41b423e05b249718b27c01b08c25ea054639afc4c40a04fea27f60490",
+        "size_bytes": 11346,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/perception/base.py",
+        "path": "base.py",
+        "sha256": "43ad557e2c954d4bf687b3bc44f049e0adcd6b89b65d4596d661c2bf440ddd3c",
+        "size_bytes": 11446,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/perception/best_view.py",
+        "path": "best_view.py",
+        "sha256": "80937cda2ff91541aae21cc7dbf5a1724dfb734bf4f2d850d995862cad6d715e",
+        "size_bytes": 2816,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/perception/local_text.py",
+        "path": "local_text.py",
+        "sha256": "402906f1ccc9191e6d71b8ab01e8b19c2cc490ed3058a61524abc3ad24239a15",
+        "size_bytes": 10237,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/perception/verification.py",
+        "path": "verification.py",
+        "sha256": "e19ff4ae3191f834fa67841cb796e9eb50bf8f61089451de455f8e4cce613c6e",
+        "size_bytes": 9868,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/perception/yoloe.py",
+        "path": "yoloe.py",
+        "sha256": "4034080b60392d35eb52c26d9941b6a25006bb0afc1fdf7805846733ea0b156e",
+        "size_bytes": 15373,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/recording",
+        "path": "__init__.py",
+        "sha256": "ecf39158c12d44bd7392f6474525704e9c01a16ffd6aa7022f53521e2b4e0dff",
+        "size_bytes": 197,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/recording",
+        "path": "live_replay.py",
+        "sha256": "d04f25de69e6214fd1313d6b0427f57f1c460ffd9611572e1bbd57c3cb8ef429",
+        "size_bytes": 7969,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/recording",
+        "path": "replay.py",
+        "sha256": "0e755f6a62d70cb5aee288f56813ec37fb555c2a8dc6586db894f6ae738ee8b2",
+        "size_bytes": 12956,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/recording",
+        "path": "support_trace.py",
+        "sha256": "09440d6775fb5612875e5382f0d5a0a82e3a753e1e208e49fdd937347f13b7bb",
+        "size_bytes": 4869,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/health.py",
+        "path": "health.py",
+        "sha256": "57fd9d9e3e7296d97cbac114bcc44bbb05242b2a19074c99fd133240db6c3de7",
+        "size_bytes": 5087,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/online_verification.py",
+        "path": "online_verification.py",
+        "sha256": "60f0e6f88ef6629f992b31ae02cf39b1119728406821fa55cfd3fdd0b3d1cf9a",
+        "size_bytes": 13642,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/process_detector.py",
+        "path": "process_detector.py",
+        "sha256": "d8655a4907edde1b1b6c181aa538423c29d61dce298313abe96c798e3e205375",
+        "size_bytes": 14705,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/queues.py",
+        "path": "queues.py",
+        "sha256": "6417701689e8ad06e7d928c78791d13864bc5c054575c592cdf8fa9672381932",
+        "size_bytes": 4788,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/scheduler.py",
+        "path": "scheduler.py",
+        "sha256": "915f5f4b88114906d02571de1a54b6bbd0a16acd610a8ee0470e927775c3c9fd",
+        "size_bytes": 6520,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/semantic_pipeline.py",
+        "path": "semantic_pipeline.py",
+        "sha256": "377adcd657f5b86c2009cef410b2b7203de8a103efcf281d5d2e8a987907afb7",
+        "size_bytes": 32970,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/runtime/supervisor.py",
+        "path": "supervisor.py",
+        "sha256": "68907df1179d5e3d242498e6e9ac5bbccb9058fb293d3374604194d4dc367c0a",
+        "size_bytes": 6501,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "__init__.py",
+        "sha256": "efa82c2c7955b1d89edf561d9363377422aa7bbec173204efb01114345cfee47",
+        "size_bytes": 49,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "assets.py",
+        "sha256": "93df01c19c3c047d626ef97073bc236ec7143126cf12c212da228decf2ad6385",
+        "size_bytes": 10081,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "event_ledger.py",
+        "sha256": "0a69b453ebba413d9b5eb09f1bdada0923d6c22f83c726ff5bf9701fb8c90373",
+        "size_bytes": 15543,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "hierarchy.py",
+        "sha256": "e069badc8c131629ed1b6dc4bb1de82e1e297fe53b5c197769adfd36936b3b17",
+        "size_bytes": 11777,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "observed_views.py",
+        "sha256": "c6a00f8977465dae228d6c2532d2c6e27f57d3def877002abbdb32aa341bc1ab",
+        "size_bytes": 4859,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "places.py",
+        "sha256": "476775bd037548bcae0c903adf206759de6a388cd3fdd86c322f60c774a307b9",
+        "size_bytes": 5709,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "regions.py",
+        "sha256": "7b78f50fde92ee7c4cf789b0bc075c68f700e097af6dae832a9f006919cd9072",
+        "size_bytes": 10551,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "relations.py",
+        "sha256": "617c30e91da6a232f8d1659a693051e45c661c52371a9dfb1cd0834cb209217d",
+        "size_bytes": 6721,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "store.py",
+        "sha256": "c09141b7626c3140e0f9288a4326d2fb5869a69c2ff61e4813e7ebe1aa68886c",
+        "size_bytes": 52300,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/scene_graph",
+        "path": "view_provenance.py",
+        "sha256": "48e9feb63c69d8b77923f66f5c123ab836c198fbb03167bc98fd6927f746c5fb",
+        "size_bytes": 2303,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/simulation/controller.py",
+        "path": "controller.py",
+        "sha256": "2d4539834537cc2d8a7f8fe05ebd577512f69613b9488ba8361be0e6f7f2bd83",
+        "size_bytes": 11001,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/simulation/habitat_adapter.py",
+        "path": "habitat_adapter.py",
+        "sha256": "e67aabc40053ff2abfc14f442ad4ceccc6d0d689d11f5a032ef870925e8e84af",
+        "size_bytes": 3595,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/simulation/pose_provider.py",
+        "path": "pose_provider.py",
+        "sha256": "d6fe5ed7c8e211a861777c66074f11e80a12682cf58ab2bc523731ca05fed6d9",
+        "size_bytes": 2510,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/visualization/best_view_gallery.py",
+        "path": "best_view_gallery.py",
+        "sha256": "d0da2efe70a35ece6843b2cdb9ce746865e711530492f86b1fd34d74a65b97f7",
+        "size_bytes": 3859,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      },
+      {
+        "root": "NewOH3DSG/visualization/hierarchy_graph.py",
+        "path": "hierarchy_graph.py",
+        "sha256": "e42f996955f34ced5a6f4f27a978f0787903ff045015377446ac90d7d3d4c219",
+        "size_bytes": 8298,
+        "selection": "selected",
+        "reason": "root explicitly included in the audited source closure",
+        "origin": "local filesystem snapshot",
+        "license": {
+          "status": "not_found",
+          "path": null,
+          "sha256": null
+        }
+      }
+    ],
+    "summary": {
+      "selected_files": 202,
+      "deferred_files": 0
+    }
+  }
+}

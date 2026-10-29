@@ -1,0 +1,120 @@
+# Live launch template: fill explicit local asset paths + SHA-256, interpreter identities,
+# and actual scene floor calibration before preflight. Missing values block launch.
+schema_version: 1
+mode: live
+profile: baseline
+episode:
+  id: replace-with-unique-episode
+  primary_sensor_id: primary-rgbd
+  floor_id: floor-0
+floor:
+  z_m: null
+  datum_source: null
+  calibration_sha256: null
+workers:
+  sensor:
+    python: null
+    script:
+      path: ../src/neusymnav/sensors/habitat_worker.py
+      sha256: c37d0cdc092f8734dd6eaad1b0d5121e5a1fc1c26a64e2acf57bf13a4722188c
+    timeout_s: 10.0
+  detector:
+    python: null
+    script:
+      path: ../src/neusymnav/perception/detector_worker.py
+      sha256: fb6acbdbb752d5977755abdef6170a3c04968b84a2681d94bc938eefd5726f2b
+    timeout_s: 2.0
+    startup_timeout_s: 30.0
+  region:
+    executable:
+      path: ../runs/p06-native/build/occusg_dude_worker
+      sha256: c03c10d71a28e8fa7a2943de5d6d75cdad962d20101209e8e1c844645b7c366b
+  ui:
+    python: null
+    script:
+      path: ../src/neusymnav/runtime/ui_transport.py
+      sha256: 89dffe6701bcd30f4cbd7320f3ae57a1c72dcd2252d24c7c8c6241a069787df1
+detector:
+  checkpoint: null
+  encoder: null
+  taxonomy:
+    path: ../configs/taxonomy-v1.json
+    sha256: 04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603
+  checkpoint_license: AGPL-3.0
+  imgsz: 480
+  max_detections: 30
+  confidence_threshold: 0.25
+  device: cpu
+navigation:
+  robot:
+    geometry_id: cylinder-v1
+    radius_m: 0.2
+    height_m: 1.5
+    margin_m: 0.05
+    near_ground_tolerance_m: 0.05
+  mapper:
+    resolution_m: 0.05
+    sampling_stride: 4
+    snapshot_radius_m: 8.0
+appearance_mode: 'off'
+ui:
+  enabled: false
+budgets:
+  byte_cap: 33554432
+  raw_cap: 2147483648
+  total_cap: 8589934592
+  shutdown_timeout_s: 5.0
+replay:
+  allow_incomplete: false
+sensor_config:
+  initial_position:
+  - 0.0
+  - 3.5
+  - 0.0
+  initial_rotation_xyzw:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
+  gpu_device_id: 0
+  floor_datum:
+    source_convention: new_y_up_v1
+    source_floor_y_m: 3.5
+    canonical_floor_z_m: 3.5
+    provenance: replace-with-actual-scene-calibration
+  primary:
+    sensor_id: primary-rgbd
+    rgb_uuid: color_sensor
+    depth_uuid: depth_sensor
+    resolution_hw:
+    - 240
+    - 320
+    position_xyz:
+    - 0.0
+    - 1.2
+    - 0.0
+    orientation_xyz_rad:
+    - 0.0
+    - 0.0
+    - 0.0
+    hfov_deg: 90.0
+    depth_min_m: 0.1
+    depth_max_m: 10.0
+  navigation:
+    sensor_id: downward-depth
+    depth_uuid: navigation_depth_sensor
+    resolution_hw:
+    - 120
+    - 160
+    position_xyz:
+    - 0.0
+    - 1.0
+    - 0.0
+    orientation_xyz_rad:
+    - -1.5707963267948966
+    - 0.0
+    - 0.0
+    hfov_deg: 120.0
+    depth_min_m: 0.1
+    depth_max_m: 10.0
+  scene: null

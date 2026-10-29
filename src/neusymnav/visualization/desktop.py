@@ -1,0 +1,804 @@
+"""Read-only PyQt5 desktop viewer, intended to run as a separate UI process.
+
+The module's publisher and contracts are Qt-free. A future runtime launcher
+can connect ``publication_reader`` and ``UiControlClient`` through its IPC
+adapter without importing Qt in the control process.
+"""
+from __future__ import annotations
+
+import argparse
+import math
+import sys
+from collections.abc import Callable
+from time import monotonic_ns
+from typing import Sequence
+
+import numpy as np
+from PyQt5 import QtCore, QtGui, QtWidgets
+
+from ..contracts import NavSnapshot
+from .hierarchy_view import hierarchy_rows, resolve_object_selection, resolve_verification
+from .scene_graph import SceneGraphWidget
+from .publisher import DisplayEnvelope, DisplayPublisher, UiCommandStatus, UiControlClient
+
+
+def _qimage_rgb(pixels: np.ndarray) -> QtGui.QImage:
+    height, width = pixels.shape[:2]
+    return QtGui.QImage(pixels.data, width, height, int(pixels.strides[0]), QtGui.QImage.Format_RGB888).copy()
+
+
+class MapWidget(QtWidgets.QWidget):
+    """Render only the NavSnapshot pinned by the current hierarchy envelope."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setMinimumSize(240, 220)
+        self._nav: NavSnapshot | None = None
+        self._map_image: QtGui.QImage | None = None
+        self._map_revision: int | None = None
+        self._regions: tuple[np.ndarray, ...] = ()
+        self._stale = False
+        self._robot = None
+        self._now_ns = 0
+        self._clock_domain = None
+        self._draw_rect = QtCore.QRectF()
+        self.status_text = "Map unavailable · no pinned NavSnapshot"
+
+    def set_snapshot(self, nav: NavSnapshot | None, envelope: DisplayEnvelope) -> None:
+        if nav is not self._nav or (nav is not None and nav.revision != self._map_revision):
+            self._nav = nav
+            self._map_revision = None if nav is None else nav.revision
+            self._map_image = None if nav is None else self._raster_image(nav)
+        self.status_text = "Map unavailable · no pinned NavSnapshot" if nav is None else f"Map available · nav revision {nav.revision}"
+        regions = []
+        stale = False
+        for node in envelope.hierarchy.nodes.values():
+            if node.kind == "region":
+                stale = stale or bool(node.attributes.get("stale", False))
+                polygon = node.attributes.get("polygon")
+                if isinstance(polygon, np.ndarray):
+                    regions.append(polygon)
+        self._robot = envelope.sources.robot
+        self._regions = tuple(regions)
+        self._stale = stale
+        self.update()
+
+    @staticmethod
+    def _raster_image(nav: NavSnapshot) -> QtGui.QImage:
+        states = nav.states
+        rgb = np.empty((*states.shape, 3), dtype=np.uint8)
+        rgb[states == -1] = (68, 82, 101)  # unknown remains visibly distinct
+        rgb[states == 0] = (58, 145, 111)
+        rgb[states == 100] = (245, 91, 79)
+        return _qimage_rgb(np.ascontiguousarray(rgb[::-1]))
+
+    def paintEvent(self, event) -> None:
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtGui.QColor("#0c1421"))
+        if self._nav is None or self._map_image is None:
+            painter.setPen(QtGui.QColor("#e7edf3"))
+            painter.drawText(self.rect(), QtCore.Qt.AlignCenter, self.status_text)
+            return
+        target = self.rect().adjusted(8, 8, -8, -8)
+        source = self._map_image.rect()
+        scaled = self._map_image.scaled(target.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.FastTransformation)
+        draw_rect = QtCore.QRectF(
+            target.center().x() - scaled.width() / 2,
+            target.center().y() - scaled.height() / 2,
+            scaled.width(), scaled.height(),
+        )
+        painter.drawImage(draw_rect, scaled)
+        sx = draw_rect.width() / source.width()
+        sy = draw_rect.height() / source.height()
+        painter.setPen(QtGui.QPen(QtGui.QColor("#f4b942"), 2))
+        for polygon in self._regions:
+            points = [QtCore.QPointF(
+                draw_rect.left() + ((float(x) - self._nav.origin_xy[0]) / self._nav.resolution_m) * sx,
+                draw_rect.bottom() - ((float(y) - self._nav.origin_xy[1]) / self._nav.resolution_m) * sy,
+            ) for x, y in polygon]
+            if len(points) >= 3:
+                painter.drawPolygon(QtGui.QPolygonF(points))
+        self._draw_rect = draw_rect
+        self._draw_robot(painter)
+        label = f"Nav revision {self._nav.revision} · measured occupancy"
+        if self._stale:
+            label += " · regions STALE"
+        painter.setPen(QtGui.QColor("#e7edf3"))
+        painter.drawText(self.rect().adjusted(8, 2, -8, -2), QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter, label)
+
+    def _world_to_pixel(self, xy):
+        nav, rect = self._nav, self._draw_rect
+        return QtCore.QPointF(rect.left()+(xy[0]-nav.origin_xy[0])/nav.resolution_m*rect.width()/nav.states.shape[1],
+                             rect.bottom()-(xy[1]-nav.origin_xy[1])/nav.resolution_m*rect.height()/nav.states.shape[0])
+
+    def _draw_robot(self, painter):
+        painter.save()
+        if self._robot is None:
+            painter.setPen(QtGui.QColor("#a4b5ca"))
+            painter.drawText(self.rect().adjusted(10, 24, -10, -10),
+                             QtCore.Qt.AlignBottom | QtCore.Qt.AlignLeft, "Robot pose unavailable")
+            painter.restore()
+            return
+        samples = self._robot.samples
+        last = samples[-1]
+        stale = (last.clock_domain != self._clock_domain or self._now_ns < last.capture_monotonic_ns
+                 or self._now_ns-last.capture_monotonic_ns > 300_000_000)
+        color = QtGui.QColor("#a4b5ca" if stale else "#69baff")
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setClipRect(self._draw_rect)
+        path = QtGui.QPainterPath()
+        path.moveTo(self._world_to_pixel(samples[0].xy))
+        for previous, sample in zip(samples, samples[1:]):
+            point = self._world_to_pixel(sample.xy)
+            if (sample.source.frame_index != previous.source.frame_index+1
+                    or sample.capture_monotonic_ns-previous.capture_monotonic_ns > 1_000_000_000):
+                path.moveTo(point)  # no invented continuous movement across missing samples
+            else:
+                path.lineTo(point)
+        painter.setPen(QtGui.QPen(color, 1.3))
+        painter.drawPath(path)
+        camera = self._robot.camera
+        if camera is not None:
+            camera_point = self._world_to_pixel(camera.xy)
+            ends = [self._world_to_pixel((camera.xy[0]+math.cos(a), camera.xy[1]+math.sin(a))) for a in camera.edge_yaws]
+            fill = QtGui.QColor(color);fill.setAlpha(28)
+            painter.setBrush(fill)
+            pen = QtGui.QPen(color, 1.1, QtCore.Qt.DashLine if stale else QtCore.Qt.SolidLine)
+            painter.setPen(pen)
+            painter.drawPolygon(QtGui.QPolygonF([camera_point,*ends]))
+        point = self._world_to_pixel(last.xy)
+        painter.setBrush(QtGui.QColor("#101c2a"))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#eef7ff"), 2))
+        painter.drawEllipse(point, 8, 8)
+        painter.setBrush(color);painter.setPen(QtCore.Qt.NoPen)
+        painter.drawEllipse(point, 5, 5)
+        # Constant-screen-size heading marker, not a physical footprint or a route command.
+        dx, dy = math.cos(last.yaw_rad), -math.sin(last.yaw_rad)
+        tip = point+QtCore.QPointF(27*dx, 27*dy)
+        painter.setPen(QtGui.QPen(color, 2))
+        painter.drawLine(point, tip)
+        painter.setBrush(color)
+        painter.drawPolygon(QtGui.QPolygonF([tip,tip+QtCore.QPointF(-8*dx-4*dy,-8*dy+4*dx),
+                                               tip+QtCore.QPointF(-8*dx+4*dy,-8*dy-4*dx)]))
+        painter.setClipping(False)
+        painter.setPen(color)
+        if self._draw_rect.contains(point):
+            painter.drawText(point+QtCore.QPointF(12,-13), "ROBOT" + (" · STALE" if stale else ""))
+        text = "Pose STALE" if stale else "Measured robot pose"
+        text += " · sampled trail" + (" (last 1024)" if self._robot.truncated else "")
+        if camera is not None:text += " · camera FOV (1 m schematic)"
+        else:text += " · camera FOV unavailable"
+        painter.drawText(self.rect().adjusted(10, 24, -10, -10), QtCore.Qt.AlignBottom | QtCore.Qt.AlignLeft,
+                         painter.fontMetrics().elidedText(text,QtCore.Qt.ElideRight,self.width()-20))
+        painter.restore()
+
+
+class DashboardWindow(QtWidgets.QMainWindow):
+    """Read-only dashboard over one immutable envelope per refresh."""
+
+    def __init__(
+        self,
+        publication_reader: Callable[[], DisplayEnvelope | None] | DisplayPublisher | None = None,
+        control_client: UiControlClient | None = None,
+        *,
+        clock_domain: str | None = None,
+        now_ns: Callable[[], int] = monotonic_ns,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        if isinstance(publication_reader, DisplayPublisher):
+            self._read_latest = publication_reader.read_latest
+        elif callable(publication_reader):
+            self._read_latest = publication_reader
+        elif publication_reader is None:
+            self._read_latest = lambda: None
+        else:
+            raise ValueError("publication_reader must be a publisher, callable or None")
+        self._control = control_client
+        self._clock_domain = clock_domain
+        self._now_ns = now_ns
+        self._envelope: DisplayEnvelope | None = None
+        self._selected_object_id: str | None = None
+        self._selection_was_alias = False
+        self._last_sequence: int | None = None
+        self.setWindowTitle("NeuSymNav · live hierarchy")
+        self.preferred_size = QtCore.QSize(2160, 1350)
+        self._observation_pixels = None
+        self._build_ui()
+        available = self.screen().availableGeometry()
+        self.resize(self.preferred_size.boundedTo(available.size()))
+        if available.width() < 2160 or available.height() < 1350:
+            self.setWindowState(self.windowState() | QtCore.Qt.WindowMaximized)
+        self._refresh_timer = QtCore.QTimer(self)
+        self._refresh_timer.setInterval(100)
+        self._refresh_timer.timeout.connect(self.refresh)
+        self._refresh_timer.start()
+        self.refresh()
+
+    def _build_ui(self) -> None:
+        self.setWindowTitle("NeuSymNav / Live Scene Explorer")
+        self.setMinimumSize(640, 480)
+        self.setStyleSheet("""
+            QMainWindow, QWidget#dashboard { background: #0a101b; color: #dee7f1; }
+            QWidget { font-family: 'DejaVu Sans'; font-size: 15px; color: #dee7f1; }
+            QFrame#panel, QFrame#header { background: #131d2d; border: 1px solid #29394d; border-radius: 10px; }
+            QLabel { background: transparent; border: none; }
+            QLabel#brand { color: #eef5ff; font-size: 28px; font-weight: 600; }
+            QLabel#eyebrow, QLabel#panelTitle { color: #93a3b5; font-size: 13px; font-weight: 600; }
+            QLabel#subtitle, QLabel#rgbCaption, QLabel#bestViewCaption, QLabel#commandStatus { color: #93a3b5; font-size: 14px; }
+            QLabel#statusBadge { background: #233549; color: #a6ccec; border-radius: 5px; padding: 7px 12px; font-weight: 600; }
+            QLabel#rgbView, QLabel#bestView { background: #0c1421; color: #93a3b5; border-radius: 7px; }
+            QLabel#objectDetails { color: #b7c7d9; font-size: 14px; padding: 8px; background: #0c1421; border-radius: 6px; }
+            QPushButton, QToolButton { background: #1c2d43; border: 1px solid #354b65; border-radius: 5px; padding: 7px 14px; }
+            QPushButton:hover, QToolButton:hover { background: #2b4260; border-color: #6eafe8; }
+            QPushButton:disabled { color: #64778d; border-color: #29394d; }
+            QPushButton#stopButton { background: #482a32; border-color: #75414b; color: #f2b5b5; }
+            QComboBox { background: #1c2d43; border: 1px solid #354b65; border-radius: 5px; padding: 5px 12px; color: #dee7f1; }
+            QComboBox QAbstractItemView { background: #131d2d; color: #dee7f1; selection-background-color: #254365; }
+            QCheckBox::indicator { width: 16px; height: 16px; background: #0c1421; border: 1px solid #6eafe8; border-radius: 3px; }
+            QCheckBox::indicator:checked { background: #6eafe8; border: 2px solid #c8e3ff; }
+            QLineEdit { background: #0c1421; border: 1px solid #29394d; border-radius: 5px; padding: 7px; selection-background-color: #375779; }
+            QTreeWidget { background: #0c1421; border: none; outline: none; border-radius: 5px; }
+            QTreeWidget::item { padding: 7px 2px; }
+            QTreeWidget::item:selected { background: #254365; }
+            QTabWidget::pane { border: none; }
+            QTabBar::tab { background: #131d2d; color: #93a3b5; padding: 8px 12px; border-bottom: 2px solid transparent; }
+            QTabBar::tab:selected { color: #c8e3ff; border-bottom: 2px solid #6eafe8; }
+            QScrollArea { background: transparent; border: none; }
+            QSplitter::handle { background: #0a101b; width: 10px; }
+            QScrollBar:vertical { background: #0c1421; width: 8px; }
+            QScrollBar::handle:vertical { background: #354b65; min-height: 20px; border-radius: 4px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        """)
+        central = QtWidgets.QWidget(self)
+        central.setObjectName("dashboard")
+        layout = QtWidgets.QVBoxLayout(central)
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(12)
+        header = QtWidgets.QFrame()
+        header.setObjectName("header")
+        header_layout = QtWidgets.QHBoxLayout(header)
+        header_layout.setContentsMargins(18, 14, 18, 14)
+        brand = QtWidgets.QVBoxLayout()
+        eyebrow = QtWidgets.QLabel("SPATIAL INTELLIGENCE / LIVE SNAPSHOT")
+        eyebrow.setObjectName("eyebrow")
+        title = QtWidgets.QLabel("NeuSymNav")
+        title.setObjectName("brand")
+        self.subtitle = QtWidgets.QLabel("Waiting for sensor and graph publication")
+        self.subtitle.setObjectName("subtitle")
+        brand.addWidget(eyebrow)
+        brand.addWidget(title)
+        brand.addWidget(self.subtitle)
+        header_layout.addLayout(brand, 1)
+        self.status_badge = QtWidgets.QLabel("WAITING")
+        self.status_badge.setObjectName("statusBadge")
+        header_layout.addWidget(self.status_badge)
+        self.pause_button = QtWidgets.QPushButton("Pause")
+        self.pause_button.setObjectName("pauseButton")
+        self.stop_button = QtWidgets.QPushButton("Stop")
+        self.stop_button.setObjectName("stopButton")
+        for button, action in [(self.pause_button, "pause"), (self.stop_button, "stop")]:
+            button.setEnabled(self._control is not None)
+            button.clicked.connect(lambda checked=False, a=action: self._send_command(a))
+            header_layout.addWidget(button)
+        layout.addWidget(header)
+
+        self.overview = QtWidgets.QLabel("RGB —     MAP —     OBJECTS —     REGIONS —")
+        self.overview.setObjectName("overview")
+        self.overview.setStyleSheet("color:#a6ccec; padding:2px 4px; font-size:12px")
+        layout.addWidget(self.overview)
+        view_row = QtWidgets.QHBoxLayout()
+        view_row.addWidget(QtWidgets.QLabel("Focus view"))
+        self.focus_selector = QtWidgets.QComboBox()
+        self.focus_selector.addItems(["All panels", "RGB FRAME", "OCCUPANCY MAP", "SCENE GRAPH"])
+        self.focus_selector.currentTextChanged.connect(self.focus_panel)
+        view_row.addWidget(self.focus_selector)
+        view_row.addStretch(1)
+        self.boxes_toggle = QtWidgets.QCheckBox("Bounding boxes + labels")
+        self.masks_toggle = QtWidgets.QCheckBox("Segmentation masks")
+        for toggle in (self.boxes_toggle, self.masks_toggle):
+            toggle.setChecked(True)
+            toggle.toggled.connect(self._render_observation)
+            view_row.addWidget(toggle)
+        layout.addLayout(view_row)
+        self.workspace_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.sensor_row = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.workspace_split.addWidget(self.sensor_row)
+        split = self.sensor_row
+        def panel(title, subtitle):
+            frame = QtWidgets.QFrame()
+            frame.setObjectName("panel")
+            body = QtWidgets.QVBoxLayout(frame)
+            body.setContentsMargins(12, 12, 12, 12)
+            body.setSpacing(9)
+            label = QtWidgets.QLabel(title)
+            label.setObjectName("panelTitle")
+            body.addWidget(label)
+            hint = QtWidgets.QLabel(subtitle)
+            hint.setObjectName("subtitle")
+            body.addWidget(hint)
+            return frame, body
+        left, left_layout = panel("RGB FRAME", "Source-matched detector observations / live camera")
+        self.sensor_panel = left
+        self.sensor_row.addWidget(left)
+        self.image_tabs = QtWidgets.QTabWidget()
+        self.observation_page = QtWidgets.QWidget()
+        observation_layout = QtWidgets.QVBoxLayout(self.observation_page)
+        observation_layout.setContentsMargins(0, 0, 0, 0)
+        self.observation_view = QtWidgets.QLabel("Detector observation unavailable")
+        self.observation_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.observation_view.setObjectName("rgbView")
+        self.observation_view.setMinimumSize(200, 130)
+        self.observation_view.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        observation_layout.addWidget(self.observation_view, 1)
+        self.observation_caption = QtWidgets.QLabel("Detector observation unavailable")
+        self.observation_caption.setWordWrap(True)
+        self.observation_caption.setTextFormat(QtCore.Qt.PlainText)
+        observation_layout.addWidget(self.observation_caption)
+        self.image_tabs.addTab(self.observation_page, "Detector observation")
+        live_page = QtWidgets.QWidget()
+        live_layout = QtWidgets.QVBoxLayout(live_page)
+        live_layout.setContentsMargins(0, 0, 0, 0)
+        self.image_tabs.addTab(live_page, "Live RGB")
+        self.image_tabs.currentChanged.connect(self._resize_images)
+        left_layout.addWidget(self.image_tabs, 1)
+        self.rgb_view = QtWidgets.QLabel("RGB unavailable · no source image")
+        self.rgb_view.setObjectName("rgbView")
+        self.rgb_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.rgb_view.setWordWrap(True)
+        self.rgb_view.setMinimumSize(240, 180)
+        self.rgb_view.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        live_layout.addWidget(self.rgb_view, 1)
+        self.rgb_caption = QtWidgets.QLabel("RGB unavailable · no source image")
+        self.rgb_caption.setObjectName("rgbCaption")
+        self.rgb_caption.setWordWrap(True)
+        live_layout.addWidget(self.rgb_caption)
+        middle, middle_layout = panel("OCCUPANCY MAP", "Measured geometry · region boundaries · robot trail")
+        self.map_panel = middle
+        self.sensor_row.addWidget(middle)
+        self.map_view = MapWidget(middle)
+        self.map_view.setObjectName("mapView")
+        middle_layout.addWidget(self.map_view, 1)
+        legend = QtWidgets.QLabel("● Free    <font color='#f55b4f'>● Obstacle</font>    <font color='#445265'>● Unknown</font>")
+        legend.setStyleSheet("color:#3a916f; font-size:11px")
+        legend.setWordWrap(True)
+        middle_layout.addWidget(legend)
+        trail_legend = QtWidgets.QLabel("<font color='#69baff'>● Robot  ─ Sampled trail  ◁ Camera FOV</font>")
+        trail_legend.setStyleSheet("font-size:11px")
+        trail_legend.setWordWrap(True)
+        middle_layout.addWidget(trail_legend)
+
+        right, right_layout = panel("SCENE GRAPH", "FLOOR > ROOM > OBJECT · select a node for evidence")
+        self.graph_panel = right
+        self.workspace_split.addWidget(right)
+        graph_row = QtWidgets.QHBoxLayout()
+        right_layout.addLayout(graph_row, 1)
+        graph_content = QtWidgets.QVBoxLayout()
+        graph_row.addLayout(graph_content, 3)
+        evidence_frame = QtWidgets.QWidget()
+        evidence_layout = QtWidgets.QVBoxLayout(evidence_frame)
+        evidence_layout.setContentsMargins(10, 0, 0, 0)
+        graph_row.addWidget(evidence_frame, 1)
+        label = QtWidgets.QLabel("OBJECT EVIDENCE")
+        label.setObjectName("panelTitle")
+        evidence_layout.addWidget(label)
+        self.best_view = QtWidgets.QLabel("Best view unavailable · no evidence image")
+        self.best_view.setObjectName("bestView")
+        self.best_view.setAlignment(QtCore.Qt.AlignCenter)
+        self.best_view.setWordWrap(True)
+        self.best_view.setMinimumSize(200, 100)
+        self.best_view.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+        evidence_layout.addWidget(self.best_view, 1)
+        self.best_view_caption = QtWidgets.QLabel("Best view unavailable · no evidence image")
+        self.best_view_caption.setObjectName("bestViewCaption")
+        self.best_view_caption.setWordWrap(True)
+        evidence_layout.addWidget(self.best_view_caption)
+
+
+        tabs = QtWidgets.QTabWidget()
+        self.graph_view = SceneGraphWidget()
+        self.graph_view.setObjectName("sceneGraph")
+        self.graph_view.object_selected.connect(self.select_object)
+        tabs.addTab(self.graph_view, "Graph")
+        self.hierarchy = QtWidgets.QTreeWidget()
+        self.hierarchy.setObjectName("hierarchyTree")
+        self.hierarchy.setHeaderHidden(True)
+        self.hierarchy.itemSelectionChanged.connect(self._tree_selection_changed)
+        tabs.addTab(self.hierarchy, "Hierarchy")
+        graph_content.addWidget(tabs, 1)
+        legend = QtWidgets.QLabel("◇ Region   □ Place / floor   ○ Object")
+        legend.setObjectName("subtitle")
+        graph_content.addWidget(legend)
+        select_row = QtWidgets.QHBoxLayout()
+        self.object_id_input = QtWidgets.QLineEdit()
+        self.object_id_input.setPlaceholderText("Object ID or alias…")
+        self.object_id_input.setObjectName("objectIdInput")
+        select_button = QtWidgets.QPushButton("Select")
+        select_button.clicked.connect(self._select_from_input)
+        select_row.addWidget(self.object_id_input, 1)
+        select_row.addWidget(select_button)
+        evidence_layout.addLayout(select_row)
+        self.object_details = QtWidgets.QLabel("No selected object")
+        self.object_details.setObjectName("objectDetails")
+        self.object_details.setWordWrap(True)
+        self.object_details.setTextFormat(QtCore.Qt.PlainText)
+        detail_scroll = QtWidgets.QScrollArea()
+        detail_scroll.setWidgetResizable(True)
+        detail_scroll.setMinimumHeight(60)
+        detail_scroll.setMaximumHeight(190)
+        detail_scroll.setWidget(self.object_details)
+        evidence_layout.addWidget(detail_scroll)
+        self.sensor_row.setSizes([1100, 1000])
+        self.workspace_split.setSizes([720, 420])
+        self.workspace_split.setChildrenCollapsible(False)
+        self.sensor_row.setChildrenCollapsible(False)
+        layout.addWidget(self.workspace_split, 1)
+
+        self.command_status = QtWidgets.QLabel("Control unavailable" if self._control is None else "No command sent")
+        self.command_status.setObjectName("commandStatus")
+        layout.addWidget(self.command_status)
+        details = QtWidgets.QToolButton()
+        details.setText("Source & revision details")
+        details.setCheckable(True)
+        details.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        details.setArrowType(QtCore.Qt.RightArrow)
+        layout.addWidget(details)
+        self.telemetry = QtWidgets.QLabel("Waiting for display publication")
+        self.telemetry.setObjectName("telemetry")
+        self.telemetry.setWordWrap(True)
+        self.telemetry.setTextFormat(QtCore.Qt.PlainText)
+        self.telemetry.setStyleSheet("color:#93a3b5; font-size:10px; padding:6px")
+        self.telemetry.setVisible(False)
+        details.toggled.connect(self.telemetry.setVisible)
+        details.toggled.connect(lambda opened: details.setArrowType(QtCore.Qt.DownArrow if opened else QtCore.Qt.RightArrow))
+        layout.addWidget(self.telemetry)
+        self.setCentralWidget(central)
+
+    def refresh(self) -> None:
+        """Read one envelope, render all panels from it, then refresh ACK state."""
+        envelope = self._read_latest()
+        if envelope is not None and envelope.publication_sequence != self._last_sequence:
+            self._envelope = envelope
+            self._last_sequence = envelope.publication_sequence
+            self._render_envelope(envelope)
+        elif envelope is None and self._envelope is None:
+            self.telemetry.setText("Waiting for display publication · RGB/map/graph unavailable")
+        self.map_view._now_ns = self._now_ns()
+        self.map_view._clock_domain = self._clock_domain or (None if self._envelope is None else self._envelope.clock_domain)
+        self.map_view.update()
+        self._refresh_observation_age()
+        self._refresh_telemetry()
+        self._refresh_command_status()
+
+    def _render_envelope(self, envelope: DisplayEnvelope) -> None:
+        self.map_view.set_snapshot(envelope.sources.nav, envelope)
+        if envelope.sources.rgb is None:
+            self.rgb_view.setPixmap(QtGui.QPixmap())
+            self.rgb_view.setText("RGB unavailable · no source image")
+            self.rgb_caption.setText("RGB source unavailable")
+        else:
+            frame = envelope.sources.rgb
+            self.rgb_view.setPixmap(QtGui.QPixmap.fromImage(_qimage_rgb(frame.pixels)).scaled(
+                self.rgb_view.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation,
+            ))
+            self.rgb_view.setToolTip(f"RGB source · {frame.source.sensor_id}:{frame.source.frame_index}")
+            age = envelope.metrics.source_age_ns.get("rgb")
+            age_label = "age unavailable" if age is None else f"source age {age / 1e6:.1f} ms"
+            self.rgb_caption.setText(f"RGB · {frame.source.sensor_id}:{frame.source.frame_index} · {age_label}")
+        self._render_observation()
+        self.graph_view.set_envelope(envelope)
+        self._render_hierarchy(envelope)
+        if self._selected_object_id is None:
+            first = next((node_id for node_id, node in envelope.hierarchy.nodes.items() if node.kind == "object"), None)
+            if first is not None:
+                self._selected_object_id = first
+        self._render_selected_object()
+        self._refresh_telemetry()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self._envelope is not None:
+            QtCore.QTimer.singleShot(0, self._resize_images)
+
+    def _resize_images(self) -> None:
+        if self._envelope is None:
+            return
+        rgb = self._envelope.sources.rgb
+        if rgb is not None:
+            self.rgb_view.setPixmap(QtGui.QPixmap.fromImage(_qimage_rgb(rgb.pixels)).scaled(
+                self.rgb_view.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+        self._scale_observation()
+        self._render_selected_object()
+
+    def focus_panel(self, title: str) -> None:
+        """Focus is a view-only operation; runtime publication remains untouched."""
+        all_panels = title == "All panels"
+        self.sensor_row.setVisible(all_panels or title != "SCENE GRAPH")
+        self.sensor_panel.setVisible(all_panels or title == "RGB FRAME")
+        self.map_panel.setVisible(all_panels or title == "OCCUPANCY MAP")
+        self.graph_panel.setVisible(all_panels or title == "SCENE GRAPH")
+        QtCore.QTimer.singleShot(0, self._resize_images)
+
+    def _render_observation(self, _checked=None) -> None:
+        observation = None if self._envelope is None else self._envelope.sources.observation
+        had_observation = self._observation_pixels is not None
+        self.image_tabs.setTabEnabled(0, observation is not None)
+        self.boxes_toggle.setEnabled(observation is not None)
+        self.masks_toggle.setEnabled(observation is not None)
+        if observation is None:
+            self._observation_pixels = None
+            self.observation_view.clear()
+            self.observation_view.setText("Detector observation unavailable")
+            self.observation_caption.setText("Detector observation unavailable · no source-matched result")
+            self.image_tabs.setCurrentIndex(1)
+            return
+        from .perception_overlay import render_observation
+        self._observation_pixels = render_observation(
+            observation, boxes=self.boxes_toggle.isChecked(), masks=self.masks_toggle.isChecked())
+        frame = observation.image
+        now = self._now_ns()
+        domain = self._clock_domain or self._envelope.clock_domain
+        age = (f"source age {(now-frame.capture_monotonic_ns)/1e6:.1f} ms"
+               if domain == frame.clock_domain and now >= frame.capture_monotonic_ns else "source age unavailable")
+        cap = " · CAP REACHED" if observation.cap_reached else ""
+        self.observation_caption.setText(
+            f"Detector observation · {frame.source.sensor_id}:{frame.source.frame_index} · {age} · historical\n"
+            f"{len(observation.instances)}/{observation.total_detections} detections displayed · {observation.completion}{cap}")
+        if not had_observation:
+            self.image_tabs.setCurrentIndex(0)
+        self._scale_observation()
+
+    def _refresh_observation_age(self) -> None:
+        if self._envelope is None or self._envelope.sources.observation is None:
+            return
+        frame = self._envelope.sources.observation.image
+        now = self._now_ns()
+        domain = self._clock_domain or self._envelope.clock_domain
+        age = (f"source age {(now-frame.capture_monotonic_ns)/1e6:.1f} ms"
+               if domain == frame.clock_domain and now >= frame.capture_monotonic_ns else "source age unavailable")
+        lines = self.observation_caption.text().split("\n")
+        lines[0] = f"Detector observation · {frame.source.sensor_id}:{frame.source.frame_index} · {age} · historical"
+        self.observation_caption.setText("\n".join(lines))
+
+    def _scale_observation(self) -> None:
+        if self._observation_pixels is not None:
+            self.observation_view.setPixmap(QtGui.QPixmap.fromImage(_qimage_rgb(self._observation_pixels)).scaled(
+                self.observation_view.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+
+    def _render_hierarchy(self, envelope: DisplayEnvelope) -> None:
+        self.hierarchy.clear()
+        items: dict[str, QtWidgets.QTreeWidgetItem] = {}
+        rank = {"building": 0, "floor": 1, "region": 2, "place": 3, "object": 4}
+        rows = sorted(hierarchy_rows(envelope), key=lambda row: (rank.get(row.kind, 9), row.node_id))
+        for row in rows:
+            item = QtWidgets.QTreeWidgetItem([row.label])
+            item.setData(0, QtCore.Qt.UserRole, row.node_id)
+            if row.stale:
+                item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e89d32")))
+                item.setToolTip(0, "Region geometry is stale; no current membership is certified.")
+            elif row.status in {"unassigned", "ambiguous", "unavailable"}:
+                item.setForeground(0, QtGui.QBrush(QtGui.QColor("#d58a78")))
+                item.setToolTip(0, f"Parent/membership status: {row.status}")
+            if row.verification_reason is not None:
+                item.setToolTip(0, f"Verification unavailable: {row.verification_reason}")
+            if row.parent_id in items:
+                items[row.parent_id].addChild(item)
+            else:
+                self.hierarchy.addTopLevelItem(item)
+            items[row.node_id] = item
+        if self._selected_object_id in items:
+            self.hierarchy.setCurrentItem(items[self._selected_object_id])
+        self.hierarchy.expandAll()
+
+    def select_object(self, object_id: str) -> str:
+        """Select by canonical ID or alias and return the canonical ID."""
+        if self._envelope is None:
+            raise RuntimeError("no hierarchy publication is available")
+        canonical, was_alias = resolve_object_selection(self._envelope, object_id)
+        self._selection_was_alias = was_alias
+        self._selected_object_id = canonical
+        self._render_selected_object()
+        for index in range(self.hierarchy.topLevelItemCount()):
+            selected = self._find_item(self.hierarchy.topLevelItem(index), canonical)
+            if selected is not None:
+                self.hierarchy.setCurrentItem(selected)
+                break
+        return canonical
+
+    @staticmethod
+    def _find_item(item: QtWidgets.QTreeWidgetItem, node_id: str) -> QtWidgets.QTreeWidgetItem | None:
+        if item.data(0, QtCore.Qt.UserRole) == node_id:
+            return item
+        for index in range(item.childCount()):
+            result = DashboardWindow._find_item(item.child(index), node_id)
+            if result is not None:
+                return result
+        return None
+
+    def _select_from_input(self) -> None:
+        if self._envelope is None:
+            self.object_details.setText("Selection unavailable · no hierarchy publication")
+            return
+        value = self.object_id_input.text().strip()
+        try:
+            canonical = self.select_object(value)
+            self.object_details.setText(self._object_detail(canonical, alias=(canonical != value)))
+        except (ValueError, KeyError) as exc:
+            self.object_details.setText(f"Selection unavailable · {exc}")
+
+    def _tree_selection_changed(self) -> None:
+        selected = self.hierarchy.selectedItems()
+        if not selected:
+            return
+        node_id = selected[0].data(0, QtCore.Qt.UserRole)
+        node = None if self._envelope is None else self._envelope.hierarchy.nodes.get(node_id)
+        if node is None or node.kind != "object":
+            return
+        if node_id != self._selected_object_id:
+            self._selection_was_alias = False
+        self._selected_object_id = node_id
+        self._render_selected_object()
+
+    def _object_detail(self, canonical: str, alias: bool = False) -> str:
+        assert self._envelope is not None
+        node = self._envelope.hierarchy.nodes[canonical]
+        attrs = node.attributes
+        parent = next((edge.target_id for edge in self._envelope.hierarchy.edges
+                       if edge.kind == "in_region" and edge.source_id == canonical and edge.status == "assigned"), None)
+        membership = attrs.get("membership_status", self._envelope.hierarchy.statuses.get(canonical, "unknown"))
+        lifecycle = attrs.get("lifecycle", "unknown")
+        aliases = tuple(attrs.get("aliases", ()))
+        verification, reason, record = resolve_verification(self._envelope, canonical)
+        lines = [f"Object {canonical}", f"Lifecycle: {lifecycle}", f"Verification: {verification}",
+                 f"Membership: {membership}",
+                 f"Parent region: {parent if parent is not None else 'unknown / unassigned'}"]
+        if record is not None:
+            lines.append(f"Verification source events: {len(record.evidence)}")
+            if record.evidence:
+                sources = ", ".join(
+                    f"{item.source.sensor_id}:{item.source.frame_index} ({item.clock_domain})"
+                    for item in record.evidence
+                )
+                lines.append(f"Verification provenance: {sources}")
+        elif reason is not None:
+            lines.append(f"Verification unavailable: {reason}")
+        if alias:
+            lines.append("Selected alias resolves to this canonical ID")
+        if aliases:
+            lines.append("Aliases: " + ", ".join(aliases))
+        return "\n".join(lines)
+
+    def _render_selected_object(self) -> None:
+        if self._envelope is None or self._selected_object_id is None:
+            self.best_view.setPixmap(QtGui.QPixmap())
+            self.best_view.setText("Best view unavailable · select an object")
+            self.best_view_caption.setText("Best view unavailable · select an object")
+            self.object_details.setText("No selected object")
+            return
+        # Selection may outlive a merge/removal publication. Resolve only with
+        # the current canonical owner snapshot before looking up hierarchy data.
+        try:
+            objects = self._envelope.sources.objects
+            if objects is None:
+                raise KeyError("pinned object snapshot unavailable")
+            canonical = objects.resolve_id(self._selected_object_id)
+            node = self._envelope.hierarchy.nodes.get(canonical)
+            if node is None or node.kind != "object":
+                raise KeyError("selected object absent from pinned hierarchy")
+        except (KeyError, ValueError) as exc:
+            self.best_view.setPixmap(QtGui.QPixmap())
+            self.best_view.setText("Best view unavailable · selected object unavailable")
+            self.best_view_caption.setText("Best view unavailable · selected object unavailable")
+            self.object_details.setText(f"Selection unavailable · {exc}")
+            return
+        self._selection_was_alias = self._selection_was_alias or canonical != self._selected_object_id
+        self._selected_object_id = canonical
+        self.graph_view.select_object(canonical)
+        self.object_details.setText(self._object_detail(canonical, alias=self._selection_was_alias))
+        view = next((item for item in self._envelope.sources.best_views
+                     if self._envelope.sources.objects is not None and
+                     self._envelope.sources.objects.resolve_id(item.object_id) == canonical), None)
+        if view is None:
+            self.best_view.setPixmap(QtGui.QPixmap())
+            self.best_view.setText(f"Best view unavailable · no evidence image for {canonical[:8]}")
+            self.best_view_caption.setText(f"Best view unavailable · no evidence image for {canonical[:8]}")
+        else:
+            self.best_view.setPixmap(QtGui.QPixmap.fromImage(_qimage_rgb(view.pixels)).scaled(
+                self.best_view.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation,
+            ))
+            caption = f"Best view · frame {view.source.sensor_id}:{view.source.frame_index} · object r{view.object_revision} · evidence {view.evidence_ref[:12]}"
+            self.best_view.setToolTip(caption)
+            self.best_view_caption.setText(caption)
+
+    def _refresh_telemetry(self) -> None:
+        envelope = self._envelope
+        if envelope is None:
+            return
+        metrics = envelope.metrics
+        output_age = envelope.publication_age_ns(self._now_ns(), self._clock_domain or envelope.clock_domain)
+        self.subtitle.setText(f"{envelope.hierarchy.episode_id}  /  publication {envelope.publication_sequence}")
+        count = lambda kind: sum(n.kind == kind for n in envelope.hierarchy.nodes.values())
+        rgb_age = metrics.source_age_ns.get("rgb")
+        rgb_label = "—" if rgb_age is None else f"{rgb_age / 1e6:.0f} ms"
+        hidden = self.graph_view.hidden_count
+        self.overview.setText(f"RGB  {rgb_label}     /     MAP  r{envelope.hierarchy.map_revision}     /     "
+                              f"OBJECTS  {count('object')}     /     REGIONS  {count('region')}     /     "
+                              f"DROPS  {metrics.dropped_count}     /     GRAPH HIDDEN  {hidden}")
+        stale_region = any(n.kind == "region" and n.attributes.get("stale") for n in envelope.hierarchy.nodes.values())
+        badge = "STALE PUBLICATION" if output_age > 300_000_000 else "REGIONS STALE" if stale_region else "SNAPSHOT RECEIVED"
+        self.status_badge.setText(badge)
+        self.status_badge.setStyleSheet("color:#db9630" if "STALE" in badge else "color:#60beb1")
+        def frame(key):
+            return "unavailable" if key is None else f"{key.sensor_id}:{key.frame_index}"
+        ages = ", ".join(f"{name}={('unavailable' if age is None else f'{age / 1e6:.1f} ms')}"
+                          for name, age in sorted(metrics.source_age_ns.items())) or "none"
+        stale = "stale regions" if any(node.kind == "region" and node.attributes.get("stale")
+                                       for node in envelope.hierarchy.nodes.values()) else "regions current"
+        self.telemetry.setText(
+            f"Episode {envelope.hierarchy.episode_id} · hierarchy r{envelope.hierarchy.revision} · "
+            f"object/map/region r{envelope.hierarchy.object_revision}/{envelope.hierarchy.map_revision}/{envelope.hierarchy.region_revision} · {stale}\n"
+            f"Captured {frame(metrics.captured_frame_id)} · processed {frame(metrics.processed_frame_id)} · "
+            f"published {frame(metrics.published_frame_id)} · drops {metrics.dropped_count} · replaced {metrics.replaced_count} · "
+            f"profile {metrics.actual_profile or 'unavailable'}\n"
+            f"Source ages: {ages} · hierarchy map age {envelope.hierarchy.source_map_age_ns / 1e6:.1f} ms · "
+            f"display publication age {output_age / 1e6:.1f} ms"
+        )
+
+    def _send_command(self, action: str) -> None:
+        if self._control is None:
+            self.command_status.setText("Control unavailable")
+            return
+        status = self._control.request(action)
+        self._show_command_status(status)
+
+    def _refresh_command_status(self) -> None:
+        if self._control is None:
+            return
+        statuses = self._control.latest_statuses()
+        if statuses:
+            self._show_command_status(statuses[-1])
+
+    def _show_command_status(self, status: UiCommandStatus) -> None:
+        reason = f" · {status.reason}" if status.reason else ""
+        self.command_status.setText(f"{status.action.title()} request {status.request_uuid[:8]} · {status.state}{reason}")
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--smoke-exit-ms", type=int, default=None,
+                        help=argparse.SUPPRESS)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if args.smoke_exit_ms is not None and args.smoke_exit_ms < 1:
+        raise SystemExit("--smoke-exit-ms must be positive")
+    return run_desktop(smoke_exit_ms=args.smoke_exit_ms)
+
+
+def run_desktop(
+    publication_reader: Callable[[], DisplayEnvelope | None] | DisplayPublisher | None = None,
+    control_client: UiControlClient | None = None,
+    *,
+    clock_domain: str | None = None,
+    smoke_exit_ms: int | None = None,
+) -> int:
+    """Application entrypoint for a P09-owned external-process adapter."""
+    if smoke_exit_ms is not None and (type(smoke_exit_ms) is not int or smoke_exit_ms < 1):
+        raise ValueError("smoke_exit_ms must be a positive integer or None")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
+    app.setStyle("Fusion")
+    window = DashboardWindow(publication_reader, control_client, clock_domain=clock_domain)
+    window.show()
+    print("NEUSYMNAV_UI_READY", flush=True)
+    if smoke_exit_ms is not None:
+        QtCore.QTimer.singleShot(smoke_exit_ms, app.quit)
+    return app.exec_()
+
+
+if __name__ == "__main__":  # ``python -m neusymnav.visualization.desktop``
+    raise SystemExit(main())
+
+
+__all__ = ["DashboardWindow", "MapWidget", "main", "run_desktop"]

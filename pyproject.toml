@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel>=0.41"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neusymnav"
+version = "0.1.0"
+description = "Provenance-preserving RGB-D navigation and hierarchical object memory"
+requires-python = ">=3.12"
+dependencies = ["numpy>=1.26,<3", "scipy>=1.11,<2", "PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+ui = ["PyQt5>=5.15,<6"]
+
+[project.scripts]
+neusymnav = "neusymnav.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
