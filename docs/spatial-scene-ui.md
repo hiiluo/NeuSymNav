@@ -15,14 +15,22 @@ remain available.
   new publications. Choose `SCENE GRAPH` in **Focus view** for more screen space.
 - Click a gold object to select its canonical ID, show its 3D bounding box and
   inspect its evidence. Alias selection uses the existing canonical resolver.
-- Blue nodes represent geometry-region polygon centroids, not inferred room
-  categories or certified navigable points. Purple nodes are observed visited
-  places. Gold nodes are objects; a dashed outline indicates non-assigned
-  membership. Retired objects are hidden by default in 3D, but remain in
-  Hierarchy and become visible when selected there.
-- Only existing assigned hierarchy relations produce lines. Dotted structural
-  connections do not certify traversability. An object with missing/ambiguous/
-  unavailable membership stays disconnected; proximity does not assign a room.
+- The visible graph has exactly three kinds: **Floor → Room → Object**, in
+  3D Scene, Graph layout and Hierarchy. Internal Building/Place records are not
+  displayed. Gold Object nodes retain their exact measured XYZ centroid and
+  measured bounds; the RGB-D cloud is unchanged.
+- Blue Room nodes use the area centroid of the accepted room polygon. For a
+  concave polygon whose centroid lies outside, an interior clearance center is
+  used instead. The anchor updates with accepted room geometry. Teal Floor nodes
+  use the area-weighted XY center of their rooms. Only Room/Floor display heights
+  are raised: Floor above Room, Room above measured objects. These heights are
+  graph layout, not measured structural elevations.
+- Solid lines connect source-supported, assigned Floor→Room and Room→Object
+  membership. Cyan dashed lines connect Rooms with current accepted structural
+  adjacency, in both 3D Scene and Graph layout. This topology does not certify
+  present robot clearance. Stale, cross-floor or unavailable adjacency is hidden.
+  Missing, ambiguous, stale or unavailable object membership stays disconnected;
+  proximity does not assign a room.
 
 For example, the retained 00805 archive has 20 visible non-assigned objects,
 so its spatial layout does not manufacture room-to-object lines. Investigate
@@ -82,7 +90,7 @@ quantization), 12,000 sampled pixels per frame, and 128 contributing source
 records. This bounded visual decimation does not alter canonical object/map
 geometry. Nodes are capped at 300 and labels are culled to avoid overlap;
 selection/evidence still exposes exact IDs. Raw recordings and object history
-remain unchanged. The UI transport DTO/schema and payload caps are unchanged;
+remain unchanged. The UI transport retains its payload caps and versioned backward decoder;
 point clouds are not serialized into the publication.
 
 Cloud source/time is shown separately from graph object/map revisions and is
@@ -92,7 +100,7 @@ clock/episode contexts clear old geometry. No new dependencies or downloads
 are required. Restart an existing demo to load the changed UI:
 
 ```sh
-bash tools/run_map_demo.sh 00805
+bash tools/run_map_demo.sh 00861 60
 ```
 
 ## Verification artifacts
@@ -104,3 +112,45 @@ from real previously recorded 00805 RGB-D. `dashboard.png` and
 findings and RED reproductions are preserved alongside their fixes and scoped
 final ACCEPT. This UI work does not certify P10, semantic quality, navigation
 performance, or a new long-duration native campaign.
+
+## Current map and graph freshness
+
+The map displays an accumulated measured occupancy overview through a separate
+bounded UI publication worker (up to 5 Hz). The latest local navigation snapshot
+still supplies source-bound robot/planner context, independently of graph work. It can advance before the first canonical graph
+and while detector/region work is pending. Room outlines remain tied to their
+hierarchy map; a differing source/revision is explicitly marked STALE. Robot
+pose is bound to the displayed map's exact source/time/domain. RGB, detector,
+map and historical cloud retain their own capture times. They need not represent
+the same instant; no stale sensor is republished into control as fresh data.
+
+The 2026-10-31 corrections and validation are documented in
+[room-graph-sync-2026-10-31.md](results/room-graph-sync-2026-10-31.md).
+
+## Occupancy map controls
+
+- Wheel over the map to zoom about the cursor.
+- Drag with left, middle or right button to pan.
+- Double-click or **Toàn bộ map** to fit the entire accumulated map.
+- **Về robot** centers once at the local navigation scale; it does not force follow.
+
+Manual zoom and world center survive live map updates, moving map origins and
+window resizing; a new episode/clock resets the view. Occupancy, room outlines,
+robot, camera cone, trail and route use one transform and clip to the viewport.
+These controls change the display only. Source timestamps and STALE indicators
+remain visible. Restart the running demo to load the controls.
+
+Evidence for the new lines/controls: `.runtime/graph-links-map-controls-20261031/`;
+see [validation report](results/graph-links-map-controls-2026-10-31.md).
+
+### Whole map data (2026-10-31 correction)
+
+Zoom/pan now operates on measured 2D history from every mapper integration, not
+only the small moving NavSnapshot. Known areas remain available after the robot
+leaves them and after active 3D tile eviction. Full map fits this accumulated
+extent; manual focus stays at the chosen world coordinates. Unknown gaps remain
+unknown. The display may coarsen its resolution to keep a bounded raster and
+shows the actual metres/cell. An INCOMPLETE flag exposes a history cap or lost
+update. Latest-update age describes the overview source integration; individual
+cells include historical evidence. This display map is not used for motion
+clearance or room membership. See [validation](results/global-map-view-2026-10-31.md).

@@ -896,3 +896,60 @@ preflightreadytrue0,diffcheck0. NativeRSS/IPC andsingle-scenequalitylimitsremain
 publicationdoesnotclaimnewruntimeacceptance. Authorizeddestination
  git@github.com:hiiluo/NeuSymNav.git main; noforcepush/historyrewrite.
 CommitIDs/pushresult/remoteverification saved .runtime/github-push-20261030/.
+
+### 2026-10-31 — Room graph / independent occupancy display
+
+User-authorized continuation; design/plan `docs/room-graph-sync-{design,plan}.md`.
+Implemented: only3visiblekinds, dynamicacceptedroom/floorcenters, ObjectexactXYZ,
+unchangedRGBDcloud, supportedparentlines; boundedindependentlatestnavdisplay,
+source/robotbinding; exactzeroarea native ring normalization + hashbound originfix.
+Originalnativeclosure preserved; configure/build0, worker d64acf40d0e4c96676de7905589699085e646c467f5caf5cfa1503ab39b4372b.
+Correctness: finalfrozenwholeCPU2188pass2skip9deselect/exit0; nativecandidate7pass2skip0;
+Qtactualrender0; diffcheck0. Earlierfixturefailures retained then corrected.
+Runtime: single60sGPUrun/wall74.614s/exit0/completed,1038frames16commits0missing,
+cleanUI0drops,387pinsunchanged;62samples show20mapadvancepairs atfrozenhierarchy;
+all62mapage median76.44/p95250.55ms includesdrain. Independent scopedACCEPT.
+Artifact `.runtime/room-graph-sync-20261031/`,run `runs/demo-room-graph-sync-60s-20261031/`,
+report `docs/results/room-graph-sync-2026-10-31.md`.
+Unproven: semanticroomaccuracy,15nativeObjectmemberships remainunassigned,
+Room→Objectcompleteness,globalroompersistence,P10; pointcloud remainshistorical.
+No install/download/training/siblingwrites/commit/push.
+
+### 2026-10-31 — Room links and map interaction
+
+Implemented user-requested UI additions via source-supported display projection:
+Room–Object solid membership, Room–Room cyan dashed structural links; all views
+retain Floor/Room/Object only and exact measured Object/cloud geometry. Map wheel
+zoom/drag pan/double-click Fit retains world camera across live moving-origin map
+updates; consistent clipped raster/overlays. Independent review found and verified
+fix for ROBOT-label clipping (RED1 → GREEN).
+
+Checks: graph7pass/map6pass0; final focused123pass/4.79s0; independent75pass+8probes0;
+Qt synthetic event/render0, diffcheck0. No new GPU/native/semantic accuracy claim;
+canonical membership and local-window limitation unchanged. No commit/push.
+Artifacts `.runtime/graph-links-map-controls-20261031/`; report
+`docs/results/graph-links-map-controls-2026-10-31.md`.
+
+### 2026-10-31 — Full accumulated map correction
+
+User clarified previous UI zoom only showed robot-local NavSnapshot. Added every-
+integration immutable2D measured history, bounded4096tiles/1million rastercells,
+conservative full-extent coarsening/unknown gaps, separate source-tagged display
+MapOverview. UI-lane assembly and optional backward DTO; local control/room window
+unchanged. Fullmap/Focusrobot buttons and manual world camera.18UI pins updated.
+
+RED UI3 +Focuswheel1; mapping20pass/integration139pass0. Independent59+postdelta22
+pass0/scopedACCEPT. FullCPU first2209pass2fail; fixedbutton layout and projection
+probe discrimination (legacy3column oracle retained),17focusedpass0. Finalfrozen
+fullCPU2211pass2skip9deselect/121.33s0; diffcheck0; actualQt archivednative render0.
+
+Once45sGPU/wall56.38/exit1/incomplete solelyRSSread_errors1;794frames9commits,
+cleanUI0drops;392pins unchanged during run. Global6.75×5.05m vs local4.05²m;
+1126knowncells outsidecurrentlocalwindow including267firstknownretained;46samples
+complete=true. No P10/globalroomquality claim. Onlydesktoplayout/projectiontest
+changed afterrun; explicitpostnativedeltas/finalhashes retained.
+
+Artifacts `.runtime/global-map-view-20261031/`,
+`runs/demo-global-map-view-45s-20261031/`; report
+`docs/results/global-map-view-2026-10-31.md`. No install/download/training,
+siblingwrites/commit/push. Wholemap display restart ready.

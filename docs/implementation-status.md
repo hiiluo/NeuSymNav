@@ -1443,3 +1443,125 @@ mergedframes; allnative/request/filepins and unchangedalignment records verified
 independentlegacyIDF1=92/342 andCG86/331. Twoauditcommands exit0; no reportblocking
 overclaim. No independent fullHOTA/manualGT/geometrynumeric rederivation claimed.
 Artifacts audit/{report.md,result.json,supplement-result.json}, final-manifest.json.
+
+
+2026-10-31 — Cập nhật chính sách điều phối model: Luna xhigh cho task thông thường, Terra cho task khó hơn, cân nhắc Sol cho task thật sự khó; cấm Astra. Implemented: `docs/agent-orchestration.md`, `docs/implementation-plan.md`. Correctness-verified: `git diff --check -- docs/agent-orchestration.md docs/implementation-plan.md docs/implementation-status.md` (exit 0). Runtime-validated: không áp dụng; chưa kiểm chứng việc dispatch model thực tế. Artifact: các tài liệu đã cập nhật.
+
+### Room graph and current occupancy display — 2026-10-31
+
+User-authorized implementation continues completed prior pipeline; scope/design:
+`docs/room-graph-sync-{design,plan}.md`. Implemented: all UI views display only
+Floor→Room→Object, accepted interior room centers/dynamic anchors, weighted floor
+center, elevated Room/Floor only; Object XYZ/bounds and measured cloud unchanged.
+Assigned supported parent edges only. Latest navigation display is independent of
+graph/detector with exact source/time/robot binding and stale room-outline label.
+Exact zero-area native ring retraces normalized after schema validation; native
+origin cell-shift truncation corrected via tracked hash-bound local patch/fresh
+staging build. Original89file closure and old worker unchanged. Three selected
+CG+Visual GPU profiles use candidate worker/UI5Hz; maintained UI checksums refreshed.
+
+Correctness-verified: focused UI72/map44/region79/integration141 tests exit0;
+independent review source-focused76+95/measured-cloud54/frozen49 exit0; native
+candidate7pass2skip exit0; patch-safety7pass exit0; overlay+patch17pass exit0.
+First full CPU2178pass9fail and second2185pass2fail retained: legacy Qt fixtures
+omitted source-map metadata and treated mismatched-map plan as current. Fixed
+fixtures and added explicit mismatched-map STALE regression. Fully frozen final
+whole-suite result follows below; do not infer pass from these earlier failures.
+Native configure/build0; preflight0 ready=true; diffcheck0.
+
+Runtime-validated (bounded wiring/display scope): once60s map00861 GPU run,
+wrapper74.614s/exit0,summarycompleted/errornull,1038frames/16commits/no missing,
+clean shutdown/no workerfailed/no UIpublicationdrops.387functionalpins unchanged.
+62sampled publications/0readerrors;20adjacentpairs mapadvances while hierarchy
+frozen; allsampleage median76.44ms/p95250.55ms including shutdown. Actual archived
+Qt render0 retains20234RGB-Dpoints/16sources,only1Floor/1Room/15Objects,exactObjectXYZ,
+acceptedRoomcenter. All15Objects unassigned; no invented Room→Object edges.
+Native runtime flag remainsfalse/no P10 or semanticroomaccuracy claim. Local4.05m
+roomwindow and persistentobjects outside it remain a membership limitation.
+
+Artifacts: `.runtime/room-graph-sync-20261031/` (logs/sourcepins/native/render/review),
+`runs/demo-room-graph-sync-60s-20261031/`, report
+`docs/results/room-graph-sync-2026-10-31.md`; native recipe `native/dude/README.md`.
+No sibling edits, installs, downloads, training, commit orpush. Next quality step:
+persistent roomgeometry/support across localmapwindows + offline roomGT benchmark;
+not silently included as verified semanticroomaccuracy in this task.
+
+Final frozen gate: `PYTHONPATH=src QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1 .venv/bin/python -m pytest tests -q -rs -m 'not native'`
+exit0:2188passed/2skipped/9deselected/121.02s (`full-cpu-frozen.log`). Skips optional
+Numba and explicit GPUraycastgate, native separatelychecked. Independent scoped
+ACCEPT `review/review.md`/`native-audit.json`/`final-source-hashes.json`:4findings
+resolved; scope excludes semanticroomaccuracy/Room→Objectcompleteness/P10. Final
+387functionalpins unchanged, diffcheck0, point_cloud.py unchanged. Implementation,
+CPUcorrectness and boundednativewiring validation completed within statedscope.
+
+### Graph links and occupancy map controls — 2026-10-31
+
+User requests Room–Object/Room–Room lines and occupancy zoom/pan. Implemented:
+shared display relation projection keeps assigned membership and adds accepted
+current room adjacency as cyan dashed lines in 3D/2D; structural only, no robot
+passage certificate. Deduplicated, visible-node bounded, stale/cross-floor and
+unavailable links suppressed. Exactly three node kinds retained; canonical
+membership and measured RGB-D/Object XYZ unchanged. Missing membership remains
+explicit rather than guessed.
+
+Map: cursor-anchored wheel zoom, all-button drag pan, double-click Fit; one world
+transform for raster/regions/route/robot/camera with viewport clipping. Manual
+world camera persists over source updates/moving origins/resize; resets at new
+episode/domain. Review's ROBOT-label clipping finding reproduced RED then fixed.
+
+Correctness-verified: new graph7pass/map6pass exit0; final focused123pass/4.79s/exit0
+across15UI/map/navigation/publication/cloud test files. Independent scoped ACCEPT:
+75focusedpass +8extra probes exit0, no unresolved findings. diffcheck0. Actual Qt
+synthetic fixture render0, images inspected. Runtime-validated scope is Qt event
+handling/rendering only; no new native/GPU run, performance or semantic-room-quality
+claim. Prior local room-window/unassigned Object limitation persists.
+
+Artifacts `.runtime/graph-links-map-controls-20261031/` (RED/GREEN/final logs,
+rendered PNGs, source hashes and independent review). Plan
+`docs/graph-links-map-controls-plan.md`; report
+`docs/results/graph-links-map-controls-2026-10-31.md`; controls in
+`docs/spatial-scene-ui.md`. No install/download/training/siblingwrites/commit/push.
+Restart demo to load new UI: `bash tools/run_map_demo.sh 00861 300`.
+
+### Whole accumulated occupancy map — 2026-10-31 correction
+
+User clarifies zoom/pan must reveal all mapped history, not just the moving local
+robot window. Implemented: every canonical dirty integration cell feeds bounded
+immutable2D overview history across active3D tile eviction. Classification matches
+localNav gates, unknown stays unknown; reset clears. UI-only full-extent raster
+built off navigation/control lane, <=1million cells with conservative coarsening;
+4096tile state budget/sticky incomplete indication. New typed MapOverview/source
+Nav metadata, optional backward decoder, exact local robot binding/separate ages.
+Local control/room snapshots remain unchanged. UI Fullmap/Focusrobot buttons,
+world zoom/pan and both global/local-focus views preserve manual chosen location.
+18UI script pins refreshed.
+
+Correctness-verified: mapping20pass0; integrated139pass/19.76s0. Independent59pass0
+and provider blocking/failure/provenance probes0; Focusrobot wheel bound issue RED
+then fixed. Initial fullCPU2209pass2fail retained; splitter layout and overbroad
+projection instrumentation corrected, original regression suites17pass/1.46s0.
+Final frozen fullsuite result follows. diffcheck0; actual archived native Qt render0.
+
+Runtime evidence: once45s GPU/wall56.38s/exit1/outcomeincomplete solely resource
+monitor RSSread_errors1; runtimefailed{},794frames/9commits, cleanUI0drops/errors,
+392pins unchanged during run. Global101×135@5cm=6.75×5.05m vs local81²=4.05²m;
+4769knowncells,1126outsidefinallocal (789free/337occupied),267firstknownoutside
+remainknown.46sampledoverviews complete=true/no parseerrors. Data-path component
+validated; whole native/P10 acceptance NOT claimed. Desktop button-row layout
+and projection test are the only post-native functional-pin deltas.
+
+Artifacts `.runtime/global-map-view-20261031/`,
+`runs/demo-global-map-view-45s-20261031/`; report
+`docs/results/global-map-view-2026-10-31.md`, plan `docs/global-map-view-plan.md`.
+Current limits: historical display, bounded/coarsened at large extent, room worker
+still local (this does not fix room membership), native overall incomplete as above.
+No installs/downloads/training/siblingwrites/commit/push. Restart demo to load UI.
+
+Final frozen gate: `PYTHONPATH=src QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1
+OMP_NUM_THREADS=1 .venv/bin/python -m pytest tests -q -rs -m 'not native'` exit0,
+2211passed/2skipped/9deselected/121.33s (`full-cpu-final.log`). Skips optionalNumba
+and explicitGPUraycastgate. Independent post-delta22tests0/1.59s, scopedACCEPT
+retained;392finalpins recorded, only2declaredpostnative deltas; finaldiffcheck0.
+Wholemap display implementation and CPUcorrectness verified; actualnative-data
+view validated withincomponent scope, whole45srun remainsincomplete/RSS1.
