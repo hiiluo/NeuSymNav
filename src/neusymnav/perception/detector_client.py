@@ -142,13 +142,20 @@ class _BoundedProcess:
         os.set_blocking(fd, False)
         selector = selectors.DefaultSelector()
         selector.register(fd, selectors.EVENT_READ)
+        # A large JSON-lines RGB reply arrives in many pipe fragments. Retain
+        # the searched prefix within this receive call; otherwise each read
+        # rescans all previous pixels (quadratic work). A new receive starts at
+        # zero so any complete buffered next reply is still recognized.
+        line_search_start = 0
         try:
             while True:
                 if time.monotonic() >= deadline:
                     raise TimeoutError('worker whole-operation deadline exceeded')
                 size = None
                 if self.lines:
-                    end = self.buffer.find(b'\n')
+                    end = self.buffer.find(b'\n', line_search_start)
+                    if end < 0:
+                        line_search_start = len(self.buffer)
                     if end >= 0:
                         size, offset = end, 0
                 elif len(self.buffer) >= 4:

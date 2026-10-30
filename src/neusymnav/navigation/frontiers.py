@@ -15,6 +15,7 @@ except ImportError:  # NumPy-only installations retain the reference traversal.
     _binary_propagation = None
 
 from ._grid import GridSnapshot, GridState, FootprintMaskCache
+from . import _frontier_kernel
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ class FrontierExtractor:
         self.max_viewpoint_offset_m = float(max_viewpoint_offset_m)
         self.max_viewpoints_per_frontier = max_viewpoints_per_frontier
         self.min_viewpoint_separation_m = float(min_viewpoint_separation_m)
+        _frontier_kernel.prepare()
 
     def extract(self, snapshot: GridSnapshot, robot_xy: tuple[float, float], *,
                 allow_validated_start_anchor: bool = False,
@@ -238,6 +240,28 @@ def _ranked_reachable_viewpoints(
     if not cells or not n_offsets:
         return []
 
+    reduced = _frontier_kernel.run(cells, reachable, offsets)
+    if reduced is None:
+        reduced = _vectorized_viewpoint_reductions(cells, reachable, offsets)
+    min_distance, first_seen = reduced
+
+    candidates = np.flatnonzero(np.isfinite(min_distance))
+    if not len(candidates):
+        return []
+    candidate_rows, candidate_cols = np.divmod(candidates, w)
+    center = np.asarray(cells, dtype=np.float64).mean(axis=0)
+    target_distance = np.abs(min_distance[candidates] - 0.45)
+    centroid_distance = ((candidate_rows - center[0]) ** 2
+                         + (candidate_cols - center[1]) ** 2)
+    order = np.lexsort((first_seen[candidates], centroid_distance, target_distance))
+    return [divmod(int(cell), w) for cell in candidates[order]]
+
+
+def _vectorized_viewpoint_reductions(cells, reachable, offsets):
+    """Original bounded-batch NumPy fallback, including its numeric semantics."""
+    h, w = reachable.shape
+    offset_rows, offset_cols, distances = offsets
+    n_offsets = len(distances)
     min_distance = np.full(h * w, np.inf, dtype=np.float64)
     first_seen = np.full(h * w, np.iinfo(np.int64).max, dtype=np.int64)
     offset_order = np.arange(n_offsets, dtype=np.int64)
@@ -257,16 +281,7 @@ def _ranked_reachable_viewpoints(
         np.minimum.at(min_distance, flat_cells, pair_distances)
         np.minimum.at(first_seen, flat_cells, pair_order)
 
-    candidates = np.flatnonzero(np.isfinite(min_distance))
-    if not len(candidates):
-        return []
-    candidate_rows, candidate_cols = np.divmod(candidates, w)
-    center = np.asarray(cells, dtype=np.float64).mean(axis=0)
-    target_distance = np.abs(min_distance[candidates] - 0.45)
-    centroid_distance = ((candidate_rows - center[0]) ** 2
-                         + (candidate_cols - center[1]) ** 2)
-    order = np.lexsort((first_seen[candidates], centroid_distance, target_distance))
-    return [divmod(int(cell), w) for cell in candidates[order]]
+    return min_distance, first_seen
 
 
 def _neighbors(connectivity: int) -> tuple[tuple[int, int], ...]:

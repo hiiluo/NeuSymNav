@@ -12,7 +12,7 @@ import math
 import numpy as np
 from ..contracts import Observation, NavSnapshot, GridState
 from ._grid import GridSpec
-from ._occupancy_core import OccupancyMapper, DuplicateFrameError
+from ._occupancy_core import OccupancyMapper, DuplicateFrameError, _PreparedMeasuredProjection
 
 
 @dataclass(frozen=True)
@@ -137,7 +137,8 @@ class NavMapper:
                  tile_size_cells: int=64, height_bin_m: float | None=None,
                  min_depth_m: float=.15,max_depth_m: float=5.,sampling_stride: int=4,
                  snapshot_radius_m: float=8., max_snapshot_cells: int=1_000_000,
-                 tile_archive_dir=None, max_active_tiles: int | None=None, raycast_workers: int=1):
+                 tile_archive_dir=None, max_active_tiles: int | None=None, raycast_workers: int=1,
+                 raycast_backend=None):
         if not isinstance(robot,RobotGeometry) or not floor_datum_source or not math.isfinite(floor_z_m):
             raise ValueError('explicit geometry and calibrated floor datum required')
         if len(calibration_hash)!=64 or any(c not in '0123456789abcdef' for c in calibration_hash):
@@ -149,9 +150,11 @@ class NavMapper:
         if height_bin_m>robot.near_ground_tolerance_m:raise ValueError('height bin exceeds declared near-ground tolerance')
         self.robot=robot;self.floor_z_m=float(floor_z_m);self.floor_datum_source=floor_datum_source
         self.calibration_hash=calibration_hash;self.snapshot_radius_m=snapshot_radius_m
+        self._raycast_backend=raycast_backend;self._closed=False
         self._core=OccupancyMapper(GridSpec(resolution_m,tile_size_cells,*origin_xy,floor_z_m),
             robot_height_m=robot.height_m,height_bin_m=height_bin_m,min_depth_m=min_depth_m,
-            max_depth_m=max_depth_m,sampling_stride=sampling_stride,tile_archive_dir=tile_archive_dir,raycast_workers=raycast_workers)
+            max_depth_m=max_depth_m,sampling_stride=sampling_stride,tile_archive_dir=tile_archive_dir,raycast_workers=raycast_workers,
+            raycast_collector=None if raycast_backend is None else raycast_backend.collect)
         if max_active_tiles is not None:
             if type(max_active_tiles) is not int or max_active_tiles<1:raise ValueError('invalid tile cap')
             n=tile_size_cells**2
@@ -166,7 +169,13 @@ class NavMapper:
         self._core._archive_reservation = factory
 
     def reset(self, episode_id=None):
+        if self._closed:raise RuntimeError('mapper closed')
         self._core.reset(episode_id);self._revision=0;self._clock_domain=None;self._frame_watermarks={};self._current_coverage=None
+
+    def close(self,timeout_s=1.):
+        self._closed=True
+        if self._raycast_backend is not None:return self._raycast_backend.close(timeout_s)
+        return dict(clean_shutdown=True)
 
     @staticmethod
     def _adapt(obs):
@@ -178,14 +187,17 @@ class NavMapper:
             no_return=obs.no_return,no_return_range_m=obs.no_return_range_m)
 
     def update(self, observation: Observation) -> NavSnapshot:
+        if self._closed:raise RuntimeError('mapper closed')
         if not isinstance(observation,Observation):raise ValueError('Observation required')
         if self._clock_domain is not None and observation.clock_domain!=self._clock_domain:
             raise ValueError('map clock domain mismatch; reset required')
         previous=self._frame_watermarks.get(observation.key.sensor_id)
         if previous is not None and observation.key.frame_index<=previous:
             raise DuplicateFrameError('duplicate or replayed sensor frame')
-        self._check_ray_budget(observation)
-        delta=self._core.integrate(self._adapt(observation))
+        camera_points=self._check_ray_budget(observation)
+        adapted=self._adapt(observation)
+        prepared=None if camera_points is None else _PreparedMeasuredProjection(adapted,camera_points)
+        delta=self._core._integrate(adapted,prepared)
         self._frame_watermarks[observation.key.sensor_id]=observation.key.frame_index
         self._clock_domain=observation.clock_domain;self._revision+=1
         # Only measured rays can certify current-frame bootstrap. Certified
@@ -232,11 +244,19 @@ class NavMapper:
         depths=obs.depth_m[::stride,::stride]
         use=obs.valid_depth[::stride,::stride] & (depths>=core.min_depth_m)&(depths<core.max_depth_m)
         if use.sum()>100_000:raise MemoryError('per-frame ray count budget exceeded')
-        points=[]
+        points=[];camera_points=None
         if use.any():
             rays=np.stack((uu[use],vv[use],np.ones(use.sum())),axis=1)@np.linalg.inv(obs.K).T
             rays/=rays[:,2:3]
-            points.append((rays*depths[use,None])@obs.T_world_camera[:3,:3].T+obs.T_world_camera[:3,3])
+            measured_camera_points=rays*depths[use,None]
+            points.append(measured_camera_points@obs.T_world_camera[:3,:3].T+obs.T_world_camera[:3,3])
+            # Only this exact pinhole/measured case has identical core filtering.
+            # Leave the original private world transform in core: permuting a
+            # canonical projected result could alter BLAS rounding at boundaries.
+            if ((obs.no_return is None or not obs.no_return.any())
+                    and np.array_equal(obs.K[2],[0.,0.,1.])
+                    and np.isfinite(measured_camera_points).all()):
+                camera_points=measured_camera_points
         if obs.no_return is not None and obs.no_return.any():
             mask=obs.no_return[::stride,::stride]
             if mask.sum()>100_000:raise MemoryError('per-frame ray count budget exceeded')
@@ -251,6 +271,8 @@ class NavMapper:
             vote_bytes=int(extent[0])*int(extent[1])*(3+2*core.height_bin_count)
             if vote_bytes>128*1024*1024:
                 raise MemoryError('per-frame vote buffer budget exceeded')
+        if camera_points is not None:camera_points.flags.writeable=False
+        return camera_points
 
     def _snapshot(self, obs, *, single_frame=False):
         grid=self._core.grid;res=grid.resolution_m

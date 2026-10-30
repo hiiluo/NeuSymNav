@@ -32,6 +32,14 @@ class DuplicateFrameError(ValueError):
 
 
 @dataclass(frozen=True)
+class _PreparedMeasuredProjection:
+    """Call-local camera points bound to the exact private observation object."""
+
+    source: object
+    camera_points: np.ndarray
+
+
+@dataclass(frozen=True)
 class MapDelta:
     """Tiles whose occupancy evidence changed in one integration call."""
 
@@ -186,6 +194,7 @@ class OccupancyMapper:
         max_depth_m: float = 5.0,
         sampling_stride: int = 4,
         raycast_workers: int = 1,
+        raycast_collector=None,
         tile_archive_dir: str | Path | None = None,
     ) -> None:
         if not math.isfinite(robot_height_m) or robot_height_m <= height_bin_m:
@@ -202,6 +211,9 @@ class OccupancyMapper:
             raise ValueError("raycast workers must be an integer from 1 to 4")
         self._archive_reservation = None
         self.raycast_workers = raycast_workers
+        if raycast_collector is not None and not callable(raycast_collector):
+            raise ValueError('raycast collector must be callable')
+        self._raycast_collector=collect_ray_votes if raycast_collector is None else raycast_collector
         self.grid = grid
         self.robot_height_m = float(robot_height_m)
         self.height_bin_m = float(height_bin_m)
@@ -271,6 +283,10 @@ class OccupancyMapper:
 
     def integrate(self, obs: Observation) -> MapDelta:
         """Integrate one immutable RGB-D observation from its source pose."""
+        return self._integrate(obs)
+
+    def _integrate(self, obs: Observation, prepared: _PreparedMeasuredProjection | None = None) -> MapDelta:
+        """Private adapter entry; prepared points never survive this call."""
         integration_started_ns = time.perf_counter_ns()
         key = (obs.episode_id, obs.frame_id)
         if key in self._seen_frames:
@@ -289,23 +305,33 @@ class OccupancyMapper:
         camera_origin = obs.T_world_camera_cv[:3, 3]
         rotation = obs.T_world_camera_cv[:3, :3]
         stride = self.sampling_stride
-        sampled_depth = obs.depth_m[::stride, ::stride]
-        sampled_valid = obs.valid_depth[::stride, ::stride]
-        usable = (
-            sampled_valid
-            & np.isfinite(sampled_depth)
-            & (sampled_depth >= self.min_depth_m)
-            & (sampled_depth < self.max_depth_m)
-        )
-        sample_v, sample_u = np.nonzero(usable)
-        depths = sampled_depth[sample_v, sample_u].astype(np.float64)
-        pixels = np.column_stack((sample_u * stride, sample_v * stride, np.ones(len(depths))))
-        rays = pixels @ inverse_intrinsics.T
-        finite_rays = np.isfinite(rays).all(axis=1) & (np.abs(rays[:, 2]) >= 1e-12)
-        rays = rays[finite_rays]
-        depths = depths[finite_rays]
-        rays /= rays[:, 2:3]
-        measured_endpoints = (rays * depths[:, None]) @ rotation.T + camera_origin
+        if prepared is not None:
+            if (type(prepared) is not _PreparedMeasuredProjection or prepared.source is not obs
+                    or not isinstance(prepared.camera_points, np.ndarray)
+                    or prepared.camera_points.ndim != 2 or prepared.camera_points.shape[1] != 3
+                    or prepared.camera_points.dtype != np.float64 or prepared.camera_points.flags.writeable
+                    or not np.isfinite(prepared.camera_points).all()):
+                raise ValueError('invalid call-local measured projection')
+            camera_points = prepared.camera_points
+        else:
+            sampled_depth = obs.depth_m[::stride, ::stride]
+            sampled_valid = obs.valid_depth[::stride, ::stride]
+            usable = (
+                sampled_valid
+                & np.isfinite(sampled_depth)
+                & (sampled_depth >= self.min_depth_m)
+                & (sampled_depth < self.max_depth_m)
+            )
+            sample_v, sample_u = np.nonzero(usable)
+            depths = sampled_depth[sample_v, sample_u].astype(np.float64)
+            pixels = np.column_stack((sample_u * stride, sample_v * stride, np.ones(len(depths))))
+            rays = pixels @ inverse_intrinsics.T
+            finite_rays = np.isfinite(rays).all(axis=1) & (np.abs(rays[:, 2]) >= 1e-12)
+            rays = rays[finite_rays]
+            depths = depths[finite_rays]
+            rays /= rays[:, 2:3]
+            camera_points = rays * depths[:, None]
+        measured_endpoints = camera_points @ rotation.T + camera_origin
         endpoints = measured_endpoints
         has_return = np.ones(len(endpoints), dtype=np.bool_)
         if obs.no_return is not None and np.any(obs.no_return[::stride, ::stride]):
@@ -328,7 +354,7 @@ class OccupancyMapper:
                     has_return = np.concatenate((
                         has_return, np.zeros(len(no_hit_endpoints), dtype=np.bool_)
                     ))
-        votes = collect_ray_votes(
+        votes = self._raycast_collector(
             endpoints,
             camera_origin,
             has_return=has_return,

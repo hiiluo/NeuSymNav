@@ -1,6 +1,8 @@
 """Small dependency-free polygon operations for M8 simple rings."""
 from __future__ import annotations
 import math
+import struct
+from functools import lru_cache
 from typing import Sequence
 from ._types import Point2, Polygon2D, Ring2D, ring_area
 
@@ -81,7 +83,7 @@ def _intersection(p1,p2,q1,q2):
     det1=x1*y2-y1*x2; det2=x3*y4-y3*x4
     return ((det1*(x3-x4)-(x1-x2)*det2)/den,(det1*(y3-y4)-(y1-y2)*det2)/den)
 
-def _ring_intersection_area(a,b):
+def _ring_intersection_area_uncached(a,b):
     total=0.0
     triangles_a,triangles_b=_triangulate(a),_triangulate(b)
     for ta in triangles_a:
@@ -89,6 +91,26 @@ def _ring_intersection_area(a,b):
             clipped=_clip_convex(ta,tb)
             if len(clipped)>=3: total+=ring_area(tuple(clipped))
     return total
+
+def _ring_key(ring):
+    # Exact float bytes preserve signed zero. Only bounded ordinary finite
+    # coordinates enter this pure geometry cache; no source IDs or verdicts
+    # about map freshness, lineage or membership are retained.
+    if not isinstance(ring,(tuple,list)) or len(ring)>MAX_RING_VERTICES:return None
+    if any(not isinstance(p,(tuple,list)) or len(p)!=2 or
+           any(type(v) is not float or not math.isfinite(v) for v in p) for p in ring):return None
+    return struct.pack('!'+str(2*len(ring))+'d',*(v for p in ring for v in p))
+
+def _key_ring(key):return tuple(struct.iter_unpack('!dd',key))
+
+@lru_cache(maxsize=64)
+def _cached_ring_intersection_area(a,b):
+    return _ring_intersection_area_uncached(_key_ring(a),_key_ring(b))
+
+def _ring_intersection_area(a,b):
+    ka,kb=_ring_key(a),_ring_key(b)
+    if ka is None or kb is None:return _ring_intersection_area_uncached(a,b)
+    return _cached_ring_intersection_area(ka,kb)
 
 def intersection_area(a: Polygon2D,b: Polygon2D):
     value=_ring_intersection_area(a.outer,b.outer)
@@ -125,7 +147,11 @@ def valid_ring(ring):
     except (TypeError,ValueError,OverflowError):
         return False
     if any(len(point)!=2 or not all(math.isfinite(v) for v in point) for point in normalized):return False
-    return _valid_ring(normalized)
+    return _cached_valid_ring(_ring_key(normalized))
+
+@lru_cache(maxsize=64)
+def _cached_valid_ring(key):
+    return _valid_ring(_key_ring(key))
 
 
 def _valid_ring(ring):
