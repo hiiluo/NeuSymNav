@@ -1,5 +1,6 @@
 """Bounded, selectable scene graph drawn from the current display projection."""
 from __future__ import annotations
+import math
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -21,13 +22,20 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
         self.setBackgroundBrush(QtGui.QColor("#0c1421"))
         self.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.setDragMode(self.ScrollHandDrag)
-        self.setMinimumSize(240, 220)
+        self.setMinimumSize(240, 120)
+        self.setTransformationAnchor(self.AnchorUnderMouse)
+        self._manual_view = False
+        self._episode = None
         self.node_items = {}
         self.hidden_count = 0
         self._selecting = False
         self.scene().selectionChanged.connect(self._selection_changed)
 
     def set_envelope(self, envelope):
+        if self._episode != envelope.hierarchy.episode_id:
+            self._manual_view = False
+            self._episode = envelope.hierarchy.episode_id
+        center = self.mapToScene(self.viewport().rect().center())
         self._selecting = True
         try:
             self.scene().clear()
@@ -100,7 +108,10 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
                 text = self.scene().addSimpleText("Waiting for scene graph")
                 text.setBrush(QtGui.QColor("#93a3b5"))
             self.scene().setSceneRect(self.scene().itemsBoundingRect().adjusted(-24, -24, 24, 24))
-            self.fitInView(self.sceneRect(), QtCore.Qt.KeepAspectRatio)
+            if self._manual_view:
+                self.centerOn(center)
+            else:
+                self.fit_view()
         finally:
             self._selecting = False
 
@@ -111,7 +122,6 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
             item = self.node_items.get(node_id)
             if item is not None and item.data(1) == "object":
                 item.setSelected(True)
-            self.fitInView(self.sceneRect(), QtCore.Qt.KeepAspectRatio)
         finally:
             self._selecting = False
 
@@ -124,5 +134,34 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if not self.sceneRect().isEmpty():
+        if not self._manual_view and not self.sceneRect().isEmpty():
             self.fitInView(self.sceneRect(), QtCore.Qt.KeepAspectRatio)
+
+    def fit_view(self):
+        self._manual_view = False
+        self.resetTransform()
+        self.fitInView(self.sceneRect(), QtCore.Qt.KeepAspectRatio)
+
+    def zoom_by(self, factor):
+        current = math.hypot(self.transform().m11(), self.transform().m12())
+        target = min(20., max(.0001, current*factor))
+        self._manual_view = True
+        self.scale(target/max(current,1e-9), target/max(current,1e-9))
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y() or event.pixelDelta().y()*6
+        if event.modifiers() & QtCore.Qt.ControlModifier:
+            self._manual_view = True
+            self.rotate(delta/120.*10.)
+        else:
+            self.zoom_by(math.exp(min(2., max(-2., delta/120.*math.log(1.15)))))
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._manual_view = True
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        self.fit_view()
+        event.accept()

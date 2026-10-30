@@ -6,7 +6,7 @@ import time
 from neusymnav.runtime.ui_transport import UiProcess
 
 
-def test_external_demo_scales_all_widgets_by_an_additional_fifty_percent(tmp_path,monkeypatch):
+def test_external_demo_preserves_desktop_scale_without_extra_zoom(tmp_path,monkeypatch):
     monkeypatch.setenv('QT_QPA_PLATFORM','offscreen')
     monkeypatch.setenv('QT_SCALE_FACTOR','1.0')
     monkeypatch.setenv('QT_AUTO_SCREEN_SCALE_FACTOR','0')
@@ -18,7 +18,7 @@ def test_external_demo_scales_all_widgets_by_an_additional_fifty_percent(tmp_pat
         deadline=time.monotonic()+5
         while not (tmp_path/'ready.json').exists() and time.monotonic()<deadline:time.sleep(.01)
         ready=json.loads((tmp_path/'ready.json').read_text())
-        assert ready['device_pixel_ratio']==1.5
+        assert ready['device_pixel_ratio']==1.0
         import os
         assert os.environ['QT_SCALE_FACTOR']=='1.0'
     finally:assert ui.close(2)['clean_shutdown']
