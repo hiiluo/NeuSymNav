@@ -16,7 +16,7 @@
 - Canonical world Z-up, right-handed; mét/radian; optical camera +X phải/+Y xuống/+Z trước; metric axial depth. Y-up adapter theo ma trận trong spec.
 - Runtime single-floor, pose simulator, frontier-only; semantic GT chỉ evaluator. Extensions E1–E4 chưa thuộc core.
 - Một canonical object owner; alias/provenance xuyên consumers. Region ID độc lập nhãn phòng. Unknown không free; structural connectivity không bảo đảm robot passability.
-- Main `gpt-6.1-sol`/`medium`; Luna `gpt-6-luna`/`xhigh`; Sol quan trọng `gpt-6.1-sol`/`high`, `xhigh` khi có lý do. Cấm mọi model/alias chứa `astra`.
+- Chọn model và effort theo [chính sách điều phối hiện hành](agent-orchestration.md); các nhãn owner/reviewer cụ thể bên dưới là phân công của kế hoạch cũ, không ghi đè chính sách hiện hành.
 - Không training/tải lớn/push/publish hoặc tự commit. Một GPU workload/benchmark tại một thời điểm; không đổi gate/TTL để che fail.
 - Tài liệu mô tả **lệnh và files sẽ được tạo**, không khẳng định chúng đã có hoặc đã chạy. Lệnh dưới đây chạy từ `NeuSymNav/` bằng interpreter được P00 khóa; `python` là interpreter đó, không mặc định Python hệ thống.
 

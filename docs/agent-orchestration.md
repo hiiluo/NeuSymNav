@@ -5,23 +5,23 @@
 | Vai trò | Model ID | Effort | Phạm vi |
 | --- | --- | --- | --- |
 | Main | `gpt-6.1-sol` | `medium` | Giữ mục tiêu, contracts, tích hợp, kiểm chứng và trả lời |
-| Worker thông thường | `gpt-6-luna` | `xhigh` | Kiểm kê, port có contract rõ, fixtures, serialization, CLI/UI, docs, tổng hợp evidence |
-| Worker có phạm vi rõ nhưng cần Sol | `gpt-6.1-sol` | `medium` | Thay đổi vừa phải, rủi ro cục bộ, oracle rõ |
-| Worker/reviewer quan trọng | `gpt-6.1-sol` | `high` | Geometry, ID/merge, transaction, IPC, scheduling, GT isolation và đánh giá khoa học |
-| Điều tra đặc biệt khó | `gpt-6.1-sol` | `xhigh` | Race khó tái hiện, reasoning xuyên module hoặc bất đồng chưa giải quyết bằng evidence |
+| Worker thông thường, dễ thực hiện | `gpt-6-luna` | `xhigh` | Mặc định cho task có phạm vi và tiêu chí rõ |
+| Worker cho task khó hơn | `gpt-6.1-terra` | Tùy tình huống | Bất định hoặc rủi ro vượt khả năng phù hợp của Luna |
+| Worker/reviewer cho task thật sự khó | `gpt-6.1-sol` | Tùy tình huống | Cân nhắc khi độ khó hoặc evidence đòi hỏi |
 
-**Tuyệt đối không sử dụng GPT-6 Astra hoặc bất kỳ model/alias nào chứa `astra`, không phân biệt hoa thường. Áp dụng cho main, subagent, reviewer và fallback.** Chỉ dispatch các model trong bảng khi công cụ thực tế hỗ trợ. Không mặc định `max`/`ultra`.
+**Tuyệt đối không sử dụng GPT-6 Astra hoặc bất kỳ model/alias nào chứa `astra`, không phân biệt hoa thường. Áp dụng cho main, subagent, reviewer và fallback.** Chỉ dispatch model khi công cụ thực tế hỗ trợ; chọn effort theo tình huống, không mặc định `max`/`ultra`.
 
-Luna Extra High được dùng chủ động và thoải mái khi có việc độc lập hữu ích, không có quota nội bộ hay số lượt gọi cứng. Điều này không có nghĩa tạo agent cho mỗi thao tác nhỏ hoặc chạy trùng việc. Chất lượng contract và giảm rework quan trọng hơn việc đẩy mọi việc sang model nhẹ.
+Luna Extra High là lựa chọn mặc định cho task bình thường, dễ thực hiện. Dùng Terra khi task khó hơn; cân nhắc Sol cho task thật sự khó. Không tạo agent cho mỗi thao tác nhỏ hoặc chạy trùng việc.
 
-Main model do người dùng/công cụ cấu hình; Markdown không chuyển model. Nếu runtime xác nhận main là model bị cấm, dừng và báo cần đổi. Nếu không có metadata model, không đoán hay tuyên bố đã đổi. Model được phép nhưng khác cấu hình mong muốn: báo ngắn và chỉ làm trong năng lực phù hợp. Luna không có: dùng Sol Medium/High phù hợp, ghi fallback. Sol không có: main được phép tự làm nếu phù hợp; phần rủi ro cao chưa đủ năng lực phải ghi blocked, không chuyển sang Astra.
+Main model do người dùng/công cụ cấu hình; Markdown không chuyển model. Nếu runtime xác nhận main là model bị cấm, dừng và báo cần đổi. Nếu không có metadata model, không đoán hay tuyên bố đã đổi. Nếu model được chọn không khả dụng, chọn model được phép phù hợp với độ khó và ghi fallback; nếu không có lựa chọn phù hợp, ghi blocked.
 
 ## 2. Phân công theo rủi ro
 
-- **Luna xhigh:** inventory/hash, source/license map, chuyển tên import trong phạm vi đã chốt, adapters serialization với schema đóng, fixtures độc lập, UI, CLI, báo cáo metrics. Không giao tự quyết coordinate/identity semantics chỉ vì file ngắn.
-- **Sol high ngay từ đầu:** đổi Y-up→Z-up, axial/range, occupancy/no-return, association và alias, canonical graph transaction, clock domain, queue/worker lifecycle, room lineage/membership, denominators và GT leakage.
+- **Luna xhigh:** task thông thường có contract và oracle rõ, như inventory, serialization, fixtures, UI, CLI và tổng hợp evidence.
+- **Terra:** task khó hơn, bao gồm bất định về invariant, thay đổi xuyên module hoặc review cần phân tích sâu; chọn effort theo tình huống.
+- **Sol:** cân nhắc cho task thật sự khó, chẳng hạn race khó tái hiện hoặc bất đồng xuyên module chưa giải quyết bằng evidence; chọn effort theo tình huống.
 - **Main:** chốt public contracts; quản lý dependency/environment; resolve interface conflicts; kiểm tra báo cáo worker; cập nhật integration status. Main có thể tự làm task nhỏ thay vì dispatch.
-- **Nâng cấp:** khi Luna tìm thấy bất định về invariant, thay contract xuyên module, hoặc đã thử một hướng có căn cứ nhưng thiếu kết luận, chuyển evidence cho Sol High. Không bắt Luna retry vô hạn. Sol High còn vướng thì thu hẹp vấn đề hoặc dùng Sol xhigh; không coi effort cao là thay thế cho reproduction.
+- **Nâng cấp:** chuyển evidence từ Luna sang Terra khi độ khó vượt phạm vi phù hợp; cân nhắc Sol nếu vấn đề thật sự khó hoặc vẫn chưa được giải quyết. Không retry vô hạn; effort cao không thay thế reproduction.
 
 ## 3. Song song và ownership
 
@@ -48,12 +48,12 @@ Khi công cụ hỗ trợ `collaboration.spawn_agent`, đặt rõ `model`, `reas
 }
 ```
 
-Mỗi dispatch thực tế phải thêm: snapshot/commit hoặc source hashes đang review, inputs, signatures cần dùng, tiêu chí pass, output directory riêng, dependencies đã sẵn sàng và lý do chọn model. Với task quan trọng dùng `gpt-6.1-sol`/`high`; không tái sử dụng nguyên ví dụ khi scope khác.
+Mỗi dispatch thực tế phải thêm: snapshot/commit hoặc source hashes đang review, inputs, signatures cần dùng, tiêu chí pass, output directory riêng, dependencies đã sẵn sàng và lý do chọn model. Chọn Luna, Terra hoặc Sol theo độ khó và effort phù hợp; không tái sử dụng nguyên ví dụ khi scope khác.
 
 ## 5. Review và tiêu chí hoàn thành
 
 - Task nhỏ theo contract đóng: main đọc diff, xem assertion và output kiểm tra; không bắt tạo reviewer mới cho mọi file tài liệu.
-- Các gate **P01, P04, P06, P07, P10** cần reviewer độc lập Sol High trên snapshot ổn định. Reviewer khác implementer, không sửa đồng thời với writer. Phát hiện phải kèm path, tình huống gây lỗi, hậu quả và test/reproduction đề nghị.
+- Các gate **P01, P04, P06, P07, P10** cần reviewer độc lập với model và effort theo độ khó trên snapshot ổn định. Reviewer khác implementer, không sửa đồng thời với writer. Phát hiện phải kèm path, tình huống gây lỗi, hậu quả và test/reproduction đề nghị.
 - Main xác minh findings; không chấp nhận hay bác chỉ dựa vào kết luận của agent. Sửa lỗi thật và chạy test liên quan; chỉ mở rộng tests khi có rủi ro mới.
 - Bàn giao task gồm: code đã nối vào đường chạy nào, tests/exit code, source/runtime profile, artifact, limitations. Unit pass không thay native runtime validation; số test cũ của hai repo không phải kết quả NeuSymNav.
 - Không tự commit/push/publish nếu chưa có yêu cầu tương ứng. Khi người dùng đã cho phép commit, main điều phối checkpoint sau gate; subagent không tự commit chung workspace.
@@ -74,7 +74,8 @@ NeuSymNav/docs/implementation-plan.md. Đọc NeuSymNav/AGENTS.md,
 docs/agent-orchestration.md và docs/implementation-status.md trước.
 
 Main dùng GPT-6.1 Sol Medium. Tôi cho phép chủ động phân công Luna xhigh
-cho việc phù hợp và GPT-6.1 Sol Medium/High/xhigh theo rủi ro trong hướng dẫn.
+cho việc bình thường, GPT-6.1 Terra cho việc khó hơn và GPT-6.1 Sol
+cho việc thật sự khó, với effort theo hướng dẫn.
 Tuyệt đối không dùng GPT-6 Astra hoặc alias chứa astra. Không tự tạo agent con
 ngoài điều phối của main. Chỉ sửa NeuSymNav; hai folder nguồn giữ nguyên.
 
