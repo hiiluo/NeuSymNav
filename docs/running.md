@@ -1,5 +1,30 @@
 # Running NeuSymNav
 
+## Current CUDA checkout: choose a map
+
+The current CUDA checkout has checked local assets/profiles for **00770, 00802,
+00861**. List prepared profiles and check the chosen one before launch:
+
+```bash
+bash tools/run_map_demo.sh --list
+bash tools/run_map_demo.sh 00770 --preflight
+bash tools/run_map_demo.sh 00770 300
+bash tools/run_map_demo.sh 00802 300
+bash tools/run_map_demo.sh 00861 300
+```
+
+These GPU profiles use the selected YOLOE11s640/.30 + CGvisual, radius.125m,
+height1m and margin.05m. Each new output starts with an empty map/graph. The new
+profiles retain existing scene-specific measuredfloor/initialpose provenance;
+no simulator/navmesh occupancy seeds the runtime map.00337mesh is present but
+has no prepared profile here. The00800–00809 Intel/machine-local profiles below
+are available only where their local assets and generated configs exist.
+
+The selector keeps existing `configs/demo-MAP.local.json` support on the Intel
+setup; otherwise00770/00802/00861 select the currentGPUprofiles. MainGPU wrappers
+also accept `NEUSYMNAV_DEMO_CONFIG` for an explicit profile.
+
+
 ## Local Intel/CPU demo on this machine (2026-10-30)
 
 ```sh

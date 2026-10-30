@@ -3,7 +3,10 @@ set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$project_root"
 if [[ "${1:-}" == --list ]]; then
-    for map in 00800 00801 00802 00803 00804 00805 00806 00807 00808 00809; do
+    for map in 00770 00802 00861; do
+        if [[ -f "configs/p10/demo-yoloe11s-conceptgraphs-visual-gpu-${map}.json" ]]; then echo "$map"; fi
+    done
+    for map in 00800 00801 00803 00804 00805 00806 00807 00808 00809; do
         if [[ -f "configs/demo-${map}.local.json" ]]; then echo "$map"; fi
     done
     exit 0
@@ -15,6 +18,16 @@ if (( $# < 1 || $# > 3 )); then
 fi
 map="$1"; shift
 case "$map" in
+    00770|00802|00861)
+        gpu_config="$project_root/configs/p10/demo-yoloe11s-conceptgraphs-visual-gpu-${map}.json"
+        if [[ -f "$gpu_config" ]]; then
+            # Keep explicit machine-local profiles supported on the Intel setup.
+            if [[ ! -f "$project_root/configs/demo-${map}.local.json" ]]; then
+                export NEUSYMNAV_DEMO_CONFIG="$gpu_config"
+                exec bash tools/run_gpu_demo.sh "$@"
+            fi
+        fi
+        ;;
     0080[0-9]) ;;
     apt_[0-5]) echo 'ReplicaCAD requires articulated objects; the current live sensor disables physics. Full-scene demo is not ready.' >&2; exit 1 ;;
     *) echo "Unknown map: $map" >&2; exit 2 ;;
