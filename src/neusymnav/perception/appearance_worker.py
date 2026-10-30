@@ -13,6 +13,7 @@ import argparse
 import base64
 import hashlib
 import importlib.metadata
+import inspect
 import json
 import math
 import os
@@ -28,6 +29,7 @@ import numpy as np
 
 SUPPORTED_MODEL_NAME = "ViT-B-32"
 SUPPORTED_PREPROCESSING_ID = "openclip-vit-b-32-openai-eval-224-maskbboxpad20-v1"
+OPENAI_PREPROCESSING_ID = "openai-clip-vit-b-32-eval-224-maskbboxpad20-v1"
 CROP_RECIPE_ID = "mask-tight-xyxy+20px-clipped+PIL-float-edge-rounding-v1"
 FEATURE_DIMENSION = 512
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
@@ -232,6 +234,133 @@ def _load_openclip(config: Mapping[str, Any]):
     return image_encoder, metadata
 
 
+def _implementation_sha256(function: Any) -> str:
+    """Pin the actual installed implementation, including local package forks."""
+    return _sha256_file(Path(inspect.getfile(function)).resolve(strict=True))
+
+
+def _validate_openai_architecture(state: Mapping[str, Any]) -> dict[str, int]:
+    expected_shapes = {"visual.conv1.weight": (768, 3, 32, 32),
+                       "visual.positional_embedding": (50, 768), "visual.proj": (768, 512)}
+    if any(tuple(getattr(state.get(key), "shape", ())) != shape for key, shape in expected_shapes.items()):
+        raise ValueError("TorchScript checkpoint is not the supported ViT-B/32 architecture")
+    blocks = {key.split(".")[3] for key in state
+              if key.startswith("visual.transformer.resblocks.")}
+    if blocks != {str(i) for i in range(12)}:
+        raise ValueError("ViT-B/32 requires exactly 12 visual transformer blocks")
+    for index in range(12):
+        key = f"visual.transformer.resblocks.{index}.attn.in_proj_weight"
+        if tuple(getattr(state.get(key), "shape", ())) != (2304, 768):
+            raise ValueError("ViT-B/32 visual attention dimensions differ from the supported architecture")
+    return {"input_resolution": 224, "patch_size": 32, "width": 768,
+            "layers": 12, "embedding_dimension": 512}
+
+
+def _validate_openai_transform(preprocess: Any) -> None:
+    stages = getattr(preprocess, "transforms", ())
+    if len(stages) != 5 or [type(stage).__name__ for stage in (stages[0], stages[1], stages[3], stages[4])] != [
+            "Resize", "CenterCrop", "ToTensor", "Normalize"]:
+        raise ValueError("installed CLIP preprocessing is not the supported eval transform")
+    def size(value: Any) -> tuple:
+        return (value, value) if type(value) is int else tuple(value)
+    if size(stages[0].size) != (224, 224) or size(stages[1].size) != (224, 224):
+        raise ValueError("installed CLIP preprocessing must resize and center crop to 224")
+    interpolation = getattr(stages[0].interpolation, "value", stages[0].interpolation)
+    if interpolation not in ("bicubic", 3):
+        raise ValueError("installed CLIP preprocessing must use bicubic resize")
+    if (tuple(stages[4].mean) != (0.48145466, 0.4578275, 0.40821073)
+            or tuple(stages[4].std) != (0.26862954, 0.26130258, 0.27577711)):
+        raise ValueError("installed CLIP preprocessing has unsupported normalization")
+    from PIL import Image
+    if getattr(stages[2](Image.new("L", (2, 2))), "mode", None) != "RGB":
+        raise ValueError("installed CLIP preprocessing does not convert to RGB")
+
+
+def _load_openai_clip(config: Mapping[str, Any]):
+    """Load only an explicit, hashed local OpenAI-compatible TorchScript asset.
+
+    Never call clip.load: its pickle fallback and model-name downloads are not
+    part of this backend. Rebuild an eager CPU float32 model from the validated
+    archive, retaining the installed CLIP eval transform and its source identity.
+    """
+    checkpoint = Path(str(config["checkpoint_path"]))
+    if not checkpoint.is_absolute() or checkpoint.suffix.lower() != ".pt" or not checkpoint.is_file():
+        raise ValueError("checkpoint_path must be an existing absolute .pt file")
+    expected_sha = config.get("checkpoint_sha256")
+    if not isinstance(expected_sha, str) or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None:
+        raise ValueError("checkpoint_sha256 must be a lowercase SHA-256 digest")
+    actual_sha = _sha256_file(checkpoint)
+    if actual_sha != expected_sha:
+        raise ValueError("local checkpoint SHA-256 differs from the configured value")
+    if config.get("checkpoint_format") != "openai_jit":
+        raise ValueError("checkpoint_format must explicitly select openai_jit")
+    if config.get("model_name") != SUPPORTED_MODEL_NAME:
+        raise ValueError("unsupported OpenAI CLIP model; expected ViT-B-32")
+    if config.get("pretrained") is not None or config.get("state_dict_strict") is not True:
+        raise ValueError("worker requires pretrained=None and strict local state-dict loading")
+    if config.get("preprocessing_id") != OPENAI_PREPROCESSING_ID:
+        raise ValueError("preprocessing_id does not name the supported OpenAI CLIP eval recipe")
+    if config.get("crop_recipe_id") != CROP_RECIPE_ID or config.get("feature_dimension") != FEATURE_DIMENSION:
+        raise ValueError("unsupported crop recipe or feature dimension")
+
+    import torch
+    from clip.clip import _transform
+    from clip.model import build_model
+
+    torch.set_num_threads(min(4, os.cpu_count() or 1))
+    torch.set_num_interop_threads(1)
+    archive = torch.jit.load(str(checkpoint), map_location="cpu")
+    state = dict(archive.state_dict())
+    architecture = _validate_openai_architecture(state)
+    del archive
+    preprocess = _transform(224)
+    _validate_openai_transform(preprocess)
+    model = build_model(dict(state))
+    # build_model currently uses strict=True by default; assert the contract
+    # explicitly as well so a compatible package fork cannot relax it silently.
+    for key in ("input_resolution", "context_length", "vocab_size"):
+        state.pop(key, None)
+    incompatible = model.load_state_dict(state, strict=True)
+    if incompatible.missing_keys or incompatible.unexpected_keys:
+        raise RuntimeError("local archive state differs from the supported CLIP model")
+    del state
+    model.float().eval()
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    metadata = {
+        "backend": "openai_clip", "checkpoint_format": "openai_jit", "model_package": "clip",
+        "model_name": SUPPORTED_MODEL_NAME, "checkpoint_sha256": actual_sha,
+        "pretrained": None, "state_dict_strict": True, "preprocessing_id": OPENAI_PREPROCESSING_ID,
+        "crop_recipe_id": CROP_RECIPE_ID, "feature_dimension": FEATURE_DIMENSION,
+        "architecture": architecture,
+        "model_implementation_sha256": _implementation_sha256(build_model),
+        "preprocessing_implementation_sha256": _implementation_sha256(_transform),
+        "transform_repr_sha256": hashlib.sha256(_normalized_transform_repr(preprocess).encode("utf-8")).hexdigest(),
+        "runtime": {"python": platform.python_version(), "python_implementation": platform.python_implementation(),
+                    "openai_clip": _package_version("clip"), "torch": str(torch.__version__),
+                    "torchvision": _package_version("torchvision"), "Pillow": _package_version("Pillow"),
+                    "numpy": str(np.__version__)},
+    }
+
+    def image_encoder(crop_rgb: np.ndarray) -> np.ndarray:
+        from PIL import Image
+        tensor = preprocess(Image.fromarray(crop_rgb, mode="RGB")).unsqueeze(0)
+        with torch.inference_mode():
+            output = model.encode_image(tensor)
+        return output.detach().cpu().numpy().astype(np.float32, copy=False).reshape(-1)
+
+    return image_encoder, metadata
+
+
+def _load_encoder(config: Mapping[str, Any]):
+    checkpoint_format = config.get("checkpoint_format", "safetensors")
+    if checkpoint_format == "safetensors":
+        return _load_openclip(config)
+    if checkpoint_format == "openai_jit":
+        return _load_openai_clip(config)
+    raise ValueError("unsupported checkpoint_format; expected safetensors or openai_jit")
+
+
 def _read_exact(stream, size: int) -> bytes:
     chunks = []
     remaining = size
@@ -325,7 +454,7 @@ def _worker_main() -> int:
                     continue
                 try:
                     config = request["config"]
-                    image_encoder, metadata = _load_openclip(config)
+                    image_encoder, metadata = _load_encoder(config)
                     _write_frame(stdout, {"op": "ready", "metadata": metadata})
                 except Exception as error:
                     _write_frame(stdout, {"op": "error", "reason": f"{type(error).__name__}: {error}"[:500]})

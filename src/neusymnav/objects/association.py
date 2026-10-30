@@ -22,6 +22,8 @@ from scipy.spatial import cKDTree
 
 from .fusion import VoxelCloud
 from .appearance import fuse_visual, normalize_visual
+from .association_recipe import AssociationRecipe
+from .conceptgraphs import directional_overlap, sample_observation
 
 
 WallPredicate = Callable[[tuple[float, float, float], tuple[float, float, float]], bool]
@@ -128,6 +130,7 @@ class AssociationResult:
     tracks: Mapping[str, TrackSnapshot]
     ambiguous_indices: tuple[int, ...]
     ambiguous_event_keys: tuple[EventKey, ...]
+    diagnostics: Mapping[str, str | int | float | bool | None] = field(default_factory=dict)
 
 
 @dataclass
@@ -164,10 +167,10 @@ class _ScoreGeometry:
     tree: cKDTree
 
     @classmethod
-    def from_points(cls, points: np.ndarray) -> "_ScoreGeometry":
+    def from_points(cls, points: np.ndarray, *, sample: np.ndarray | None = None) -> "_ScoreGeometry":
         minimum = points.min(axis=0)
         maximum = points.max(axis=0)
-        sample = points[:512]
+        sample = points[:512] if sample is None else sample
         return cls(minimum, maximum, float(np.linalg.norm(maximum - minimum)), sample, cKDTree(sample))
 
 
@@ -180,13 +183,16 @@ class AssociationEngine:
                  event_lookup: Callable[[EventKey], tuple[str | None, str] | None] | None = None,
                  max_hot_events: int = 256,
                  prune_callback: Callable[[set[str], Mapping[str, dict]], None] | None = None,
-                 association_mode: str = "geometry") -> None:
+                 association_mode: str = "geometry",
+                 association_recipe: AssociationRecipe | Mapping | None = None) -> None:
         if not episode_id or max_tracks <= 0 or max_ambiguous <= 0:
             raise ValueError("association engine needs episode and positive track cap")
         if association_mode not in {"semantic", "geometry", "geometry_appearance"}:
             raise ValueError("association_mode must be semantic, geometry or geometry_appearance")
         self.episode_id = episode_id
         self.association_mode = association_mode
+        self.association_recipe = AssociationRecipe.from_mapping(association_recipe)
+        self._last_diagnostics: dict[str, str | int] = {}
         self.max_tracks = max_tracks
         self.max_ambiguous = max_ambiguous
         self._tracks: dict[str, _Track] = {}
@@ -212,6 +218,7 @@ class AssociationEngine:
             max_ambiguous=self.max_ambiguous, event_lookup=self._event_lookup,
             max_hot_events=self.max_hot_events, prune_callback=self._prune_callback,
             association_mode=self.association_mode,
+            association_recipe=self.association_recipe,
         )
         trial._tracks = {
             key: replace(
@@ -226,6 +233,7 @@ class AssociationEngine:
         trial._ambiguous_events = OrderedDict(self._ambiguous_events)
         trial._free_slots = list(self._free_slots)
         trial._next_slot = self._next_slot
+        trial._last_diagnostics = dict(self._last_diagnostics)
         return trial
 
     def can_merge(self, first_id: str, second_id: str) -> bool:
@@ -387,26 +395,36 @@ class AssociationEngine:
         candidate_ids = set().union(*local_ids) if local_ids else set()
         existing = tuple(self._tracks[id] for id in sorted(candidate_ids))
         scores = np.full((len(fresh_indices), len(existing)), -math.inf)
-        observation_geometry: dict[int, _ScoreGeometry] = {}
-        track_geometry: dict[str, _ScoreGeometry] = {}
-        for row, index in enumerate(fresh_indices):
-            for col, track in enumerate(existing):
-                if track.id not in local_ids[row]:
-                    continue
-                if index not in observation_geometry:
-                    observation_geometry[index] = _ScoreGeometry.from_points(observations[index].points_world)
-                if track.id not in track_geometry:
-                    track_geometry[track.id] = _ScoreGeometry.from_points(track.points_world)
-                obs_shape = observation_geometry[index]
-                track_shape = track_geometry[track.id]
-                value = self._score(observations[index], track, blocked_by_wall, obs_shape, track_shape)
-                if value is not None:
-                    scores[row, col] = value
+        diagnostics = {}
+        conceptgraphs = self.association_recipe.mode == "conceptgraphs"
+        if conceptgraphs:
+            diagnostics = self._conceptgraphs_scores(
+                observations, fresh_indices, existing, local_ids, scores, blocked_by_wall)
+        else:
+            observation_geometry: dict[int, _ScoreGeometry] = {}
+            track_geometry: dict[str, _ScoreGeometry] = {}
+            for row, index in enumerate(fresh_indices):
+                for col, track in enumerate(existing):
+                    if track.id not in local_ids[row]:
+                        continue
+                    if index not in observation_geometry:
+                        observation_geometry[index] = _ScoreGeometry.from_points(observations[index].points_world)
+                    if track.id not in track_geometry:
+                        track_geometry[track.id] = _ScoreGeometry.from_points(track.points_world)
+                    obs_shape = observation_geometry[index]
+                    track_shape = track_geometry[track.id]
+                    value = self._score(observations[index], track, blocked_by_wall, obs_shape, track_shape)
+                    if value is not None:
+                        scores[row, col] = value
+
+        threshold = self.association_recipe.match_threshold if conceptgraphs else 0.55
+        ambiguity_margin = self.association_recipe.ambiguity_margin if conceptgraphs else 0.08
+        unmatched_cost = 1.0 - threshold if conceptgraphs else 0.45
 
         ambiguous_rows = set()
         for row in range(len(fresh_indices)):
-            eligible = sorted((float(v) for v in scores[row] if v >= 0.55), reverse=True)
-            if len(eligible) >= 2 and eligible[0] - eligible[1] < 0.08:
+            eligible = sorted((float(v) for v in scores[row] if v >= threshold), reverse=True)
+            if len(eligible) >= 2 and eligible[0] - eligible[1] < ambiguity_margin:
                 ambiguous_rows.add(row)
 
         # One dummy column per observation lets the global assignment leave
@@ -414,12 +432,12 @@ class AssociationEngine:
         costs = np.full((len(fresh_indices), len(existing) + len(fresh_indices)), 1000.0)
         for row in range(len(fresh_indices)):
             if row not in ambiguous_rows:
-                costs[row, :len(existing)] = np.where(scores[row] >= 0.55, 1.0 - scores[row], 1000.0)
-            costs[row, len(existing) + row] = 0.45
+                costs[row, :len(existing)] = np.where(scores[row] >= threshold, 1.0 - scores[row], 1000.0)
+            costs[row, len(existing) + row] = unmatched_cost
         matched: dict[int, int] = {}
         if fresh_indices:
             rows, cols = linear_sum_assignment(costs)
-            matched = {int(row): int(col) for row, col in zip(rows, cols) if col < len(existing) and costs[row, col] <= 0.45}
+            matched = {int(row): int(col) for row, col in zip(rows, cols) if col < len(existing) and costs[row, col] <= unmatched_cost}
 
         new_detected = sum(
             observations[index].evidence_kind == "detected"
@@ -483,7 +501,83 @@ class AssociationEngine:
                 self._events.popitem(last=False)
             while len(self._ambiguous_events) > self.max_ambiguous:
                 self._ambiguous_events.popitem(last=False)
+        if conceptgraphs:
+            diagnostics.update(matches=len(matched), new_ids=new_detected, ambiguous=len(ambiguous_rows))
+        self._last_diagnostics = diagnostics
         return self._result(tuple(answers), tuple(fresh_indices[row] for row in sorted(ambiguous_rows)))
+
+    def _conceptgraphs_scores(
+        self,
+        observations: tuple[AssociationObservation, ...],
+        fresh_indices: list[int],
+        existing: tuple[_Track, ...],
+        local_ids: list[set[str]],
+        scores: np.ndarray,
+        blocked_by_wall: WallPredicate | None,
+    ) -> dict[str, str | int]:
+        """Choose one feature policy per row before computing any utilities.
+
+        candidate_pairs counts pairs surviving the unchanged geometry gates;
+        map_points counts unique map points prepared for local candidates;
+        observation_sample_points counts fresh observation samples once each.
+        Missing-observation and missing-candidate reason counts may overlap.
+        """
+        recipe = self.association_recipe
+        diagnostics = dict(
+            recipe_id=recipe.durable_dict()["recipe_id"], candidate_pairs=0,
+            visual_pairs=0, spatial_only_pairs=0, observation_sample_points=0,
+            map_points=0, capped_observations=0, fallback_rows=0,
+            fallback_observation_missing=0, fallback_candidate_missing=0,
+        )
+        track_geometry: dict[str, _ScoreGeometry] = {}
+        for row, index in enumerate(fresh_indices):
+            obs = observations[index]
+            sampled = sample_observation(obs.points_world, recipe)
+            diagnostics["observation_sample_points"] += len(sampled.points)
+            diagnostics["capped_observations"] += int(sampled.capped)
+            # Extents/radius gates use all input points, including when capped.
+            obs_shape = _ScoreGeometry.from_points(obs.points_world, sample=sampled.points)
+            eligible: list[tuple[int, _Track, _ScoreGeometry]] = []
+            for col, track in enumerate(existing):
+                if track.id not in local_ids[row]:
+                    continue
+                if track.id not in track_geometry:
+                    track_geometry[track.id] = _ScoreGeometry.from_points(
+                        track.points_world, sample=track.points_world)
+                    diagnostics["map_points"] += len(track.points_world)
+                track_shape = track_geometry[track.id]
+                if self._geometrically_eligible(obs, track, blocked_by_wall, obs_shape, track_shape):
+                    eligible.append((col, track, track_shape))
+            if not eligible:
+                continue
+            # Validate every available pair before fallback; a missing third
+            # embedding must not hide an incompatible feature dimension.
+            for _, track, _ in eligible:
+                if (obs.visual_embedding is not None and track.visual_embedding is not None
+                        and obs.visual_embedding.shape != track.visual_embedding.shape):
+                    raise ValueError("appearance feature space/dimension mismatch")
+            observation_missing = obs.visual_embedding is None
+            candidate_missing = any(track.visual_embedding is None for _, track, _ in eligible)
+            fallback = observation_missing or candidate_missing
+            diagnostics["candidate_pairs"] += len(eligible)
+            if fallback:
+                diagnostics["fallback_rows"] += 1
+                diagnostics["fallback_observation_missing"] += int(observation_missing)
+                diagnostics["fallback_candidate_missing"] += int(candidate_missing)
+            for col, track, track_shape in eligible:
+                spatial = directional_overlap(sampled.points, track_shape.tree,
+                                              nn_distance_m=recipe.nn_distance_m)
+                if fallback:
+                    diagnostics["spatial_only_pairs"] += 1
+                    scores[row, col] = spatial
+                else:
+                    diagnostics["visual_pairs"] += 1
+                    if spatial < recipe.min_spatial:
+                        continue
+                    cosine = float(np.clip(np.dot(obs.visual_embedding, track.visual_embedding), -1., 1.))
+                    scores[row, col] = ((1 + recipe.physical_bias) * spatial
+                                        + (1 - recipe.physical_bias) * cosine) / 2
+        return diagnostics
 
     def advance_time(self, now_s: float) -> AssociationResult:
         """Age only one-view candidates; established identities remain searchable."""
@@ -647,7 +741,8 @@ class AssociationEngine:
             )
             for track in self._tracks.values()
         }
-        return AssociationResult(ids, MappingProxyType(snapshots), ambiguous, tuple(sorted(self._ambiguous_events)))
+        return AssociationResult(ids, MappingProxyType(snapshots), ambiguous, tuple(sorted(self._ambiguous_events)),
+                                 MappingProxyType(dict(self._last_diagnostics)))
 
     def _score(
         self,
@@ -657,20 +752,13 @@ class AssociationEngine:
         obs_shape: _ScoreGeometry,
         track_shape: _ScoreGeometry,
     ) -> float | None:
-        if obs.floor_id != track.floor_id:
+        if not self._geometrically_eligible(obs, track, blocked_by_wall, obs_shape, track_shape):
             return None
         a, b = obs.centroid, track.centroid
-        if blocked_by_wall is not None and blocked_by_wall(tuple(b), tuple(a)):
-            return None
         obs_min, obs_max = obs_shape.minimum, obs_shape.maximum
         track_min, track_max = track_shape.minimum, track_shape.maximum
-        obs_diag, track_diag = obs_shape.diagonal, track_shape.diagonal
-        radius = float(np.clip(0.25 + 0.5 * (obs_diag + track_diag), 0.4, 1.5))
+        track_diag = track_shape.diagonal
         distance = float(np.linalg.norm(a - b))
-        if distance > radius:
-            return None
-        if np.any(obs_max + 0.1 < track_min) or np.any(track_max + 0.1 < obs_min):
-            return None
         points_a = obs_shape.sample
         points_b = track_shape.sample
         overlap = 0.5 * (
@@ -705,6 +793,30 @@ class AssociationEngine:
             weighted += 0.05 * float(obs.track_id == track.track_id)
             available += 0.05
         return weighted / available
+
+    @staticmethod
+    def _geometrically_eligible(
+        obs: AssociationObservation,
+        track: _Track,
+        blocked_by_wall: WallPredicate | None,
+        obs_shape: _ScoreGeometry,
+        track_shape: _ScoreGeometry,
+    ) -> bool:
+        if obs.floor_id != track.floor_id:
+            return False
+        a, b = obs.centroid, track.centroid
+        if blocked_by_wall is not None and blocked_by_wall(tuple(b), tuple(a)):
+            return False
+        obs_min, obs_max = obs_shape.minimum, obs_shape.maximum
+        track_min, track_max = track_shape.minimum, track_shape.maximum
+        obs_diag, track_diag = obs_shape.diagonal, track_shape.diagonal
+        radius = float(np.clip(0.25 + 0.5 * (obs_diag + track_diag), 0.4, 1.5))
+        distance = float(np.linalg.norm(a - b))
+        if distance > radius:
+            return False
+        if np.any(obs_max + 0.1 < track_min) or np.any(track_max + 0.1 < obs_min):
+            return False
+        return True
 
     @staticmethod
     def _update(track: _Track, obs: AssociationObservation, stamp: float) -> None:

@@ -13,6 +13,7 @@ from ..contracts.observations import (AppearanceBatch, AppearanceFeature, FrameK
 from ..contracts.graphs import CommitResult, ObjectSnapshot, ObjectState
 from ..contracts.serialization import dumps, loads
 from .association import AssociationEngine, AssociationObservation
+from .association_recipe import AssociationRecipe
 from .assets import AssetStore
 from .ledger import Ledger, canonical
 from .negative_evidence import negative_visibility
@@ -40,22 +41,31 @@ class ObjectOwner:
     """
     def __init__(self, root, *, episode_id, primary_sensor_id, floor_id,
                  detector_profile_id, vocabulary_id, clock_domain, now_ns=monotonic_ns,
-                 appearance_mode="off"):
+                 appearance_mode="off", association_recipe=None):
         self._config=dict(episode_id=episode_id,primary_sensor_id=primary_sensor_id,
             floor_id=floor_id,detector_profile_id=detector_profile_id,
             vocabulary_id=vocabulary_id,clock_domain=clock_domain)
         if any(not isinstance(v,str) or not v.strip() for v in self._config.values()):
             raise ValueError('owner configuration identities must be nonempty strings')
         if not callable(now_ns): raise ValueError('now_ns must be a clock provider')
-        if appearance_mode not in {'off','openclip'}:
-            raise ValueError('appearance profile must be off or openclip')
+        if appearance_mode not in {'off','openclip','openai_clip'}:
+            raise ValueError('appearance profile must be off, openclip or openai_clip')
         self.appearance_mode=appearance_mode
+        self.association_recipe=AssociationRecipe.from_mapping(association_recipe)
         self._now_ns=now_ns
         self._mutex=RLock()
         self.ledger=Ledger(root,self._config)
         try:
+            recipe=canonical(self.association_recipe.durable_dict())
+            previous_recipe=self.ledger.get('association_recipe')
+            populated=self.ledger.get('checkpoint') is not None or self.ledger.connection.execute(
+                'SELECT 1 FROM batches LIMIT 1').fetchone() is not None
+            if ((previous_recipe is not None and previous_recipe!=recipe) or
+                    (previous_recipe is None and populated and self.association_recipe.mode!='legacy')):
+                raise ValueError('association recipe mismatch; new episode/output directory required')
             profile=canonical(dict(schema_version=1,mode=appearance_mode,
-                aggregation=AGGREGATION_ID,scoring='geometry-visual-030-020-010-020:v1'))
+                aggregation=AGGREGATION_ID,scoring=('conceptgraphs-directional-cosine:v1'
+                    if self.association_recipe.mode=='conceptgraphs' else 'geometry-visual-030-020-010-020:v1')))
             previous=self.ledger.get('appearance_profile')
             # Existing schema1 P04 ledgers with no profile explicitly mean off.
             populated=self.ledger.get('checkpoint') is not None or self.ledger.connection.execute(
@@ -64,8 +74,8 @@ class ObjectOwner:
                 raise ValueError('appearance profile mismatch; explicit migration required')
             self.assets=AssetStore(Path(root)/'assets')
             self._engine=AssociationEngine(episode_id,association_mode=(
-                'geometry_appearance' if appearance_mode=='openclip' else 'geometry'),
-                event_lookup=self._lookup_event)
+                'geometry_appearance' if appearance_mode!='off' else 'geometry'),
+                event_lookup=self._lookup_event,association_recipe=self.association_recipe)
             self._snapshot=ObjectSnapshot(episode_id,0,FrameKey(episode_id,primary_sensor_id,0),{}, {})
             self.dispatch_watermark=-1
             self._capture_watermark=-1
@@ -101,6 +111,7 @@ class ObjectOwner:
                         source='p04-schema1-last-feature',target=AGGREGATION_ID,
                         order='appearance-rowid',profile='off')))
                 self.ledger.set('appearance_profile',profile)
+                self.ledger.set('association_recipe',recipe)
                 conn.execute('COMMIT')
             except BaseException:
                 conn.execute('ROLLBACK'); raise
@@ -267,6 +278,11 @@ class ObjectOwner:
                 views.append((event_ids[i],assigned.object_ids[i],refs,data))
             record=dict(common,completion=batch.completion,cap_reached=batch.cap_reached,
                 detections=detection_assets,projected_event_ids=list(event_ids))
+            if self.association_recipe.mode=='conceptgraphs':
+                record['association']=dict(recipe=self.association_recipe.durable_dict(),
+                    diagnostics=dict(assigned.diagnostics),
+                    online_object_ids=list(assigned.object_ids),
+                    detection_ids=[item.detection_id for item in observations])
             conn=self.ledger.connection
             conn.execute('BEGIN IMMEDIATE')
             try:

@@ -38,6 +38,7 @@ from ..contracts.observations import (
 
 SUPPORTED_MODEL_NAME = "ViT-B-32"
 SUPPORTED_PREPROCESSING_ID = "openclip-vit-b-32-openai-eval-224-maskbboxpad20-v1"
+OPENAI_PREPROCESSING_ID = "openai-clip-vit-b-32-eval-224-maskbboxpad20-v1"
 CROP_RECIPE_ID = "mask-tight-xyxy+20px-clipped+PIL-float-edge-rounding-v1"
 FEATURE_DIMENSION = 512
 MAX_REQUEST_BYTES = 32 * 1024 * 1024
@@ -46,6 +47,8 @@ CLOSE_JOIN_TIMEOUT_S = 1.0
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RUNTIME_KEYS = ("python", "python_implementation", "open_clip_torch", "torch",
                  "torchvision", "Pillow", "numpy")
+_OPENAI_RUNTIME_KEYS = ("python", "python_implementation", "openai_clip", "torch",
+                        "torchvision", "Pillow", "numpy")
 
 
 def _write_all(fd: int, payload: bytes, deadline: float) -> None:
@@ -188,6 +191,7 @@ class AppearanceWorkerEncoder:
         checkpoint_sha256: str,
         model_name: str,
         preprocessing_id: str,
+        checkpoint_format: str = "safetensors",
         timeout_s: float = 2.0,
         startup_timeout_s: float = 30.0,
         max_request_bytes: int = MAX_REQUEST_BYTES,
@@ -197,13 +201,17 @@ class AppearanceWorkerEncoder:
         checkpoint = Path(checkpoint_path).expanduser()
         if not python_path.is_absolute() or not python_path.is_file() or not os.access(python_path, os.X_OK):
             raise ValueError("worker_python must be an absolute executable interpreter path")
-        if not checkpoint.is_absolute() or not checkpoint.is_file() or checkpoint.suffix.lower() != ".safetensors":
-            raise ValueError("checkpoint_path must be an existing absolute .safetensors file")
+        if checkpoint_format not in ("safetensors", "openai_jit"):
+            raise ValueError("unsupported checkpoint_format; expected safetensors or openai_jit")
+        suffix = ".pt" if checkpoint_format == "openai_jit" else ".safetensors"
+        if not checkpoint.is_absolute() or not checkpoint.is_file() or checkpoint.suffix.lower() != suffix:
+            raise ValueError(f"checkpoint_path must be an existing absolute {suffix} file")
         if not isinstance(checkpoint_sha256, str) or _SHA256.fullmatch(checkpoint_sha256) is None:
             raise ValueError("checkpoint_sha256 must be a lowercase SHA-256 digest")
         if model_name != SUPPORTED_MODEL_NAME:
             raise ValueError(f"model_name must be {SUPPORTED_MODEL_NAME!r} until another model is reviewed")
-        if preprocessing_id != SUPPORTED_PREPROCESSING_ID:
+        expected_preprocessing = OPENAI_PREPROCESSING_ID if checkpoint_format == "openai_jit" else SUPPORTED_PREPROCESSING_ID
+        if preprocessing_id != expected_preprocessing:
             raise ValueError("preprocessing_id does not name the supported pinned eval/crop recipe")
         for name, value in (("timeout_s", timeout_s), ("startup_timeout_s", startup_timeout_s)):
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
@@ -223,6 +231,7 @@ class AppearanceWorkerEncoder:
         self.checkpoint_sha256 = checkpoint_sha256
         self.model_name = model_name
         self.preprocessing_id = preprocessing_id
+        self.checkpoint_format = checkpoint_format
         self.timeout_s = float(timeout_s)
         self.startup_timeout_s = float(startup_timeout_s)
         self.max_request_bytes = max_request_bytes
@@ -353,6 +362,10 @@ class AppearanceWorkerEncoder:
             "crop_recipe_id": CROP_RECIPE_ID,
             "feature_dimension": FEATURE_DIMENSION,
         }
+        if self.checkpoint_format == "openai_jit":
+            expected.update(checkpoint_format="openai_jit", backend="openai_clip", model_package="clip",
+                            architecture={"input_resolution": 224, "patch_size": 32, "width": 768,
+                                          "layers": 12, "embedding_dimension": 512})
         for key, value in expected.items():
             if metadata.get(key) != value:
                 raise ValueError(f"worker actual {key} differs from configured metadata")
@@ -360,18 +373,29 @@ class AppearanceWorkerEncoder:
         if not isinstance(transform_digest, str) or _SHA256.fullmatch(transform_digest) is None:
             raise ValueError("worker did not report a valid actual transform fingerprint")
         runtime = metadata.get("runtime")
+        runtime_keys = _OPENAI_RUNTIME_KEYS if self.checkpoint_format == "openai_jit" else _RUNTIME_KEYS
         if not isinstance(runtime, dict) or any(
-            not isinstance(runtime.get(key), str) or not runtime[key].strip() for key in _RUNTIME_KEYS
+            not isinstance(runtime.get(key), str) or not runtime[key].strip() for key in runtime_keys
         ):
-            raise ValueError("worker did not report complete OpenCLIP/runtime versions")
+            raise ValueError("worker did not report complete backend/runtime versions")
+        if self.checkpoint_format == "openai_jit":
+            for key in ("model_implementation_sha256", "preprocessing_implementation_sha256"):
+                if not isinstance(metadata.get(key), str) or _SHA256.fullmatch(metadata[key]) is None:
+                    raise ValueError(f"worker did not report valid actual {key}")
         normalized = dict(metadata)
-        normalized["runtime"] = {key: runtime[key] for key in _RUNTIME_KEYS}
-        model_fingerprint = "neusymnav-openclip-model-v1:" + _canonical_hash({
+        normalized["runtime"] = {key: runtime[key] for key in runtime_keys}
+        model_identity = {
             "model_name": normalized["model_name"],
             "checkpoint_sha256": normalized["checkpoint_sha256"],
             "pretrained": normalized["pretrained"],
             "state_dict_strict": normalized["state_dict_strict"],
-        })
+        }
+        prefix = "neusymnav-openclip-model-v1:"
+        if self.checkpoint_format == "openai_jit":
+            prefix = "neusymnav-openai-clip-model-v1:"
+            model_identity.update(checkpoint_format="openai_jit", backend="openai_clip",
+                                  model_implementation_sha256=normalized["model_implementation_sha256"])
+        model_fingerprint = prefix + _canonical_hash(model_identity)
         normalized["model_fingerprint"] = model_fingerprint
         space_id = "neusymnav-appearance-space-v1:" + _canonical_hash(normalized)
         return normalized, space_id
@@ -439,6 +463,8 @@ class AppearanceWorkerEncoder:
             "crop_recipe_id": CROP_RECIPE_ID,
             "feature_dimension": FEATURE_DIMENSION,
         }
+        if self.checkpoint_format == "openai_jit":
+            config["checkpoint_format"] = self.checkpoint_format
         try:
             self._send({"op": "initialize", "config": config}, startup_deadline)
             response = self._read_response(startup_deadline)

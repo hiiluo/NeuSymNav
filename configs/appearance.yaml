@@ -38,7 +38,7 @@ workers:
     python: null
     script:
       path: ../src/neusymnav/perception/appearance_worker.py
-      sha256: fdbb8ccf171075569f3598a29a67a761c24f1a445de1505b01203fdd109584a1
+      sha256: f006321e4e08c4fc66be04216b9f95da2fb1174f54afe13a4a92b15807d7a4bc
 detector:
   checkpoint: null
   encoder: null

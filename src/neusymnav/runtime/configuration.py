@@ -14,7 +14,7 @@ import yaml
 MAX_CONFIG_BYTES=256*1024
 SHA=re.compile(r'^[0-9a-f]{64}$')
 TOP={'schema_version','mode','profile','episode','floor','workers','sensor_config','detector',
-     'fixture','appearance_mode','worker','provenance','navigation','budgets','ui','replay','measurements','keyframe_sampling','runtime','long_demo'}
+     'fixture','appearance_mode','worker','provenance','navigation','budgets','ui','replay','measurements','keyframe_sampling','runtime','long_demo','association'}
 
 
 class _Loader(yaml.SafeLoader):
@@ -112,9 +112,13 @@ def load_config(path):
         if 'archive_cap' in value['budgets'] and not 4096<=value['budgets']['archive_cap']<=value['budgets'].get('raw_cap',2*1024**3)//2:raise ValueError('archive_cap must fit half aggregate raw budget and certificate reserve')
     if 'ui' in value:_mapping(value['ui'],'ui',{'enabled','smoke_exit_ms','publish_hz'})
     if 'replay' in value:_mapping(value['replay'],'replay',{'allow_incomplete'})
-    if value.get('appearance_mode','off') not in {'off','openclip'}:raise ValueError('appearance_mode must be off or openclip')
+    if value.get('appearance_mode','off') not in {'off','openclip','openai_clip'}:raise ValueError('appearance_mode must be off, openclip or openai_clip')
+    if 'association' in value:
+        from ..objects.association_recipe import AssociationRecipe
+        if not isinstance(value['association'],dict):raise ValueError('association must be a mapping with explicit mode')
+        AssociationRecipe.from_mapping(value['association'])
     if value['mode']=='fixture_cpu_no_models' and value.get('appearance_mode','off')!='off':raise ValueError('fixture replay does not enable model inference')
-    if value['profile']=='appearance' and value.get('appearance_mode')!='openclip':raise ValueError('appearance profile requires appearance_mode=openclip')
+    if value['profile']=='appearance' and value.get('appearance_mode') not in {'openclip','openai_clip'}:raise ValueError('appearance profile requires appearance_mode=openclip or openai_clip')
     if 'measurements' in value:
         m=value['measurements']
         _mapping(m,'measurements',{'enabled','sample_cap','capture_cap','trace_byte_cap','rss_cap_bytes','gpu_cap_bytes','gpu_executable','gpu_uuid','rss_sample_timeout_s','rss_retry_wait_s','proof_record_cap'})
@@ -212,8 +216,10 @@ def _validate_nested(value):
         _mapping(value['detector'],'detector',(RECIPE_KEYS-{'checkpoint_path','checkpoint_sha256','encoder_path','encoder_sha256','taxonomy_path','taxonomy_sha256'})|{'checkpoint','encoder','taxonomy'})
     if 'worker' in value:
         worker=value['worker'];_mapping(worker,'appearance worker',{'python_path','checkpoint_path','checkpoint_sha256','checkpoint_format','model_name','preprocessing_id','crop_recipe_id','feature_dimension','device','pretrained','state_dict_strict','timeout_s','startup_timeout_s','max_request_bytes','max_response_bytes'})
-        expected={'checkpoint_format':'safetensors','model_name':'ViT-B-32',
-            'preprocessing_id':'openclip-vit-b-32-openai-eval-224-maskbboxpad20-v1',
+        backend=value.get('appearance_mode','off')
+        new_backend=backend=='openai_clip'
+        expected={'checkpoint_format':'openai_jit' if new_backend else 'safetensors','model_name':'ViT-B-32',
+            'preprocessing_id':('openai-clip-vit-b-32-eval-224-maskbboxpad20-v1' if new_backend else 'openclip-vit-b-32-openai-eval-224-maskbboxpad20-v1'),
             'crop_recipe_id':'mask-tight-xyxy+20px-clipped+PIL-float-edge-rounding-v1',
             'feature_dimension':512,'device':'cpu','pretrained':None,'state_dict_strict':True}
         for key,wanted in expected.items():

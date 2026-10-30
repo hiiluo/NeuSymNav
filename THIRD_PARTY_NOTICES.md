@@ -27,3 +27,42 @@ infer permission.
 
 A prebuilt native worker and libraries are present, but execution was not
 attempted. Redistribution, cloud use, and license scope remain unresolved.
+
+## ConceptGraphs-inspired association (2026-10-30)
+
+The directional nearest-neighbor overlap and spatial/visual aggregation in
+`src/neusymnav/objects/conceptgraphs.py` are adapted from ConceptGraphs
+`conceptgraph/slam/{utils,mapping}.py`. Local reference revision and exact source
+hashes are recorded in `docs/superpowers/specs/2026-10-30-conceptgraphs-association-design.md`.
+NeuSymNav retains its own canonical owner, Hungarian assignment and bounded fusion.
+
+MIT License
+
+Copyright (c) 2023 concept-graphs
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### Local CLIP runtime provenance
+
+The optional `openai_clip` backend uses an existing installed `clip` package
+(an Ultralytics fork of OpenAI CLIP) and an existing read-only local ViT-B-32
+checkpoint. No package source or model weights are vendored by this change.
+Actual implementation/checkpoint/preprocessing hashes and runtime versions are
+recorded in feature metadata; this backend is separate from OpenCLIP safetensors.
+See `docs/results/conceptgraphs-visual-completion-2026-10-30.md` for evidence.

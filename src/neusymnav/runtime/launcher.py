@@ -1,6 +1,7 @@
 """Explicit local launch/replay composition. No native/fixture fallback exists."""
 from __future__ import annotations
 from dataclasses import replace
+from collections.abc import Mapping
 import json
 import hashlib
 import importlib.metadata
@@ -93,6 +94,13 @@ class _DetectorMetadata:
     def close(self,timeout_s=1.):return self.client.close(timeout_s=timeout_s)
 
 
+def _plain_metadata(value):
+    """Copy immutable worker metadata into the runtime JSON boundary."""
+    if isinstance(value,Mapping):return {key:_plain_metadata(item) for key,item in value.items()}
+    if isinstance(value,(tuple,list)):return [_plain_metadata(item) for item in value]
+    return value
+
+
 class _EncoderMetadata:
     def __init__(self,encoder,sink):self.encoder=encoder;self.sink=sink;self.used=0;self.fallback=0
     def encode(self,obs,batch):
@@ -100,7 +108,7 @@ class _EncoderMetadata:
         if result is None:self.fallback+=1
         else:self.used+=1
         self.sink['appearance']=dict(feature_frames=self.used,geometry_fallback_frames=self.fallback,
-            last_status=dict(self.encoder.last_status),space_metadata=None if self.encoder.space_metadata is None else dict(self.encoder.space_metadata))
+            last_status=_plain_metadata(self.encoder.last_status),space_metadata=None if self.encoder.space_metadata is None else _plain_metadata(self.encoder.space_metadata))
         return result
     def close(self):return self.encoder.close()
 
@@ -217,11 +225,13 @@ def _assets(config):
         if sensor.get('scene_dataset') is not None:check('scene_dataset',lambda:config.asset(sensor['scene_dataset'],'sensor_config.scene_dataset'))
     if d.get('measurements',{}).get('enabled') and 'gpu_executable' in d['measurements']:
         check('measurement_gpu',lambda:config.asset(d['measurements']['gpu_executable'],'measurements.gpu_executable',executable=True))
-    if d.get('appearance_mode','off')=='openclip':
+    if d.get('appearance_mode','off') in {'openclip','openai_clip'}:
         worker=d.get('worker',{})
         check('appearance',lambda:config.worker('appearance'))
         check('appearance_checkpoint',lambda:config.asset(dict(path=worker.get('checkpoint_path'),sha256=worker.get('checkpoint_sha256')),'worker.checkpoint'))
-    for name,modules in [('sensor',['numpy','habitat_sim']),('detector',['numpy','torch','ultralytics','clip']),('appearance',['numpy','PIL','torch','open_clip','safetensors']),('ui',['numpy','PyQt5']),('raycast',['numpy','torch','triton'])]:
+    appearance_modules=(['numpy','PIL','torch','clip'] if d.get('appearance_mode')=='openai_clip'
+                        else ['numpy','PIL','torch','open_clip','safetensors'])
+    for name,modules in [('sensor',['numpy','habitat_sim']),('detector',['numpy','torch','ultralytics','clip']),('appearance',appearance_modules),('ui',['numpy','PyQt5']),('raycast',['numpy','torch','triton'])]:
         if name in resolved and isinstance(resolved[name],tuple):
             try:config.runtime_probes[name]=_probe_interpreter(resolved[name][0],modules,name)
             except ValueError as exc:issues.append(str(exc))
@@ -331,11 +341,12 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
             from ..navigation.controller import Navigator
             from ..navigation.safety import MotionGuard
             navigator=Navigator(mapper.robot,clock_domain=domain);guard=MotionGuard(mapper,clock_domain=domain)
-        if d.get('appearance_mode','off')=='openclip':
+        if d.get('appearance_mode','off') in {'openclip','openai_clip'}:
             from ..perception.appearance_client import AppearanceWorkerEncoder
             worker=d['worker'];appearance_python,appearance_script=assets['appearance']
             encoder=lambda:_EncoderMetadata(AppearanceWorkerEncoder(appearance_python,assets['appearance_checkpoint'],
                 checkpoint_sha256=worker['checkpoint_sha256'],model_name=worker['model_name'],
+                checkpoint_format=worker.get('checkpoint_format','safetensors'),
                 preprocessing_id=worker['preprocessing_id'],timeout_s=worker.get('timeout_s',2.),
                 startup_timeout_s=worker.get('startup_timeout_s',30.),
                 max_request_bytes=worker.get('max_request_bytes',32*1024**2),
@@ -352,7 +363,7 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
         worker_metadata['raycast']=raycast_backend.runtime_metadata
     owner=lambda:ObjectOwner(root/'objects',episode_id=e['id'],primary_sensor_id=e['primary_sensor_id'],
         floor_id=e['floor_id'],detector_profile_id=profile,vocabulary_id=vocabulary,clock_domain=domain,now_ns=now_ns,
-        appearance_mode=d.get('appearance_mode','off'))
+        appearance_mode=d.get('appearance_mode','off'),association_recipe=d.get('association'))
     budgets={k:v for k,v in d.get('budgets',{}).items() if k in {'byte_cap','raw_cap','total_cap'}}
     pipeline=Pipeline(root,episode_id=e['id'],primary_sensor_id=e['primary_sensor_id'],clock_domain=domain,
         floor_id=e['floor_id'],owner_factory=owner,detector_factory=detector,
