@@ -77,7 +77,7 @@ def test_real_pipeline_builder_binds_sampling_profile_and_constructor(tmp_path,m
     data=dict(profile='baseline',mode='live',keyframe_sampling=mode,sensor_config=dict(motion_adapter=adapter),episode=dict(id='episode',primary_sensor_id='rgbd',floor_id='floor'),
               detector={},workers=dict(detector={}))
     cfg=Configuration(tmp_path/'config',data)
-    monkeypatch.setattr(launcher,'_mapper',lambda *args:SimpleNamespace(robot=object()))
+    monkeypatch.setattr(launcher,'_mapper',lambda *args,**kwargs:SimpleNamespace(robot=object()))
     monkeypatch.setattr(detector_client,'validate_recipe',lambda value:value)
     monkeypatch.setattr(Taxonomy,'load',lambda path:SimpleNamespace(vocabulary_id='v1'))
     monkeypatch.setattr(controller,'Navigator',lambda *args,**kwargs:SimpleNamespace())
@@ -101,7 +101,7 @@ def test_recorded_replay_cannot_reselect_capacity_profile(tmp_path,monkeypatch):
     from types import SimpleNamespace
     from neusymnav.runtime import launcher
     from neusymnav.runtime.configuration import Configuration
-    monkeypatch.setattr(launcher,'_mapper',lambda *args:None)
+    monkeypatch.setattr(launcher,'_mapper',lambda *args,**kwargs:None)
     cfg=Configuration(tmp_path/'config',dict(profile='baseline',mode='live',keyframe_sampling='capacity_deferred',episode=dict(id='episode',primary_sensor_id='rgbd',floor_id='floor')))
     with pytest.raises(ValueError,match='exact semantic input'):
         launcher._pipeline(cfg,{},tmp_path,'replay:fixture',lambda:1,recorded=SimpleNamespace(vocabulary_id='v1'))

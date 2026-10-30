@@ -48,9 +48,39 @@ class CameraCone:
 
 
 @dataclass(frozen=True, slots=True)
+class CameraProjection:
+    """Rigid planar camera schematic at a measured body pose, not RGB pixels."""
+    source: FrameKey
+    capture_monotonic_ns: int
+    clock_domain: str
+    pose_version: int
+    calibration_id: str
+    xy: tuple[float, float]
+    edge_yaws: tuple[float, float]
+    calibration_source: FrameKey
+    calibration_capture_monotonic_ns: int
+    calibration_clock_domain: str
+    calibration_pose_version: int
+    policy: str = 'rigid_planar_from_paired_rgb_v1'
+
+    def __post_init__(self):
+        CameraCone(self.source,self.capture_monotonic_ns,self.clock_domain,self.pose_version,
+                   self.calibration_id,self.xy,self.edge_yaws)
+        if (not isinstance(self.calibration_source,FrameKey)
+                or self.calibration_source.episode_id!=self.source.episode_id
+                or self.calibration_clock_domain!=self.clock_domain
+                or type(self.calibration_capture_monotonic_ns) is not int
+                or not 0<=self.calibration_capture_monotonic_ns<=self.capture_monotonic_ns
+                or type(self.calibration_pose_version) is not int
+                or not 0<=self.calibration_pose_version<=self.pose_version
+                or self.policy!='rigid_planar_from_paired_rgb_v1'):
+            raise ValueError('invalid rigid camera projection provenance')
+
+
+@dataclass(frozen=True, slots=True)
 class RobotTrack:
     samples: tuple[RobotSample, ...]
-    camera: CameraCone | None = None
+    camera: CameraCone | CameraProjection | None = None
     truncated: bool = False
 
     def __post_init__(self):
@@ -65,10 +95,12 @@ class RobotTrack:
                 raise ValueError('robot trail source/order mismatch')
         if self.camera is not None:
             c = self.camera
-            if (not isinstance(c, CameraCone) or c.source.episode_id != last.source.episode_id
+            if (not isinstance(c, (CameraCone,CameraProjection)) or c.source.episode_id != last.source.episode_id
                     or c.clock_domain != last.clock_domain or c.pose_version != last.pose_version
                     or c.capture_monotonic_ns > last.capture_monotonic_ns):
                 raise ValueError('camera/body source mismatch')
+            if isinstance(c,CameraProjection) and (c.source,c.capture_monotonic_ns)!=(last.source,last.capture_monotonic_ns):
+                raise ValueError('projected camera must match current measured body source')
 
 
 class RobotTrailBuffer:
@@ -77,6 +109,7 @@ class RobotTrailBuffer:
         self._lock = threading.Lock()
         self._records = deque(maxlen=MAX_TRAIL)
         self._truncated = False
+        self._mount = None
 
     def observe(self, rgb, nav, pose):
         if not self._lock.acquire(blocking=False):
@@ -90,13 +123,14 @@ class RobotTrailBuffer:
             if self._records:
                 old = self._records[-1][0]
                 if (old.source.episode_id, old.clock_domain) != (sample.source.episode_id, sample.clock_domain):
-                    self._records.clear(); self._truncated = False
+                    self._records.clear(); self._truncated = False; self._mount = None
                 elif (old.source.sensor_id != sample.source.sensor_id
                       or old.source.frame_index >= sample.source.frame_index
                       or old.capture_monotonic_ns >= sample.capture_monotonic_ns or old.pose_version > sample.pose_version):
                     raise ValueError('display body proof replay/order mismatch')
             camera = None
-            if (rgb.key.episode_id == nav.key.episode_id and rgb.clock_domain == nav.clock_domain
+            if rgb is not None:self._mount=None
+            if (rgb is not None and rgb.key.episode_id == nav.key.episode_id and rgb.clock_domain == nav.clock_domain
                     and rgb.pose_version == nav.pose_version and rgb.capture_monotonic_ns <= nav.capture_monotonic_ns):
                 rays = [rgb.T_world_camera[:2, :3] @ np.array([(x-float(rgb.K[0, 2]))/float(rgb.K[0, 0]), 0., 1.])
                         for x in (-.5, rgb.rgb.shape[1]-.5)]
@@ -105,6 +139,18 @@ class RobotTrailBuffer:
                     camera = CameraCone(rgb.key, rgb.capture_monotonic_ns, rgb.clock_domain, rgb.pose_version,
                         rgb.calibration_id, tuple(float(v) for v in rgb.T_world_camera[:2, 3]),
                         tuple(math.atan2(float(r[1]), float(r[0])) for r in rays))
+                    dx,dy=camera.xy[0]-sample.xy[0],camera.xy[1]-sample.xy[1]
+                    c,s=math.cos(sample.yaw_rad),math.sin(sample.yaw_rad)
+                    self._mount=(camera,(c*dx+s*dy,-s*dx+c*dy),
+                                 tuple(a-sample.yaw_rad for a in camera.edge_yaws))
+            if camera is None and self._mount is not None:
+                calibrated,offset,angles=self._mount
+                c,s=math.cos(sample.yaw_rad),math.sin(sample.yaw_rad)
+                camera=CameraProjection(sample.source,sample.capture_monotonic_ns,sample.clock_domain,
+                    sample.pose_version,calibrated.calibration_id,
+                    (sample.xy[0]+c*offset[0]-s*offset[1],sample.xy[1]+s*offset[0]+c*offset[1]),
+                    tuple(sample.yaw_rad+a for a in angles),calibrated.source,
+                    calibrated.capture_monotonic_ns,calibrated.clock_domain,calibrated.pose_version)
             self._truncated = self._truncated or len(self._records) == MAX_TRAIL
             self._records.append((sample, camera))
         finally:

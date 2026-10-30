@@ -321,6 +321,7 @@ class Pipeline:
                 self._cleanup_pending[name]=report
             elif bool(getattr(resource,'is_alive',False)):
                 self._cleanup_pending[name]='worker remains alive'
+            else:self._cleanup_pending.pop(name,None)
         except BaseException as exc:
             # In particular AppearanceShutdownPending may mean Popen is still
             # creating a process even if its current is_alive property is false.
@@ -392,7 +393,13 @@ class Pipeline:
                 self._consume_place()
                 self._publish(verifier)
                 if (self._closing and self._recorder_done.is_set() and not self.scheduler.snapshot()['pending']
-                    and (self.mapper is None or self._worker_done.get('navigation',False)) and self._place_input is None):break
+                    and (self.mapper is None or self._worker_done.get('navigation',False))
+                    and (self.region_factory is None or self._worker_done.get('region',False))
+                    and self._place_input is None):
+                    # Producers can finish between the preceding publication
+                    # and this predicate. Flush once after observing quiescence.
+                    self._publish(verifier)
+                    break
                 self._wake.wait(.01);self._wake.clear()
         except BaseException as exc:self._fail('graph',exc)
         finally:
@@ -516,7 +523,7 @@ class Pipeline:
             while True:
                 with self._lock:nav=self._region_input;self._region_input=None
                 if nav is None:
-                    if self._closing or self.health.snapshot()['failed']:break
+                    if (self._closing and (self.mapper is None or self._worker_done.get('navigation',False))) or self.health.snapshot()['failed']:break
                     self._region_wake.wait(.02);self._region_wake.clear();continue
                 regions=backend.update(nav)
                 if self.measurements is not None:self.measurements.region(nav,regions)
@@ -527,7 +534,8 @@ class Pipeline:
                     self._regions=regions
                 self._wake.set()
         except BaseException as exc:self._fail('region',exc)
-        finally:self._cleanup('region',backend);self._worker_done['region']=True
+        finally:
+            self._cleanup('region',backend);self._worker_done['region']=True;self._wake.set()
 
     def _publish(self,verifier=None):
         # Snapshot only pointers under the control lock; geometry/validation is
@@ -543,8 +551,14 @@ class Pipeline:
         if nav is None:return
         revisions=(objects.revision,nav.revision,regions.revision,latest.revision,regions.stale)
         now=self.now_ns()
-        if (self._publication_revisions==revisions
-            and now-getattr(self,'_last_publication_ns',now)<100_000_000):return
+        # Coalesce map/region churn at the advertised graph cadence. Object
+        # commits (including aliases) publish promptly; control uses its own
+        # latest measured map and never waits for this projection. Closing
+        # bypasses cadence so the graph owner flushes the drained final bundle.
+        previous=self._publication_revisions
+        if (previous is not None and previous[0]==objects.revision
+            and not self._closing
+            and now-self._last_publication_ns<100_000_000):return
         if verifier is not None:
             if hasattr(verifier,'expire'):
                 self.quota.reserve('verification-expiry',1024*1024+32768*len(objects.objects))
@@ -616,6 +630,35 @@ class Pipeline:
             if age_ns(obs.capture_monotonic_ns,obs.clock_domain,self.now_ns(),self.clock_domain)>750_000_000:return None
             return obs,batch
 
+    def navigation_status(self):
+        """Bounded diagnostic intent/reason, independent of actuator result labels."""
+        with self._lock:
+            plan=getattr(self,'_navigation_display',None)
+            counts=dict(getattr(self,'_navigation_reason_counts',{}))
+            last_failure=getattr(self,'_last_goal_failure',None)
+        if plan is None:return dict(reason='navigation_unavailable',reason_counts=counts)
+        nav,frontiers,decision,reason,computed,rejected,held_goal=plan
+        goal=held_goal or ((decision.goal_id,decision.path[-1]) if not rejected and decision.goal_id and decision.path else None)
+        return dict(map_revision=nav.revision,computed_monotonic_ns=computed,
+            reason=reason,decision_reason=decision.reason,reason_counts=counts,last_goal_failure=last_failure,
+            goal_id=None if goal is None else goal[0],goal_xy=None if goal is None else goal[1],
+            route_available=bool(decision.path) and not rejected,
+            frontier_count=0 if frontiers is None else len(frontiers.frontiers))
+
+    def navigation_display(self):
+        """UI-lane projection of the last actual plan; never a control input."""
+        with self._lock:
+            plan=getattr(self,'_navigation_display',None)
+            paused=self._paused;closing=self._closing
+        if plan is None:return None
+        from ..visualization.navigation_overlay import from_plan
+        nav,frontiers,decision,reason,computed,rejected,held_goal=plan
+        if closing or self.health.snapshot()['failed']:reason='runtime_stopped'
+        elif paused:reason='runtime_paused'
+        clear=rejected or reason in {'runtime_paused','runtime_stopped','bootstrap_blocked','footprint_not_observed','path_segment_blocked'}
+        return from_plan(nav,frontiers,decision,reason,computed,clear_goal=clear,
+            held_goal=None if reason in {'runtime_paused','runtime_stopped'} else held_goal)
+
     def _source_ages_locked(self):
         now=self.now_ns()
         def age(obs):
@@ -649,14 +692,18 @@ class Pipeline:
                         places=dict(self._place_counts,status=self._place_status,pose_pending=self._pose_offer is not None,pair_pending=self._place_input is not None))
         # In particular quota.lock can cover a filesystem scan. Never acquire
         # it while holding the lock needed by source admission and control.
-        return dict(report,scheduler=self.scheduler.snapshot(),health=self.health.snapshot(),quota=self.quota.snapshot())
+        return dict(report,scheduler=self.scheduler.snapshot(),health=self.health.snapshot(),quota=self.quota.snapshot(),navigation=self.navigation_status())
 
     def control_step(self,actuator,*,robot_xy=None,yaw_rad=None):
         with self._control_lock:
             if self.measurements is not None and self.measurements.stop_requested.is_set():
                 self._paused=True;self._stop_requested=True
             self._step_command=None;self._step_decision=None;self._step_source=None
+            self._step_navigation_observed=False
             result=self._control_step(actuator,robot_xy=robot_xy,yaw_rad=yaw_rad)
+            if not self._step_navigation_observed:
+                reset=getattr(self.navigator,'reset_goal_failure_watch',None)
+                if callable(reset):reset()
             if self.measurements is not None:
                 proof=None
                 if self._step_command is not None:
@@ -675,7 +722,14 @@ class Pipeline:
         with self._control_lock:
             with self._lock:latest=self._latest_depth;nav=self._latest_nav
             self._step_source=latest
+            # Pause ACK is serialized after the last finite actuator pulse.
+            # Subsequent captures may supersede its pose; asking the actuator
+            # for that retained source would conceal pause as a source failure.
+            # No synthetic stopped command/proof or automatic resume is needed.
+            if self._paused or self._closing:
+                return dict(executed=False,reason='runtime_paused' if self._paused and not self._closing else 'runtime_stopped')
             if latest is None or nav is None or self.guard is None or self.navigator is None:
+                with self._lock:self._navigation_display=None
                 return dict(executed=False,reason='navigation_unavailable')
             if nav.source!=latest.key or nav.capture_monotonic_ns!=latest.capture_monotonic_ns or nav.clock_domain!=latest.clock_domain:
                 return dict(executed=False,reason='navigation_source_pending')
@@ -714,8 +768,29 @@ class Pipeline:
                 self._step_command=command
                 result=actuator.execute(command)
                 self._last_command=command
+                if decision is not None:
+                    # One immutable pointer only; geometry copies/DTO creation
+                    # run on the coalesced UI lane, never inside control.
+                    rejected=(not isinstance(result,dict) or result.get('executed') is not True
+                              or command.linear_mps==command.yaw_radps==0.)
+                    display_reason=(result.get('reason') or command.reason) if rejected and isinstance(result,dict) else command.reason
+                    if display_reason=='expired_or_zero':display_reason=command.reason
+                    observe_result=getattr(self.navigator,'observe_navigation_result',None)
+                    failure=(observe_result(nav,xy,self.now_ns(),display_reason,rejected)
+                             if callable(observe_result) else None)
+                    self._step_navigation_observed=callable(observe_result)
+                    if failure is not None:
+                        display_reason='goal_failed_no_progress:'+display_reason
+                        with self._lock:self._last_goal_failure=failure
+                    with self._lock:
+                        counts=getattr(self,'_navigation_reason_counts',None)
+                        if counts is None:self._navigation_reason_counts=counts={}
+                        key=display_reason if display_reason in counts or len(counts)<64 else 'other'
+                        counts[key]=min(counts.get(key,0)+1,2**63-1)
+                        self._navigation_display=(nav,getattr(self.navigator,'last_frontiers',None),decision,display_reason,self.now_ns(),rejected,getattr(self.navigator,'last_committed_goal',None))
                 return result
             except Exception as exc:
+                with self._lock:self._navigation_display=None
                 return dict(executed=False,reason='control_rejected',error=f'{type(exc).__name__}: {exc}')
 
     def handle_ui_command(self,command):
@@ -727,7 +802,7 @@ class Pipeline:
                 reason='command_stale'
         except ValueError:reason='command_clock_mismatch_or_future'
         # Serializing against the synchronous actuator means any prior pulse
-        # has finished before ACK. Every subsequent control call issues stop.
+        # has finished before ACK. Later paused calls issue no further pulse.
         with self._control_lock:
             if reason is None and self.now_ns()-command.requested_monotonic_ns>2_000_000_000:reason='command_stale'
             with self._lock:
@@ -742,6 +817,10 @@ class Pipeline:
         control_acquired=self._control_lock.acquire(timeout=remaining(deadline))
         with self._lock:self._closing=True;self._paused=True;self._deadline=deadline;self.scheduler.closed=True
         if control_acquired:self._control_lock.release()
+        # Eager resources remain owned even if graph startup prevented the
+        # navigation thread (and its finally block) from ever starting.
+        if 'navigation' not in self._threads and self.mapper is not None:
+            self._cleanup('mapper',self.mapper)
         self._wake.set();self._nav_wake.set();self._region_wake.set()
         for name in ('recorder','navigation','region','graph'):
             thread=self._threads.get(name)

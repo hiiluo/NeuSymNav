@@ -56,7 +56,7 @@ def _probe_interpreter(python,modules,label):
         if result.returncode or len(result.stdout)>4096:raise ValueError(label+' interpreter probe failed; check configured environment')
         info=json.loads(result.stdout)
     except (OSError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:raise ValueError(label+' interpreter unavailable: '+str(exc)) from exc
-    if label in {'detector','ui'} and tuple(info['version'][:2])<(3,12):raise ValueError('detector interpreter requires Python >=3.12; select an existing compatible environment')
+    if label in {'detector','ui','raycast'} and tuple(info['version'][:2])<(3,12):raise ValueError(label+' interpreter requires Python >=3.12; select an existing compatible environment')
     if info['missing']:raise ValueError(label+' environment missing '+', '.join(info['missing'])+'; install/select the required environment explicitly before launch')
     return info
 
@@ -212,6 +212,8 @@ def _assets(config):
         for name in ('checkpoint','encoder','taxonomy'):
             check(name,lambda name=name:config.asset(detector.get(name),'detector.'+name))
         if d.get('ui',{}).get('enabled',False):check('ui',lambda:config.worker('ui'))
+        if d.get('navigation',{}).get('mapper',{}).get('raycast_backend','cpu')=='triton_cuda':
+            check('raycast',lambda:config.worker('raycast'))
         if sensor.get('scene_dataset') is not None:check('scene_dataset',lambda:config.asset(sensor['scene_dataset'],'sensor_config.scene_dataset'))
     if d.get('measurements',{}).get('enabled') and 'gpu_executable' in d['measurements']:
         check('measurement_gpu',lambda:config.asset(d['measurements']['gpu_executable'],'measurements.gpu_executable',executable=True))
@@ -219,7 +221,7 @@ def _assets(config):
         worker=d.get('worker',{})
         check('appearance',lambda:config.worker('appearance'))
         check('appearance_checkpoint',lambda:config.asset(dict(path=worker.get('checkpoint_path'),sha256=worker.get('checkpoint_sha256')),'worker.checkpoint'))
-    for name,modules in [('sensor',['numpy','habitat_sim']),('detector',['numpy','torch','ultralytics','clip']),('appearance',['numpy','PIL','torch','open_clip','safetensors']),('ui',['numpy','PyQt5'])]:
+    for name,modules in [('sensor',['numpy','habitat_sim']),('detector',['numpy','torch','ultralytics','clip']),('appearance',['numpy','PIL','torch','open_clip','safetensors']),('ui',['numpy','PyQt5']),('raycast',['numpy','torch','triton'])]:
         if name in resolved and isinstance(resolved[name],tuple):
             try:config.runtime_probes[name]=_probe_interpreter(resolved[name][0],modules,name)
             except ValueError as exc:issues.append(str(exc))
@@ -244,13 +246,15 @@ def _checked(config_path):
     return config,assets
 
 
-def _mapper(config,root):
+def _mapper(config,root,*,raycast_backend=None):
     d=config.data;nav=d.get('navigation',{});floor=d['floor']
     robot=RobotGeometry(**nav.get('robot',dict(geometry_id='cylinder-v1',radius_m=.2,height_m=1.5,margin_m=.05)))
     options=dict(nav.get('mapper',{}))
+    selected=options.pop('raycast_backend','cpu')
+    if selected=='triton_cuda' and raycast_backend is None:raise ValueError('GPU raycast worker not initialized')
     if 'tile_archive_dir' in options:raise ValueError('mapper tile archive is assigned inside run root')
     return NavMapper(robot=robot,floor_z_m=floor['z_m'],floor_datum_source=floor['datum_source'],
-        calibration_hash=floor['calibration_sha256'],tile_archive_dir=root/'tiles',**options)
+        calibration_hash=floor['calibration_sha256'],tile_archive_dir=root/'tiles',raycast_backend=raycast_backend,**options)
 
 
 class _RecordedDetector:
@@ -293,7 +297,23 @@ class _RecordedPolicy:
 
 
 def _pipeline(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,measurements=None):
-    d=config.data;e=d['episode'];mapper=_mapper(config,root)
+    backend=None
+    if config.data.get('navigation',{}).get('mapper',{}).get('raycast_backend','cpu')=='triton_cuda':
+        if recorded is not None or domain.startswith('replay:'):raise ValueError('GPU profile is live-only; replay requires an explicit CPU profile')
+        from ..mapping.gpu_raycast_client import GpuRaycastClient
+        python,script=assets['raycast'];worker=config.data['workers']['raycast']
+        backend=GpuRaycastClient(python=python,worker_script=script,root=root/'gpu-raycast-ipc',
+            timeout_s=worker.get('timeout_s',.25),startup_timeout_s=worker.get('startup_timeout_s',30.))
+    try:
+        return _pipeline_impl(config,assets,root,domain,now_ns,recorded=recorded,publisher=publisher,
+                              measurements=measurements,raycast_backend=backend)
+    except BaseException:
+        if backend is not None:backend.close()
+        raise
+
+
+def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,measurements=None,raycast_backend=None):
+    d=config.data;e=d['episode'];mapper=_mapper(config,root,raycast_backend=raycast_backend)
     encoder=None;region=None;navigator=None;guard=None;worker_metadata={}
     if recorded is None:
         from ..perception.detector_client import DetectorClient,validate_recipe
@@ -327,6 +347,9 @@ def _pipeline(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,me
     if sampling!='novelty':profile+=':sampling-'+sampling
     adapter=d.get('sensor_config',{}).get('motion_adapter','strict_3d')
     if adapter!='strict_3d':profile+=':motion-'+adapter
+    if raycast_backend is not None:
+        profile+=':mapping-triton_cuda'
+        worker_metadata['raycast']=raycast_backend.runtime_metadata
     owner=lambda:ObjectOwner(root/'objects',episode_id=e['id'],primary_sensor_id=e['primary_sensor_id'],
         floor_id=e['floor_id'],detector_profile_id=profile,vocabulary_id=vocabulary,clock_domain=domain,now_ns=now_ns,
         appearance_mode=d.get('appearance_mode','off'))
@@ -339,6 +362,13 @@ def _pipeline(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,me
         actual_profile=profile,publisher=publisher,measurements=measurements,
         **({'keyframe_sampling':sampling} if sampling!='novelty' else {}),**budgets)
     pipeline._launcher_worker_metadata=worker_metadata
+    if raycast_backend is not None:
+        try:
+            from ..mapping.gpu_raycast_client import LIMITS
+            pipeline.quota.reserve('gpu-raycast-ipc',2*(LIMITS['max_output_bytes']+LIMITS['max_rays']*25)+65536)
+        except BaseException:
+            pipeline.close(5.)
+            raise
     return pipeline
 
 
@@ -457,13 +487,13 @@ def _capture_sensor_pair(sensor,pipeline,append_raw,display_observer=None):
         if pipeline.measurements is not None:
             for obs in captured:pipeline.measurements.capture(obs)
         raise
-    pipeline.submit_sensor_pair(rgb,nav,pose)
     if display_observer is not None:
         display_observer(rgb,nav,pose)
+    pipeline.submit_sensor_pair(rgb,nav,pose)
     return rgb,nav
 
 
-def _capture_navigation(sensor,pipeline,append_raw):
+def _capture_navigation(sensor,pipeline,append_raw,display_observer=None):
     captured=None
     try:
         captured=sensor.capture_navigation();append_raw(captured)
@@ -472,6 +502,10 @@ def _capture_navigation(sensor,pipeline,append_raw):
         if captured is not None and pipeline.measurements is not None:
             pipeline.measurements.capture(captured)
         raise
+    # Register the exact measured body before its map can reach publication.
+    # RGB is absent on this lane; never attach a previous frame's camera cone.
+    if display_observer is not None:
+        display_observer(None,captured,pose)
     pipeline.submit_navigation(captured,pose)
     return captured
 
@@ -641,6 +675,7 @@ def run(config_path,*,duration_s,out)->dict:
             python,script=assets['ui']
             ui=UiProcess(root/'ui',python=python,script=script,clock_domain=first.clock_domain,
                 command_handler=pipeline.handle_ui_command,assets_root=root/'objects'/'assets',
+                navigation_provider=pipeline.navigation_display,
                 smoke_exit_ms=config.data.get('ui',{}).get('smoke_exit_ms'),quota=pipeline.quota,
                 **({'publish_hz':config.data['ui']['publish_hz']} if 'publish_hz' in config.data.get('ui',{}) else {}))
             pipeline.publisher=ui
@@ -651,7 +686,10 @@ def run(config_path,*,duration_s,out)->dict:
         # does not create a missing frame in the lossless recording certificate.
         _append_raw(recorder,first);frames+=1
         first=sensor.capture_navigation()
-        _append_raw(recorder,first);pipeline.submit_robot_pose(first,sensor.robot_pose(first));pipeline.submit(first);frames+=1
+        first_pose=sensor.robot_pose(first)
+        _append_raw(recorder,first)
+        if ui is not None:ui.observe_robot(None,first,first_pose)
+        pipeline.submit_robot_pose(first,first_pose);pipeline.submit(first);frames+=1
         deadline=time.monotonic()+duration_s
         def append_active_raw(obs):
             nonlocal frames
@@ -672,7 +710,7 @@ def run(config_path,*,duration_s,out)->dict:
                 rgb,obs=_capture_sensor_pair(sensor,pipeline,append_active_raw,display_observer=None if ui is None else ui.observe_robot)
                 if ui is not None:ui.set_rgb(rgb)
             else:
-                obs=_capture_navigation(sensor,pipeline,append_active_raw)
+                obs=_capture_navigation(sensor,pipeline,append_active_raw,display_observer=None if ui is None else ui.observe_robot)
             ready=_wait_exact_navigation(pipeline,obs,deadline)
             pipeline._control_invocations.record(time.monotonic_ns(),navigation_ready=ready)
             pipeline._control_invocations.result(pipeline.control_step(sensor))

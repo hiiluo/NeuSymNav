@@ -160,3 +160,104 @@ def test_ui_close_quota_release_stays_in_pending_finalizer(tmp_path):
     finally:
         release.set()
         assert ui.close(1)['clean_shutdown']
+
+
+def test_consumed_ui_acks_remain_in_bounded_persistent_audit(tmp_path):
+    """Removing ACK mailboxes must not erase the actor and pause evidence."""
+    from uuid import uuid4
+    from neusymnav.runtime.ui_transport import UiProcess,UiEndpoint
+    from neusymnav.visualization.publisher import UiCommand,UiCommandAck
+    script=tmp_path/'idle.py';script.write_text('import time\ntime.sleep(30)\n')
+    def handle(command):
+        rejected=command.action=='stop'
+        return UiCommandAck(command.request_uuid,'rejected' if rejected else 'accepted',
+            'test rejection' if rejected else None,time.monotonic_ns(),'clock')
+    ui=UiProcess(tmp_path/'ipc',python=sys.executable,script=script,clock_domain='clock',command_handler=handle)
+    endpoint=UiEndpoint(tmp_path/'ipc',clock_domain='clock');commands=[]
+    try:
+        for index in range(66):
+            command=UiCommand(str(uuid4()),'pause' if index%2==0 else 'stop','desktop',time.monotonic_ns(),'clock')
+            commands.append(command);endpoint.submit(command)
+            deadline=time.monotonic()+2;acks=[]
+            while not acks and time.monotonic()<deadline:
+                acks=endpoint.read_acks();time.sleep(.001)
+            assert acks and acks[0].request_uuid==command.request_uuid
+        assert not list((tmp_path/'ipc'/'acks').glob('*.json'))
+        assert not (tmp_path/'ipc'/'diagnostics.json').exists(),'disk persistence belongs to finalizer'
+    finally:assert ui.close(2)['clean_shutdown']
+    audit=json.loads((tmp_path/'ipc'/'diagnostics.json').read_text())
+    assert audit['commands_seen']==66
+    assert len(audit['command_history'])==64
+    first,last=audit['command_history'][0],audit['command_history'][-1]
+    assert first['command']['request_uuid']==commands[2].request_uuid
+    assert first['command']['action']=='pause' and first['command']['source']=='desktop'
+    assert first['command']['requested_monotonic_ns']==commands[2].requested_monotonic_ns
+    assert first['ack']['status']=='accepted' and first['ack']['reason'] is None
+    assert last['command']['request_uuid']==commands[-1].request_uuid
+    assert last['ack']['status']=='rejected' and last['ack']['reason']=='test rejection'
+    assert last['ack']['handled_monotonic_ns']>=last['command']['requested_monotonic_ns']
+    assert last['ack_published'] and last['error'] is None
+    assert (tmp_path/'ipc'/'diagnostics.json').stat().st_size<=128*1024
+
+
+@pytest.mark.parametrize('failure',['malformed','handler','ack_write'])
+def test_ui_audit_retains_transport_failures(tmp_path,monkeypatch,failure):
+    from uuid import uuid4
+    from neusymnav.runtime import ui_transport
+    from neusymnav.visualization.publisher import UiCommand,UiCommandAck
+    script=tmp_path/'idle.py';script.write_text('import time\ntime.sleep(30)\n')
+    def handle(command):
+        if failure=='handler':raise RuntimeError('handler failed')
+        return UiCommandAck(command.request_uuid,'accepted',None,time.monotonic_ns(),'clock')
+    ui=ui_transport.UiProcess(tmp_path/'ipc',python=sys.executable,script=script,clock_domain='clock',command_handler=handle)
+    original=ui_transport._write_atomic
+    def write(path,payload):
+        if failure=='ack_write' and path.parent.name=='acks':raise OSError('ACK disk failed')
+        return original(path,payload)
+    monkeypatch.setattr(ui_transport,'_write_atomic',write)
+    command=UiCommand(str(uuid4()),'pause','desktop',time.monotonic_ns(),'clock')
+    path=ui.root/'commands'/(command.request_uuid+'.json')
+    try:
+        if failure=='malformed':original(path,b'{not JSON')
+        else:ui.endpoint.submit(command)
+        deadline=time.monotonic()+2
+        while path.exists() and time.monotonic()<deadline:time.sleep(.001)
+        assert not path.exists()
+    finally:assert ui.close(2)['clean_shutdown']
+    record=json.loads((ui.root/'diagnostics.json').read_text())['command_history'][0]
+    assert not record['ack_published'] and record['error']
+    assert (record['command'] is None)==(failure=='malformed')
+    assert (record['ack'] is not None)==(failure=='ack_write')
+    if failure=='ack_write':assert record['ack']['status']=='accepted'
+
+
+@pytest.mark.parametrize('character',['\x01','"'])
+def test_ui_audit_bounds_escaped_fields_and_marks_modified_evidence(tmp_path,monkeypatch,character):
+    from uuid import uuid4
+    from neusymnav.runtime.ui_transport import UiProcess
+    from neusymnav.visualization.publisher import UiCommand,UiCommandAck
+    script=tmp_path/'idle.py';script.write_text('import time\ntime.sleep(30)\n')
+    def handle(command):
+        return UiCommandAck(command.request_uuid,'rejected',character*(100000 if character=='\x01' else 256),time.monotonic_ns(),command.clock_domain)
+    ui=UiProcess(tmp_path/'ipc',python=sys.executable,script=script,clock_domain='clock',command_handler=handle)
+    from neusymnav.runtime import ui_transport
+    original=ui_transport._write_atomic
+    def write(path,payload):
+        if path.parent.name=='acks':raise OSError(character*1000)
+        return original(path,payload)
+    monkeypatch.setattr(ui_transport,'_write_atomic',write)
+    try:
+        for _ in range(64):
+            command=UiCommand(str(uuid4()),'pause',character*128,time.monotonic_ns(),character*128)
+            ui.endpoint.submit(command)
+            path=ui.root/'commands'/(command.request_uuid+'.json')
+            deadline=time.monotonic()+2
+            while path.exists() and time.monotonic()<deadline:time.sleep(.001)
+            assert not path.exists()
+    finally:assert ui.close(2)['clean_shutdown']
+    payload=(ui.root/'diagnostics.json').read_bytes()
+    assert len(payload)<=128*1024
+    record=json.loads(payload)['command_history'][-1]
+    assert 'reason' in record['ack']['modified_fields']
+    assert record['ack']['status']=='rejected'
+    assert not record['ack_published'] and record['error']

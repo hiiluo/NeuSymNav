@@ -359,7 +359,8 @@ def test_ui_pause_ack_waits_for_active_pulse_and_prevents_the_next(tmp_path):
         assert not acknowledged.wait(.05)
         release.set();control.join(1);ui.join(1)
         assert acknowledged.is_set() and statuses[0].state=='acknowledged'
-        assert not p.control_step(actuator)['executed'] and actuator.moving==[True,False]
+        assert p.control_step(actuator)==dict(executed=False,reason='runtime_paused')
+        assert actuator.moving==[True]  # ACK followed completion; no further actuator call.
     finally:release.set();p.close(2)
 
 

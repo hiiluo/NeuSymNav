@@ -22,6 +22,7 @@ from ..contracts import FrameKey, HierarchySnapshot, NavSnapshot, ObjectSnapshot
 
 
 from .robot_overlay import RobotTrack
+from .navigation_overlay import NavigationOverlay
 
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -231,6 +232,7 @@ class DisplaySources:
     best_views: tuple[DisplayImage, ...] = ()
     robot: RobotTrack | None = None
     observation: DisplayObservation | None = None
+    navigation: NavigationOverlay | None = None
 
     def __post_init__(self) -> None:
         if self.nav is not None and not isinstance(self.nav, NavSnapshot):
@@ -245,6 +247,8 @@ class DisplaySources:
             raise ValueError('typed detector observation required')
         if self.robot is not None and not isinstance(self.robot, RobotTrack):
             raise ValueError('typed robot display trail required')
+        if self.navigation is not None and not isinstance(self.navigation,NavigationOverlay):
+            raise ValueError('typed navigation display required')
         views = tuple(self.best_views)
         if len(views) > MAX_BEST_VIEWS or any(
             not isinstance(view, DisplayImage) or view.purpose != "best_view" for view in views
@@ -310,6 +314,8 @@ class DisplayEnvelope:
         # Keep the envelope closed even when constructed outside the publisher.
         DisplayPublisher._validate_episode(self.hierarchy, self.metrics)
         DisplayPublisher._validate_sources(self.hierarchy, self.metrics, self.sources)
+        if self.sources.navigation is not None and self.sources.navigation.clock_domain!=self.clock_domain:
+            raise ValueError('planner display clock mismatch')
         image_bytes = sum(
             image.pixels.nbytes for image in ((self.sources.rgb,) if self.sources.rgb is not None else ()) + self.sources.best_views
         )
@@ -394,6 +400,10 @@ class DisplayPublisher:
 
     @staticmethod
     def _validate_sources(snapshot: HierarchySnapshot, metrics: DisplayMetrics, sources: DisplaySources) -> None:
+        if sources.navigation is not None:
+            plan=sources.navigation
+            if plan.source.episode_id!=snapshot.episode_id or (sources.nav is not None and plan.clock_domain!=sources.nav.clock_domain):
+                raise ValueError('planner display episode/clock mismatch')
         if sources.observation is not None:
             if sources.observation.image.source.episode_id != snapshot.episode_id:
                 raise ValueError('detector observation belongs to a different episode')

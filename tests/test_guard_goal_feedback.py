@@ -78,7 +78,7 @@ def test_geometric_stop_marks_original_goal_failed_and_resets_controller(reason)
     assert actuator.commands[0].linear_mps==actuator.commands[0].yaw_radps==0.
 
 
-def test_runtime_feedback_enables_existing_frontier_policy_to_choose_an_alternative():
+def test_runtime_feedback_stops_and_retains_committed_target():
     obs,nav=context();navigator=real_navigator();p=pipeline(obs,nav,navigator,Guard());actuator=Actuator()
     p.control_step(actuator);first=p._step_decision
     assert first.goal_id and first.path and first.desired_linear_mps+abs(first.desired_yaw_radps)>0
@@ -87,8 +87,10 @@ def test_runtime_feedback_enables_existing_frontier_policy_to_choose_an_alternat
     obs=replace(obs,key=replace(obs.key,frame_index=2));nav=replace(nav,source=obs.key,revision=8)
     p._latest_depth=obs;p._latest_nav=nav
     p.control_step(actuator);second=p._step_decision
-    assert second.goal_id and second.goal_id!=first.goal_id
-    assert second.path[-1]!=first.path[-1]
+    assert second.goal_id is None and second.path==()
+    assert second.reason=='committed_goal_waiting_after_collision'
+    assert navigator.policy._goal.frontier_id==first.goal_id
+    assert navigator.policy._goal_world_xy==first.path[-1]
     assert all(command.linear_mps==command.yaw_radps==0. for command in actuator.commands)
 
 
@@ -117,8 +119,9 @@ def test_paused_control_does_not_reuse_previous_goal_decision():
     obs,nav=context();navigator=fixed_navigator(NavigationDecision('previous',((1.2,1.2),(1.65,1.2)),.1,.2,nav.revision,'tracking'))
     p=pipeline(obs,nav,navigator,Guard('tracking'));actuator=Actuator();p.control_step(actuator)
     p._paused=True;p.guard.reason='bootstrap_blocked'
-    p.control_step(actuator)
-    assert actuator.commands[-1].reason=='runtime_stopped'
+    before=len(actuator.commands)
+    assert p.control_step(actuator)==dict(executed=False,reason='runtime_paused')
+    assert len(actuator.commands)==before
     assert p._step_decision is None and not navigator.policy._failed_until_revision
 
 
@@ -162,3 +165,189 @@ def test_existing_failure_api_resets_velocity_and_preserves_bounded_cooldown():
     assert navigator.controller._linear==navigator.controller._yaw_rate==0.
     assert navigator.policy._failed_until_revision=={'original':107}
     assert navigator.policy._failed_viewpoints==[((1.65,1.2),107)]
+
+
+def test_paused_control_with_new_sensor_capture_never_requests_stale_pose():
+    obs,nav=context()
+    navigator=fixed_navigator(NavigationDecision('goal',((1.2,1.2),(1.65,1.2)),.1,.2,nav.revision,'tracking'))
+    p=pipeline(obs,nav,navigator,Guard())
+    p._paused=True
+    class NewerCapture:
+        def robot_pose(self,source):
+            raise AssertionError('paused runtime must not request a superseded pose')
+        def execute(self,command):
+            raise AssertionError('paused runtime must not issue another pulse')
+    assert p.control_step(NewerCapture())==dict(executed=False,reason='runtime_paused')
+    assert p._step_command is None and p._step_decision is None
+
+
+def test_runtime_goal_is_fixed_until_arrival_then_next_goal():
+    _,nav=context();navigator=real_navigator()
+    first=navigator.step(nav,(1.2,1.2),0.,STAMP)
+    assert first.goal_id and first.path
+    # Re-observation changes map revision but not the committed target.
+    second=navigator.step(replace(nav,revision=8),(1.2,1.2),0.,STAMP)
+    assert second.goal_id==first.goal_id and second.path[-1]==first.path[-1]
+    reached=navigator.step(replace(nav,revision=9),first.path[-1],0.,STAMP)
+    assert reached.reason=='frontier_viewpoint_reached'
+    assert reached.desired_linear_mps==reached.desired_yaw_radps==0.
+    following=navigator.step(replace(nav,revision=10),first.path[-1],0.,STAMP)
+    assert following.goal_id and following.path[-1]!=first.path[-1]
+
+
+def test_runtime_stale_source_stops_without_forgetting_goal_and_episode_resets():
+    _,nav=context();navigator=real_navigator()
+    first=navigator.step(nav,(1.2,1.2),0.,STAMP)
+    target=first.path[-1]
+    stale=navigator.step(nav,(1.2,1.2),0.,STAMP+300_000_001)
+    assert stale.reason=='nav_stale' and stale.path==()
+    assert navigator.policy._goal_world_xy==target
+    # An episode reset intentionally discards the previous episode's commitment.
+    states=np.full(nav.states.shape,100,np.int8)
+    newnav=replace(nav,episode_id='next',source=replace(nav.source,episode_id='next'),
+                   states=states,floor_support=states==0)
+    navigator.step(newnav,(1.2,1.2),0.,STAMP)
+    assert navigator.policy._goal_world_xy is None
+
+
+def test_runtime_goal_arrival_threshold_is_five_cm():
+    _,nav=context();navigator=real_navigator()
+    first=navigator.step(nav,(1.2,1.2),0.,STAMP);target=first.path[-1]
+    assert navigator.policy.config.reached_distance_m==.05
+    outside=navigator.step(replace(nav,revision=8),(target[0]+.051,target[1]),0.,STAMP)
+    assert outside.reason!='frontier_viewpoint_reached'
+    inside=navigator.step(replace(nav,revision=9),(target[0]+.049,target[1]),0.,STAMP)
+    assert inside.reason=='frontier_viewpoint_reached'
+
+
+def test_blocked_commitment_remains_visible_without_an_executable_route():
+    class FollowingGuard(Guard):
+        def filter(self,decision,latest,now):
+            command=super().filter(decision,latest,now)
+            return (replace(command,reason=decision.reason)
+                    if not decision.desired_linear_mps and not decision.desired_yaw_radps else command)
+    obs,nav=context();navigator=real_navigator();p=pipeline(obs,nav,navigator,FollowingGuard())
+    p.control_step(Actuator());first=p._step_decision
+    shown=p.navigation_display()
+    assert shown.goal_id==first.goal_id and shown.goal_xy==first.path[-1]
+    assert shown.path==() and 'bootstrap_blocked' in shown.status
+    obs=replace(obs,key=replace(obs.key,frame_index=2));nav=replace(nav,source=obs.key,revision=8)
+    p._latest_depth=obs;p._latest_nav=nav;p.control_step(Actuator())
+    shown=p.navigation_display()
+    assert shown.goal_id==first.goal_id and shown.goal_xy==first.path[-1]
+    assert shown.path==() and 'committed_goal_waiting_after_collision' in shown.status
+    status=p.navigation_status()
+    assert status['goal_xy']==first.path[-1] and status['goal_id']==first.goal_id
+    assert status['reason']=='committed_goal_waiting_after_collision'
+    assert status['reason_counts']['bootstrap_blocked']==1
+    p._paused=True
+    assert p.navigation_display().goal_xy is None
+
+
+def test_persistent_geometric_stop_abandons_only_after_time_and_fresh_map_evidence():
+    _,nav=context();navigator=real_navigator()
+    first=navigator.step(nav,(1.2,1.2),0.,STAMP);target=first.path[-1]
+    for i in range(20):
+        now=STAMP+i*400_000_000
+        current=replace(nav,revision=8+i,capture_monotonic_ns=now)
+        assert navigator.observe_navigation_result(current,(1.2,1.2),now,
+            'path_segment_blocked',True) is None
+        assert navigator.policy._goal_world_xy==target
+    now=STAMP+8_000_000_000
+    failure=navigator.observe_navigation_result(replace(nav,revision=28,capture_monotonic_ns=now),
+        (1.2,1.2),now,'path_segment_blocked',True)
+    assert failure['goal_id']==first.goal_id and failure['goal_xy']==target
+    assert navigator.policy._goal_world_xy is None
+    assert navigator.policy._failed_viewpoints
+    replacement=navigator.step(replace(nav,revision=29,capture_monotonic_ns=now),(1.2,1.2),0.,now)
+    assert replacement.goal_id and replacement.path[-1]!=target
+
+
+@pytest.mark.parametrize('reason',['nav_stale','depth_stale','runtime_paused','clock_domain_mismatch','tracking'])
+def test_non_geometric_stops_never_abandon_goal(reason):
+    _,nav=context();navigator=real_navigator();first=navigator.step(nav,(1.2,1.2),0.,STAMP)
+    for i in range(30):
+        now=STAMP+i*1_000_000_000
+        assert navigator.observe_navigation_result(replace(nav,revision=8+i,capture_monotonic_ns=now),
+            (1.2,1.2),now,reason,True) is None
+    assert navigator.policy._goal_world_xy==first.path[-1]
+
+
+def test_repeated_revision_and_measured_progress_do_not_trigger_early_abandonment():
+    _,nav=context();navigator=real_navigator();first=navigator.step(nav,(1.2,1.2),0.,STAMP)
+    target=first.path[-1]
+    for i in range(25):
+        now=STAMP+i*500_000_000
+        assert navigator.observe_navigation_result(replace(nav,capture_monotonic_ns=now),
+            (1.2,1.2),now,'path_segment_blocked',True) is None
+    assert navigator.policy._goal_world_xy==target
+    navigator._goal_failure_watch=None
+    import math
+    start=(1.2,1.2);distance=math.dist(start,target)
+    closer=tuple(a+.04*(b-a)/distance for a,b in zip(start,target))
+    for i in range(25):
+        now=STAMP+i*400_000_000
+        xy=start if i<19 else closer
+        assert navigator.observe_navigation_result(replace(nav,revision=8+i,capture_monotonic_ns=now),
+            xy,now,'path_segment_blocked',True) is None
+    assert navigator.policy._goal_world_xy==target
+
+
+def test_control_wires_confirmed_failure_then_selects_different_target():
+    obs,nav=context();navigator=real_navigator();p=pipeline(obs,nav,navigator,Guard());actuator=Actuator()
+    first=None
+    for i in range(21):
+        now=STAMP+i*400_000_000
+        current=replace(obs,key=replace(obs.key,frame_index=i+1),capture_monotonic_ns=now)
+        p._latest_depth=current;p._latest_nav=replace(nav,source=current.key,revision=7+i,capture_monotonic_ns=now)
+        p.now_ns=lambda:now
+        p.control_step(actuator)
+        if i==0:first=p._step_decision
+        if i<20:assert navigator.policy._goal_world_xy==first.path[-1]
+    assert navigator.policy._goal_world_xy is None
+    status=p.navigation_status()
+    assert status['last_goal_failure']['goal_id']==first.goal_id
+    assert status['reason'].startswith('goal_failed_no_progress:')
+    now+=400_000_000
+    current=replace(current,key=replace(current.key,frame_index=22),capture_monotonic_ns=now)
+    p._latest_depth=current;p._latest_nav=replace(p._latest_nav,source=current.key,revision=28,capture_monotonic_ns=now)
+    p.control_step(actuator)
+    assert p._step_decision.goal_id and p._step_decision.path[-1]!=first.path[-1]
+    assert all(command.linear_mps==command.yaw_radps==0. for command in actuator.commands)
+
+
+def test_failed_tick_does_not_report_abandoned_path_endpoint_as_current_goal():
+    obs,nav=context();navigator=real_navigator();p=pipeline(obs,nav,navigator,Guard())
+    p.control_step(Actuator())
+    source,frontiers,decision,reason,computed,rejected,held=p._navigation_display
+    assert decision.goal_id and decision.path and rejected and held
+    p._navigation_display=(source,frontiers,decision,'goal_failed_no_progress:'+reason,computed,rejected,None)
+    assert p.navigation_status()['goal_id'] is None
+    assert p.navigation_display().goal_id is None
+
+
+@pytest.mark.parametrize('interruption',['pause','source_pending','exception'])
+def test_control_interruption_resets_failure_confirmation_without_dropping_goal(interruption):
+    obs,nav=context();navigator=real_navigator();p=pipeline(obs,nav,navigator,Guard());actuator=Actuator()
+    p.control_step(actuator);target=navigator.policy._goal_world_xy
+    assert navigator._goal_failure_watch is not None
+    if interruption=='pause':p._paused=True
+    elif interruption=='source_pending':p._latest_nav=replace(nav,source=replace(nav.source,frame_index=9))
+    else:
+        p.guard=Guard(raises=True)
+    p.control_step(actuator)
+    assert navigator._goal_failure_watch is None
+    assert navigator.policy._goal_world_xy==target
+
+
+def test_long_gap_without_control_observations_starts_new_failure_window():
+    _,nav=context();navigator=real_navigator();first=navigator.step(nav,(1.2,1.2),0.,STAMP)
+    for i in range(19):
+        now=STAMP+i*400_000_000
+        navigator.observe_navigation_result(replace(nav,revision=8+i,capture_monotonic_ns=now),
+            (1.2,1.2),now,'path_segment_blocked',True)
+    now+=30_000_000_000
+    assert navigator.observe_navigation_result(replace(nav,revision=28,capture_monotonic_ns=now),
+        (1.2,1.2),now,'path_segment_blocked',True) is None
+    assert navigator.policy._goal_world_xy==first.path[-1]
+    assert navigator._goal_failure_watch['count']==1

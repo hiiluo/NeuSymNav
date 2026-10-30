@@ -105,11 +105,11 @@ def test_map_renders_heading_on_same_transform_as_raster_and_stale_is_explicit()
     view.close()
 
 
-def test_capture_observer_receives_existing_exact_pose_after_admission():
+def test_capture_observer_receives_existing_exact_pose_before_map_admission():
     from test_launcher_capture_pair import scenario
     from neusymnav.runtime.launcher import _capture_sensor_pair
     sensor,pipeline,raw,events,_,_,values=scenario()
     seen=[]
-    def observe(*args):seen.append(args);assert events[-1]=='pair'
+    def observe(*args):seen.append(args);assert events[-1]=='pose'
     _capture_sensor_pair(sensor,pipeline,raw,display_observer=observe)
     assert seen==[values] and events.count('pose')==1

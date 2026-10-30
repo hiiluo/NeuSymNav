@@ -39,6 +39,7 @@ class MapWidget(QtWidgets.QWidget):
         self._regions: tuple[np.ndarray, ...] = ()
         self._stale = False
         self._robot = None
+        self._navigation = None
         self._now_ns = 0
         self._clock_domain = None
         self._draw_rect = QtCore.QRectF()
@@ -59,6 +60,7 @@ class MapWidget(QtWidgets.QWidget):
                 if isinstance(polygon, np.ndarray):
                     regions.append(polygon)
         self._robot = envelope.sources.robot
+        self._navigation = getattr(envelope.sources, "navigation", None)
         self._regions = tuple(regions)
         self._stale = stale
         self.update()
@@ -99,6 +101,7 @@ class MapWidget(QtWidgets.QWidget):
             if len(points) >= 3:
                 painter.drawPolygon(QtGui.QPolygonF(points))
         self._draw_rect = draw_rect
+        self._draw_navigation(painter)
         self._draw_robot(painter)
         label = f"Nav revision {self._nav.revision} · measured occupancy"
         if self._stale:
@@ -110,6 +113,70 @@ class MapWidget(QtWidgets.QWidget):
         nav, rect = self._nav, self._draw_rect
         return QtCore.QPointF(rect.left()+(xy[0]-nav.origin_xy[0])/nav.resolution_m*rect.width()/nav.states.shape[1],
                              rect.bottom()-(xy[1]-nav.origin_xy[1])/nav.resolution_m*rect.height()/nav.states.shape[0])
+
+    def _navigation_stale(self) -> bool:
+        overlay = self._navigation
+        return overlay is not None and (
+            overlay.clock_domain != self._clock_domain
+            or self._now_ns < overlay.capture_monotonic_ns
+            or self._now_ns - overlay.capture_monotonic_ns > 300_000_000
+        )
+
+    def _navigation_caption(self) -> str:
+        overlay = self._navigation
+        if overlay is None:
+            return "Navigation plan unavailable"
+        stale = self._navigation_stale()
+        age = max(0, self._now_ns - overlay.capture_monotonic_ns) / 1_000_000
+        goal = ("LAST GOAL" if stale else "HELD GOAL" if not overlay.path else "GOAL") if overlay.goal_xy is not None else "no active goal"
+        return (f"Plan revision {overlay.map_revision} · {overlay.status} · "
+                f"{'STALE · ' if stale else ''}{age:.0f} ms · {goal}"
+                + (" · truncated" if overlay.truncated else ""))
+
+    def _draw_navigation(self, painter: QtGui.QPainter) -> None:
+        overlay = self._navigation
+        painter.save()
+        if overlay is not None:
+            stale = self._navigation_stale()
+            goal_color = QtGui.QColor("#a4b5ca" if stale else "#ff61d6")
+            painter.setClipRect(self._draw_rect)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            if overlay.goal_xy is not None and overlay.path:
+                route = QtGui.QPainterPath(self._world_to_pixel(overlay.path[0]))
+                for xy in overlay.path[1:2048]:
+                    route.lineTo(self._world_to_pixel(xy))
+                painter.setPen(QtGui.QPen(goal_color, 1.2, QtCore.Qt.DashLine))
+                painter.setBrush(QtCore.Qt.NoBrush)
+                painter.drawPath(route)
+            # Actual boundary cell centres and candidate robot viewpoints are separate layers.
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor("#ffda53"))
+            for xy in overlay.frontier_points[:8192]:
+                painter.drawEllipse(self._world_to_pixel(xy), 2.2, 2.2)
+            painter.setBrush(QtGui.QColor("#5adce8"))
+            for xy in overlay.viewpoints[:64]:
+                painter.drawEllipse(self._world_to_pixel(xy), 3, 3)
+            if overlay.goal_xy is not None:
+                point = self._world_to_pixel(overlay.goal_xy)
+                star = QtGui.QPolygonF([
+                    point + QtCore.QPointF(math.cos(-math.pi/2+i*math.pi/5)*radius,
+                                          math.sin(-math.pi/2+i*math.pi/5)*radius)
+                    for i, radius in enumerate([10, 4.5]*5)
+                ])
+                painter.setPen(QtGui.QPen(QtGui.QColor("#101c2a"), 1.2))
+                painter.setBrush(goal_color)
+                painter.drawPolygon(star)
+                painter.setPen(goal_color)
+                painter.drawText(point+QtCore.QPointF(13, -10), "LAST GOAL · STALE" if stale else "GOAL")
+            painter.setClipping(False)
+        painter.setPen(QtGui.QColor("#a4b5ca" if self._navigation_stale() else "#e7edf3"))
+        caption = self._navigation_caption()
+        if overlay is not None:
+            goal_legend = "gray last goal" if self._navigation_stale() else "magenta goal"
+            caption += f"\nYellow frontier · cyan viewpoint · {goal_legend} · dashed route"
+        painter.drawText(self.rect().adjusted(10, 24, -10, -42),
+                         QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap, caption)
+        painter.restore()
 
     def _draw_robot(self, painter):
         painter.save()
@@ -166,10 +233,13 @@ class MapWidget(QtWidgets.QWidget):
             painter.drawText(point+QtCore.QPointF(12,-13), "ROBOT" + (" · STALE" if stale else ""))
         text = "Pose STALE" if stale else "Measured robot pose"
         text += " · sampled trail" + (" (last 1024)" if self._robot.truncated else "")
-        if camera is not None:text += " · camera FOV (1 m schematic)"
-        else:text += " · camera FOV unavailable"
+        if camera is not None:
+            derived = getattr(camera, "policy", None) is not None
+            text += "\nCamera FOV · calibrated projection (1 m schematic)" if derived else "\nCamera FOV (1 m schematic)"
+        else:text += "\nCamera FOV unavailable"
         painter.drawText(self.rect().adjusted(10, 24, -10, -10), QtCore.Qt.AlignBottom | QtCore.Qt.AlignLeft,
-                         painter.fontMetrics().elidedText(text,QtCore.Qt.ElideRight,self.width()-20))
+                         "\n".join(painter.fontMetrics().elidedText(line,QtCore.Qt.ElideRight,self.width()-20)
+                                   for line in text.splitlines()))
         painter.restore()
 
 
@@ -184,6 +254,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         clock_domain: str | None = None,
         now_ns: Callable[[], int] = monotonic_ns,
         parent=None,
+        best_view_provider=None,
     ) -> None:
         super().__init__(parent)
         if isinstance(publication_reader, DisplayPublisher):
@@ -195,6 +266,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         else:
             raise ValueError("publication_reader must be a publisher, callable or None")
         self._control = control_client
+        self._best_view_provider = best_view_provider
         self._clock_domain = clock_domain
         self._now_ns = now_ns
         self._envelope: DisplayEnvelope | None = None
@@ -698,6 +770,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         view = next((item for item in self._envelope.sources.best_views
                      if self._envelope.sources.objects is not None and
                      self._envelope.sources.objects.resolve_id(item.object_id) == canonical), None)
+        if view is None and self._best_view_provider is not None:
+            try:view = self._best_view_provider(self._envelope, canonical)
+            except (OSError, ValueError):view = None
         if view is None:
             self.best_view.setPixmap(QtGui.QPixmap())
             self.best_view.setText(f"Best view unavailable · no evidence image for {canonical[:8]}")
@@ -783,13 +858,14 @@ def run_desktop(
     *,
     clock_domain: str | None = None,
     smoke_exit_ms: int | None = None,
+    best_view_provider=None,
 ) -> int:
     """Application entrypoint for a P09-owned external-process adapter."""
     if smoke_exit_ms is not None and (type(smoke_exit_ms) is not int or smoke_exit_ms < 1):
         raise ValueError("smoke_exit_ms must be a positive integer or None")
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
     app.setStyle("Fusion")
-    window = DashboardWindow(publication_reader, control_client, clock_domain=clock_domain)
+    window = DashboardWindow(publication_reader, control_client, clock_domain=clock_domain, best_view_provider=best_view_provider)
     window.show()
     print("NEUSYMNAV_UI_READY", flush=True)
     if smoke_exit_ms is not None:

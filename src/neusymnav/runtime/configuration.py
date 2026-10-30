@@ -85,7 +85,7 @@ def load_config(path):
     if not isinstance(floor['calibration_sha256'],str) or not SHA.fullmatch(floor['calibration_sha256']):raise ValueError('floor.calibration_sha256 is required')
     if 'fixture' in value:_mapping(value['fixture'],'fixture',{'detections'},{'detections'})
     if 'workers' in value:
-        _mapping(value['workers'],'workers',{'sensor','detector','region','appearance','ui'})
+        _mapping(value['workers'],'workers',{'sensor','detector','region','appearance','ui','raycast'})
         for name,worker in value['workers'].items():
             _mapping(worker,'workers.'+name,{'python','script','executable','timeout_s','startup_timeout_s'})
     if 'navigation' in value:_mapping(value['navigation'],'navigation',{'robot','mapper'})
@@ -99,7 +99,10 @@ def load_config(path):
         runtime=value['runtime']
         _mapping(runtime,'runtime',{'primary_hz','navigation_hz','control_sample_cap'},
                  {'primary_hz','navigation_hz','control_sample_cap'})
-        for key in ('primary_hz','navigation_hz'):_positive(runtime[key],'runtime.'+key,maximum=20)
+        _positive(runtime['primary_hz'],'runtime.primary_hz',maximum=20)
+        # Capture request ceiling, not a throughput claim. Fresh navigation
+        # and source-bound actuation still run serially without timer catchup.
+        _positive(runtime['navigation_hz'],'runtime.navigation_hz',maximum=30)
         _positive(runtime['control_sample_cap'],'runtime.control_sample_cap',integer=True,maximum=20000)
     if 'budgets' in value:
         _mapping(value['budgets'],'budgets',{'byte_cap','raw_cap','total_cap','shutdown_timeout_s','archive_cap'})
@@ -179,9 +182,14 @@ def _validate_nested(value):
         try:RobotGeometry(**robot)
         except (ValueError,TypeError) as exc:raise ValueError('invalid navigation.robot: '+str(exc)) from exc
     if 'mapper' in nav:
-        mapper=nav['mapper'];_mapping(mapper,'navigation.mapper',{'resolution_m','origin_xy','tile_size_cells','height_bin_m','min_depth_m','max_depth_m','sampling_stride','snapshot_radius_m','max_snapshot_cells','max_active_tiles','raycast_workers'})
+        mapper=nav['mapper'];_mapping(mapper,'navigation.mapper',{'resolution_m','origin_xy','tile_size_cells','height_bin_m','min_depth_m','max_depth_m','sampling_stride','snapshot_radius_m','max_snapshot_cells','max_active_tiles','raycast_workers','raycast_backend'})
         for key,item in mapper.items():
-            if key=='origin_xy':
+            if key=='raycast_backend':
+                if item not in ('cpu','triton_cuda'):raise ValueError('mapper.raycast_backend must be cpu or triton_cuda')
+                if item=='triton_cuda':
+                    if value['mode']!='live':raise ValueError('GPU raycast_backend requires live mode')
+                    if 'raycast' not in value.get('workers',{}):raise ValueError('GPU raycast_backend requires workers.raycast')
+            elif key=='origin_xy':
                 if not isinstance(item,(list,tuple)) or len(item)!=2 or any(type(v) not in (int,float) or not math.isfinite(v) for v in item):raise ValueError('mapper.origin_xy requires two finite coordinates')
             else:_positive(item,'mapper.'+key,integer=key in {'tile_size_cells','sampling_stride','max_snapshot_cells','max_active_tiles','raycast_workers'},maximum=4 if key=='raycast_workers' else None)
     if 'ui' in value:
