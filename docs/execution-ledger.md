@@ -503,3 +503,202 @@ exit0/20.51s. CI retains failure exit status and bounded failure annotations.
 Logs: runs/github-setup-20261029/ci-diagnostic-annotations.json and review/.
 Remote rerun of compatibility fix remains pending at this checkpoint; see the
 repository Actions tab for its live verdict. Runtime/P10 evidence is unchanged.
+
+
+### Motion/realtime repair in progress — 2026-10-29
+
+User authorizes diagnosing latest stationary demo and improving useful realtime
+against NewOH3DSG; no installs/downloads/source-repo changes or publish requested.
+Latest user run2348calls/19.85Hz contained4rightturns,2343control_rejected,0forward,
+0measuredtranslation andmaprev5 frozen while2940rawframescontinued. Production
+CPU repro identifies accepted-pause→supersededpose lookup as the exact pattern;
+consumed UI mailboxes prevent attributing original request/timestamp. User unsure
+about Pause. No automatic resume or model-wait explanation is assumed.
+
+Implemented: explicit non-actuating paused/closing results; bounded UIcommandACK
+audit at cleanfinalization; linear delimiter scan for fragmented RGB JSON-lines;
+optional bounded prewarmed exact frontier reduction kernel. Independentreview
+SolHighACCEPT69tests+750native differentialcases; newgeometry guard optimization
+is still being verified/reviewed. FirstwholeCPU1564pass/1skip/3nativedeselected with
+3failures only stale UI script SHA in shippedconfigs; updatedpins and launcher
+28pass exit0. Final combined suite required after all optimizations freeze.
+
+Runtime evidence retained: no-UI-input30s oldbaseline10.09Hz/0.7535m; firstcandidate
+60s11.25Hz/p95138.20ms/p99158.42ms/227of670intervals>100ms,1.8117m lowerbound,
+931/931rawcomplete,13detector/objectcommits. One unsupported RSSsample means
+outcomeincomplete/exit1; not promoted to complete runtime or20Hz. No gate relaxed.
+Raycast pool reuse CPUprobe only0.7% benefit, no persistentpool implementation
+selected; RSSchurn causalityunproven. New20Hz includesSTOP; moving/control/sensor/
+UI/model populations remain separate. Further measured optimization ongoing.
+
+Artifacts runs/realtime-motion-20261029/, docs/realtime-motion-plan.md,
+docs/realtime-motion-results.md. MainownsGPU/sharedcontracts; guardedgeometry
+worker owns safety.py; no other GPUbenchmark active at this checkpoint.
+
+### GPU/motion repair verification — 2026-10-30
+
+Implemented isolated optionalTritonCUDA measuredrayvotes, bounded hash-boundIPC/
+startup/cleanup, exactbyte geometry caches,100mscanonicalpublication/finalregion
+drain, uint8domainvalidation and call-local projectionreuse. Earlier pause/audit/
+linearlineparse/frontier/guard fixes included. No install/download/training/
+source-repoedit/commit/push. GPUselectionexplicit; CPUprofiles unchanged20Hz;
+GPUprofile requestnav30/primary5,RGB640/YOLOE26m/nav240x180/UI2Hz. Safety/proof/TTL
+unchanged. See docs/gpu-mapping-design.md and realtime-motion-results.md.
+
+Correctness: wholeCPU final `PYTHONPATH=src .venv/bin/python -m pytest tests -q
+-m 'not native'` (BLAS/OMP/Numba1thread,offscreenQt) =>1859passed/2skipped/
+3deselected,exit0/97.50s. ActualCUDA31passed0/2.06s using existing systempytest
+read-only. Scoped independentSolHigh ACCEPT GPU52checks+raceprobes,publication45,
+geometry/config/bool109+scalarparity,projection48+106observation1463endpoint
+byteparity. Reports under runs/realtime-motion-20261030/review-*/ and
+publication-review/. EarlierfullCPU5stale_mock_signaturefailures and diagnostic
+incomplete/RSS/cProfile attempts retained, not promoted.
+
+Nativefrozenproduction60s: `QT_QPA_PLATFORM=offscreen bash tools/run_gpu_demo.sh
+60 runs/realtime-motion-20261030/gpu-final60` =>exit0/completed.17.698374Hz,
+p9598.201218/p99124.397844ms,436/1060>50ms,49/1060>100ms;1053executednonzero
+proofs/1.98496m motionlowerbound,raw1332complete/485112599B. NativeRTX3060
+raycastworker1062requests,42detector/23objectevidencecommits, acceptedregionbut
+noassignedmembership. ResourcesRSS559/559/GPU63/63valid, cleanworkers; strict
+export/proof/context/fullrawdecode audit0.223source/test/profile/scriptpins
+stable. `bash tools/run_gpu_demo.sh --preflight`0/readytrue; bashsyntax0.
+Artifact root/report.md, gpu-final60-audit.json/log, final-freeze/.
+
+Runtime-validated only thissingle60sscene/seed/offscreenprofile. Minimummean10Hz
+met;20Hz/continuous50msdeadlines unachieved;600sGPU/desktop/currentfulltwoscene
+campaign/assignedroommembership unproven, P10unaccepted. Noaccuracygainclaim.
+
+Finalnative evidence caveat:8expired_or_zero outcomes have no actuationproof;
+aggregate actuation.complete remainsfalse.1053executed proofrecords join their
+exact recordedsource/calibration/time/pose/command; observedmotion is a lowerbound,
+not fulltrajectory certification. Independentnative review recomputed all1060
+intervals and decoded all1332rawpayloads;19objectsremainunassigned. This doesnot
+relax the outstandingP10 proof/membership/campaign requirements.
+
+### Occupancy robot marker repair — 2026-10-30
+
+Systematic multirate gap reproduced: paired RGB captures observed pose, depth-only
+captures didnot; exactmap lookup removedmarker. Register each measurednavpose
+beforeadmission on paired/depthonly/startup paths; allowRGBNone without invented
+cameracone. RED2fail1 -> focused107pass0/6.07s, offscreen Qt included. Artifact
+runs/robot-marker-20261030/{report.md,red.log,green.log,source-pins.json}. NoGPU/
+nativecadence orwholeCPU rerun for this small display fix; previous17.698Hz
+benchmark remains historicalfrozen evidence. Existing safety/provenance/bounded
+nonblockingtrail semantics unchanged. No sourcefolder/dependency/model changes.
+
+### Continuous FOV/frontier/goal display — 2026-10-30
+
+Implemented display-only calibrated rigidplanar camera projection with current
+navpose/originalRGBcalibration provenance, bounded actualfrontier/goal/path DTO,
+coalescedUI provider and rendered points/star/route/stale states. Noextra planner,
+sensor,actuator,GPUworkload/dependency/upstream changes; safetygates unchanged.
+FOV red1fail/2tests exit1; focused194pass0; fullCPU1886pass2skip3nativedeselect0
+98.71s; preflightreadytrue0; diffcheck0. Seven activeUI script pins updated.
+Actuatorveto finding reproduced byindependentreviewer then mainfixed; original
+probe rerun0. Reviewer accountlimit interrupted finalreview, noACCEPTclaimed.
+CPUfixtureQt screenshots inspected; no newnativeHz/P07/P10 certification.
+Artifacts runs/map-navigation-overlay-20261030/{report.md,source-pins.json,
+full-cpu-final.log,final-focused.log,review/,render/}.
+
+### Goal-change read-only diagnosis — 2026-10-30
+
+Latestuser092615 retainedproofanalysis:48IDtransitions,25uniqueIDs,27segment
+startgaps<1s; IDsdo notproveworldtargetchanges. Productionpolicy CPUprobe exit0
+confirms preserve_time retainsselectedtime butreplaces worldtarget afternearby
+matching:5cmupdates accumulate30cmdrift/0.6s under3shold. No productionedit,
+newnative/GPUrun or actualrun per-transition reason/XYclaim. Existingproofs lack
+thatdiagnostic. Evidence runs/goal-change-diagnosis-20261030/{report.md,
+proof-id-analysis.json,target-drift.json,source-pins.json}.
+
+### 2026-10-30 — committed sequential goal repair
+
+Request: latch one goal until arrival within threshold, then choose next. Main
+implements private policy opt-in enabled by runtime; exact world endpoint through
+controller and published path; failure WAIT retains goal; episode reset clears it.
+Legacy behavioral RED exit1 and coarse-endpoint RED exit1; final focused99passed
+exit0/22.43s; lifecycle30passed exit0/.62s. Artifacts
+`runs/committed-goal-20261030/`. Independent SolHigh review found coarse-origin
+center/target mismatch, fixed before final review. Full final CPU suite/review
+pending checkpoint below. No GPU/model download/install/source-repo change/push;
+no native arrival/realtime/P10 claim from unit evidence.
+
+Final snapshot: final-cpu-suite.log1897passed/2skipped/3nativedeselected,
+exit0/102.47s; git diff --check exit0. Independent SolHigh ACCEPT,61scoped pass
+exit0 and safety endpoint/coarse-origin probes exit0. Evidence/repro commands:
+`runs/committed-goal-20261030/{report.md,review.md,source-sha256.txt,verify.sh}`.
+Implemented/correctness-verified; native runtime validation remains unproven.
+
+### 2026-10-30 — diagnose persistent goal wait,5cm threshold,failed-goal recovery
+
+Read-only latest-run analysis confirms894zero results/40.039s while map advances;
+upstream reasons/originalgoalXY absent, exact old stop cause unrecoverable. Fresh
+final-map policy tracks a frontier; not an original-state replay. User authorizes
+confirmed failed-goal abandonment. Runtime5cm threshold;8s+20fresh distinct map
+revisions without3cm progress/geometric stop => failure/cooldown,then newgoal.
+UI displays held blocked target with no route; bounded telemetry saves actual
+reason/goal. Safety/source/TTL invariants unchanged. RED regressions exit1 retained;
+fullCPU1908passed,2skipped,3nativedeselected exit0/102.26s. Independent reviewer
+finding fixed/main verified; final rereview hit modelcapacity, no ACCEPT invented.
+Artifacts runs/goal-wait-5cm-20261030/. Native45s smoke pending below.
+
+Native45s smoke exit0/completed:1.1927447m lowerbound/490motionproofs,onearrival,
+twoconfirmedfailures,finaltrackingnewgoal. Lastfailure8.042s/185freshmaprevisions;
+noobservererror/capbreach. Artifacts native-result.json,native45/ andnative45.log.
+Runtime-validated bounded recovery wiring on one scene/seed;P10/20Hz/fullcoverage
+and exact historical stopcause remain unproven.
+
+Final frozen CPU1912passed/2skipped/3nativedeselected exit0/100.96s;SolHigh
+independent ACCEPT76scoped pass exit0 plus originalsourcegaprepro exit0. Hashes
+match,git diff --check exit0. FinalresetdeltaCPU-only;native45previoussnapshot
+scope retained explicitly. No P10/20Hz/fullcoverageclaim. No commit/push/install.
+
+2026-10-30 read-only lastgoal diagnosis: run100703 finalgoal23executed turns over
+1.423s beforeStop,headingalignment/linear0;finalmapplanner succeeds and current
+lookaheaderror72.49deg exceeds50deg turn-onlythreshold. Priorfailedgoal differs.
+Analysis/replanexit0;report runs/last-goal-align-20261030/report.md. No codechange.
+
+2026-10-30 previousgoal clarification: retainedframe500CPU measuredcoverage replay
+exit0 givesbootstrap_blocked167required/166free/1unknown;unknown(-.475,-.075)
+FREE in finalhistorymap. Frame402same. Evidence
+runs/previous-goal-bootstrap-20261030/probe.py,probe.json,report.md. Read-only
+productionkernel/sensorreplay;not exactveto/historyrestore,no physicalobstacle
+claim,no source/gatechange or nativebenchmark.
+
+2026-10-30 authorized .30->.10m forward depth corridor: runtime default+reference
+config. All other safety gates unchanged;max(.10,actual commanddistance) retained.
+RED2fails/1pass exit1;focused113pass exit0;independentreviewACCEPT47pass exit0.
+Recordedframe500CPUreplay118/118free/bootstrap_ready exit0;native45pending.
+Artifacts runs/guard-10cm-20261030/. No sourcefolderedit/install/publish.
+
+10cm native45 finalsnapshot exit0/completed:1.48679946m lowerbound/588proofs/
+4arrivals,completiontrue. Two bootstrapvetoes remain;finalgoalwaiting. No assertion
+that10cm eliminates all failures. Finalhashesmatch;git diff --check exit0.
+
+2026-10-30 graphbestviewrepair:global3previewcap consumedbyfirstobject leaves
+other12of13blankdespitepersistedcrops. Qtchildlazyselectedcropread+oneimagecache;
+metadata preserves galleryrefsolderthanlast32;strictsource/hash/alias/revision
+checks,8MBbound;13UI scriptpinsupdated. REDsretained;finalfocused34pass exit0,
+actualarchivedQt13/13selectionpass exit0,SolHighACCEPT28pass exit0. FullfrozenCPU
+rerunpendingfollowingstaleYAMLpins/mixedfixtureinitialfail. Artifacts
+runs/best-view-selection-20261030/. NoGPUdownload/training/sourcefolderedit/push.
+
+BestviewfinalfrozenCPU1923pass/2skip/3nativedeselected exit0/110.22s;4hashesmatch,
+git diff --check exit0. ArchiveQtselection13/13/reviewACCEPT retained. No native
+benchmark/P10claim. Completedselected-objectimagefix;restartdemo required.
+
+2026-10-30 userauthorizes extra50% UIzoom:child-onlyQt factor*1.5,13scriptpins
+updated. REDregression exit1;GREEN88UI/profile/bestviewtests exit0/8.66s,
+actualQtchildDPR1.5,parentenvunchanged. Artifacts runs/ui-scale-150-20261030/.
+No GPU/model/sourcefolder/commit/push changes;nativeP10statusunchanged.
+
+2026-10-30 userpurge:deleted68oldrundirs+oldrootlog,retainedexactly5latestdirs
+bymtime,freed31.19GiB. Required11runtimeassets moved/byte-verified outside runs
+and configpathsupdated so demo stillpreflights exit0. Nativeprofile61pass exit0;
+manifest docs/run-cleanup-20261030.json. Oldartifactlinks no longer resolve by
+userdecision;no inferred P10 acceptance or newruntimebenchmark.
+
+2026-10-30 GitHubdelivery: userauthorizes segmentedcommits and directmainpush.
+FinalCPU1924pass/2skip/3nativedeselected exit0/107.12s. Sixlogicalcommitgroups,
+sourceonly~1.45MB;models/datasets/envs/runs ignored. No credentialfinding. Local/
+originmain synchronizedbeforecommit. Finaldeliveryreceipt/IDs/remoteverification:
+.runtime/github-delivery-20261030/. No newnativeP10/20Hzclaim.

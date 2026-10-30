@@ -1,6 +1,71 @@
 # Trạng thái NeuSymNav
 
-Cập nhật: 2026-10-29.
+**Goal-change diagnosis — 2026-10-30 (read-only):** lượt user092615 có48lần
+đổi goalID trong retainedproofs,27segment-start gaps<1s; ID không đủ suy tọa độ
+đích. Đã tái hiện cơ chế targetdrift: _match_current nhận viewpoint gần<=10cm,
+_remember(preserve_time=True) giữ thời gian chọn nhưng ghi đè worldtarget.
+Probe productionpolicy CPU: goal_retained vẫn trôi30cm/0.6s, exit0. Chưa sửa
+policy/config/gate, chưa có native/replay causality cho từng lần đổiID.
+[Evidence và giới hạn](../runs/goal-change-diagnosis-20261030/report.md).
+
+
+**Checkpoint mới nhất — FOV/frontier/goal trên occupancy map, 2026-10-30:**
+implemented / CPU correctness-verified / Qt offscreen rendered. FOV dùng rigid
+planar camera mount đã hiệu chuẩn từ RGB/body, cập nhật bằng mỗi measured navpose;
+DTO tách nguồn calibration khỏi nguồn pose hiện tại, không relabel ảnh RGB cũ.
+Frontier boundary points vàng, viewpoint xanh cyan, goal sao hồng và route từ
+kết quả planner thật; không chạy thêm planner. Plan có source/maprevision/age
+riêng, STALE rõ ràng; pause/stop/guardzero/actuatorreject/exception bỏ activegoal.
+Giới hạn8192points/64viewpoints/2048route, UI-only sau coalescing, không đổi safety.
+
+Final wholeCPU1886pass/2skip/3native deselect, exit0/98.71s; focused194pass0;
+preflightreadytrue0, gitdiffcheck0. Đã sửa finding review actuator veto giữ goal;
+probe độc lập rerun0. Reviewer hết usage limit trước finalACCEPT, không claim
+review hoàn tất. Không chạy GPU/native hoặc đo lại Hz;17.698Hz là snapshot trước,
+P10 vẫn chưa nghiệm thu. Demo mới: `bash tools/run_gpu_demo.sh 60`.
+[Commands/evidence/limits](../runs/map-navigation-overlay-20261030/report.md).
+
+
+**Checkpoint mới nhất — marker robot trên occupancy map, 2026-10-30:** đã sửa
+lỗi overlay chỉ nhận pose ở nhịp RGB5Hz trong khi map dùng depth navigation riêng.
+Mọi capture depth (kể cả startup) giờ gửi measured pose trước khi map được admit;
+for_nav vẫn yêu cầu exact source/time/domain. Không tái dùng pose cũ, không dựng
+FOV RGB khi chỉ có depth. Implemented/scoped correctness-verified: regression
+RED2fail1 -> GREEN107pass0/6.07s, gồm capture/publication/Qt overlay/transport.
+Không chạy native GPU hoặc đo lại Hz cho thay đổi này; benchmark60s phía dưới
+thuộc snapshot trước. Không đổi gate/TTL/control/model/source repos.
+[Evidence và lệnh](../runs/robot-marker-20261030/report.md).
+
+
+**Checkpoint mới nhất — GPU/motion repair, 2026-10-30:** implemented /
+correctness-verified / single-scene60s runtime-validated. GPU raycasting opt-in
+trên RTX3060; primary640×480/YOLOE26m giữ nguyên, nav240×180, request5/30Hz,
+UI2Hz/npzv2, TTL300ms/clearance/footprint/unknown/proof không đổi. Demo:
+`bash tools/run_gpu_demo.sh 60`; CPU wrapper cũ vẫn có.
+
+Frozen native60s **exit0/completed**, actualcontrol **17.698Hz**, interval
+p95 **98.201ms**, p99 **124.398ms**; >50ms **436/1060(41.13%)**, >100ms
+**49/1060(4.62%)**.1053nonzero executedproofs, observedmotionlowerbound
+**1.985m**,1332/1332fullraw/485112599B,42detector/23objectevidencecommits.
+RSS559/559valid/GPU63/63valid, cleanworkers/strict offlineexport+proof/fullrawdecode
+exit0;223source/test/profile/scriptpins stable. WholeCPU1859passed/2skipped/
+3native deselected0; actualCUDA31passed0; scopedSolHigh ACCEPT GPUIPC/lifecycle,
+publication/finalregiondrain, geometrycache/config30/uint8check, projectionreuse.
+
+8expired_or_zero không có proof, nên aggregate actuation.complete=false;1053
+proof đã giữ khớp exact rawsource, motion chỉ là lowerbound.
+**Chưa đạt20Hz hoặc deadline50ms ổn định; P10 chưa nghiệm thu.** OffscreenQt timing,
+chưa đo600sGPU/finaltwoscene campaign/assignedroommembership. Không suy semantic
+accuracy/confidence tăng. Lượt đứng im cũ khớp productionpause/source-cache
+reproduction; không có ACK gốc để quy kết thao tác người dùng. Đã sửa paused
+nonactuating result và thêm audit64UIcommands; không tựresume/hạsafetygate.
+Chi tiết commands/exits/retainedfailures/reviews:
+[GPU/motion report](../runs/realtime-motion-20261030/report.md),
+[results](realtime-motion-results.md), [design](gpu-mapping-design.md).
+Các checkpoint tiếp theo bên dưới là lịch sử và không thay thế kết quả này.
+
+
+Cập nhật: 2026-10-30.
 
 **Checkpoint mới nhất — demo640×480 / YOLOE-26m:** đã đổi demo mặc định sang
 `configs/p10/demo-yoloe26m-640x480-00861.json`, actual primaryRGB và depth640×480,
@@ -643,3 +708,247 @@ exit0/20.51s. CI retains failure exit status and bounded failure annotations.
 Logs: runs/github-setup-20261029/ci-diagnostic-annotations.json and review/.
 Remote rerun of compatibility fix remains pending at this checkpoint; see the
 repository Actions tab for its live verdict. Runtime/P10 evidence is unchanged.
+
+
+### Motion/realtime repair in progress — 2026-10-29
+
+User authorizes diagnosing latest stationary demo and improving useful realtime
+against NewOH3DSG; no installs/downloads/source-repo changes or publish requested.
+Latest user run2348calls/19.85Hz contained4rightturns,2343control_rejected,0forward,
+0measuredtranslation andmaprev5 frozen while2940rawframescontinued. Production
+CPU repro identifies accepted-pause→supersededpose lookup as the exact pattern;
+consumed UI mailboxes prevent attributing original request/timestamp. User unsure
+about Pause. No automatic resume or model-wait explanation is assumed.
+
+Implemented: explicit non-actuating paused/closing results; bounded UIcommandACK
+audit at cleanfinalization; linear delimiter scan for fragmented RGB JSON-lines;
+optional bounded prewarmed exact frontier reduction kernel. Independentreview
+SolHighACCEPT69tests+750native differentialcases; newgeometry guard optimization
+is still being verified/reviewed. FirstwholeCPU1564pass/1skip/3nativedeselected with
+3failures only stale UI script SHA in shippedconfigs; updatedpins and launcher
+28pass exit0. Final combined suite required after all optimizations freeze.
+
+Runtime evidence retained: no-UI-input30s oldbaseline10.09Hz/0.7535m; firstcandidate
+60s11.25Hz/p95138.20ms/p99158.42ms/227of670intervals>100ms,1.8117m lowerbound,
+931/931rawcomplete,13detector/objectcommits. One unsupported RSSsample means
+outcomeincomplete/exit1; not promoted to complete runtime or20Hz. No gate relaxed.
+Raycast pool reuse CPUprobe only0.7% benefit, no persistentpool implementation
+selected; RSSchurn causalityunproven. New20Hz includesSTOP; moving/control/sensor/
+UI/model populations remain separate. Further measured optimization ongoing.
+
+Artifacts runs/realtime-motion-20261029/, docs/realtime-motion-plan.md,
+docs/realtime-motion-results.md. MainownsGPU/sharedcontracts; guardedgeometry
+worker owns safety.py; no other GPUbenchmark active at this checkpoint.
+
+
+### Offline object quality evaluation — 2026-10-30 (in progress)
+
+User explicitly authorized detection/geometry/association metrics and resumed
+implementation. Additive evaluator modules, versioned GT/prediction inputs,
+offline CLI JSON/Markdown reports, read-only committed-ledger exporter. Existing
+unrelated motion/runtime working-tree deltas preserved; no training/install/
+download/publish or runtime semantic-GT inlet. Design: quality-evaluation-design.md;
+usage: object-quality-evaluation.md. Evidence runs/quality-evaluation-20261029/.
+
+Implemented: operating-point P/R/F1, bbox/mask AP subset, 3D/XY/cloud metrics,
+IDF1/conditional pair diagnostics/switches/fragments/revisit, online/final policy.
+HOTA/AssA explicitly unavailable. Independent original reviews found local
+Hungarian pruning before global IDF1 and two integration seams; fixes implemented,
+integration rereview ACCEPT19focused+16boundary groups0. Metrics review ongoing
+for exact IoU boundary; exporter review ongoing. Main grouped193CPU pass0 before
+latest boundary delta, not a final full-head gate. All RED evidence retained.
+
+Native preparation (CPU extraction only): first12source-ordered committed batches
+from frozen long600s ledger exported exit0,5detections/5identity observations;
+total51committed batches. GT template unannotated, no accuracy values invented.
+Scene00861 semantic assets exist; new offline-only aligned GT renderer is being
+implemented/tested before a bounded12frame semantic render. No new GPU run yet.
+Blockers/unproven: genuine quality baseline pending aligned GT; online historical
+identity cannot be recovered from ledger IDs rewritten by merge; geometry GT
+scope and full fixed multi-scene evaluation remain separately unproven.
+
+### Fixed sequential exploration goals — 2026-10-30
+
+User authorizes holding one world goal until within threshold, then selecting the
+next; main owns navigation policy/controller and regression tests. Implemented:
+runtime enables strict ID/XY/time commitment, replan only the same target on new
+NavMap, arrival at <=0.20m emits a stopped observation tick before new selection.
+Frontier drift/ID churn/closer alternatives/expired hysteresis never replace an
+active target. Unsafe/missing path, outside map or collision cooldown => WAIT,
+retain target; stale source still stops; episode reset clears old commitment.
+Private baseline legacy mode remains for parity. Coarse rolling-origin quantization
+found in review is addressed by exact terminal world target in controller with
+same-cell and segment safety checks. Public route endpoint matches actual target.
+
+Correctness checkpoint: final-focused.log99passed/22.43s exit0; runtime lifecycle
+subset30passed/.62s exit0. Behavioral legacy RED exit1 retained. Full final CPU
+suite and reviewer final verdict pending at this checkpoint. Artifacts:
+`runs/committed-goal-20261030/`; instructions `docs/running.md`.
+Runtime-validated: not yet for this change. No new Habitat/GPU benchmark; no new
+20Hz/P10 acceptance claim. A permanently unreachable committed goal can wait
+indefinitely instead of autonomously changing goal, as requested. Restart demo to
+load changed code. Two source folders, models/data, TTL/footprint/RGB-D gates kept.
+
+Final verification of the committed-goal change: **1897 passed,2 skipped,
+3 native deselected**, exit0/102.47s (`final-cpu-suite.log`); final focused99pass
+exit0. Independent SolHigh ACCEPT on final frozen policy/controller/tests,
+61scoped tests exit0 plus coarse-origin and obstructed exact-endpoint probes.
+`runs/committed-goal-20261030/review.md`, `source-sha256.txt`, `verify.sh`.
+State: implemented + correctness-verified for this behavior; native
+runtime-validated remains unproven. No P10/realtime acceptance upgrade.
+
+### Goal wait diagnosis + 5cm arrival + bounded failure recovery — 2026-10-30
+
+Latest retained user run094617: map258–1151 contains894 consecutive expired_or_zero
+results over40.039s; last motion map257; UI has141frontier points/3viewpoints but
+clears goal. Startup hashes match previous commitment fix. User Stop follows last
+motion~40s later; cannot explain the prior standstill. Fresh policy on final map
+finds a route, including with historical visited IDs alone; original held XY,
+visited XY and upstream zero-command reasons were not retained. Exact physical
+cause is unrecoverable; do not claim collision/unreachable/arrived/expired as
+proved. Read-only repro: runs/goal-wait-5cm-20261030/analyze_run.py, diagnosis.json,
+exit0. Legacy result reason erased upstream status and hid committed-goal intent.
+
+User explicitly authorizes abandoning confirmed failed goal, avoiding continuous
+switching. Implemented runtime arrival threshold.05m; hold ID/XY until reached or
+>=8s persistent geometric stop,>=20distinct fresh map revisions,no3cm progress.
+Then report failure/cooldown,clear failed goal without marking reached,select
+next on following tick. Freshness/Pause/clock/non-geometric stops do not abandon.
+Repeated revision does not count; actual progress resets watchdog. UI holds
+blocked target marker without executable route; preserves command reason when
+actuator says expired_or_zero. Bounded navigation telemetry retains current
+ID/XY/reason counts and last failure. No safety gate relaxed.
+
+Correctness: initial5cm/marker regression RED exit1; recovery RED exit1; reviewer
+telemetry finding (just-abandoned route fallback shown as active) reproduced RED
+exit1 and fixed. Final fullCPU1908passed/2skipped/3nativedeselected exit0/102.26s;
+preceding focused118passed exit0/23.24s. Commands/artifacts under
+runs/goal-wait-5cm-20261030/. SolHigh independent diagnosis/review found telemetry
+issue; final re-review capacity error, no final ACCEPT claimed. Main verifies
+regressions/fullsuite. Native45s smoke running separately; not P10/20Hz evidence.
+
+Native smoke result: `bash tools/run_gpu_demo.sh 45
+runs/goal-wait-5cm-20261030/native45` exit0/completed,measurement completiontrue,
+noobservererrors/no cap breach. Body translation lowerbound1.1927447m,490motion
+proofs;arrivalcount1;confirmedfailurecount2;finaltrackingnewgoal/routeavailable.
+Guardbootstrapblocked4 thenwait368 corroborate blocked-commitment behavior on
+newrun;lastfailedgoal8.042s/185maprevisions thenreleased. This reproduces that
+class of stall and validates escape wiring;doesnot reconstruct exactoldcause.
+Artifacts native45.log,native-result.json,native45/. Single45s smoke doesnot
+certify fullP10,20Hz,explorationcompletion,orper-goalarrivaldistanceaccuracy.
+
+Final review addendum: fallback independent SolHigh reviewer available; reproduced
+watchdog counting source-pending/Pause/exception gap toward geometric failure.
+Four live/gap regressions RED exit1 retained. Fixed control-wrapper reset on
+unobserved outcomes and>1s gap resetting confirmation window; finalsource hashes
+in final-source-sha256.txt. Native45s precedes only this reset delta; final CPU
+verification/review pending. No newGPU rerun for gap-only delta.
+
+Final frozen verification:1912passed/2skipped/3nativedeselected exit0/100.96s
+(final-cpu-suite.log);independent SolHigh ACCEPT,76scoped tests exit0/1.16s and
+livegaprepro exit0. Five finalsourcehashes match;git diff --check exit0.
+State:implemented+correctness-verified;preceding native45 validates5cm/recovery
+wiring;final interruptionreset delta CPU-only. No P10/20Hz acceptance upgrade.
+See runs/goal-wait-5cm-20261030/{report.md,review.md,verify.sh}.
+
+### Last goal before Stop — read-only diagnosis 2026-10-30
+
+Latest userrun100703: lastgoal39a0b4e38a35 at(.625,.275) had23executed
+align_heading commands over1.423s,actualyaw163.17->111.79deg,linear0/bodyunchanged;
+userStop~.096s afterlastturn. It was turning,not reported blocked. Finalmap CPU
+replan exit0 succeeds;lookaheadheadingerror~-72.49deg vs50deg rotate-onlythreshold.
+Previous8.029s failedgoal(-.625,-.225) is distinct. No source/config changes or
+newnative run. Evidence runs/last-goal-align-20261030/report.md,originalrunproofs/
+UIStopACK. Arrivalifcontinued remains unproven;no newP10/realtimeclaim.
+
+### Clarified previous failed goal — 2026-10-30, read-only
+
+User refers to b3f41bf8ac07(-.625,-.225),not final39a...turninggoal. Real retained
+singleframe depth CPU replay at stationarypose,sourceframe500(rawordinal620),
+reproduces bootstrap_blocked:167capsulecells required,166free,1unknown,0occupied.
+Unknownworldcell(-.475,-.075) is FREE in finalaccumulatedmap. Frame402 reproduces
+same. Currentmeasuredcoverage differs from accumulated UI map;guardrequiresall
+cells in.3mforward/.25mradiuscapsule free. Failure/cooldown then8.029s watchdog
+explains blocked-intent mechanism;no actualphysicalobstacle proved. Exactoriginal
+veto frame/history not restored. Probeexit0/artifacts
+runs/previous-goal-bootstrap-20261030/. No source/config/gatechange.
+
+### User-authorized forward coverage corridor 10cm — 2026-10-30
+
+Main changed MotionGuard default .30->.10m and reference navigation.yaml; runtime
+launcher uses default. Effective coverage max(.10,v*horizon),turn-only0. Robot
+footprint/margin/sweptmargin,unknown rejection,depthTTL,source and path checks
+unchanged. TestsRED2failed/1pass exit1;focused113pass exit0/43.67s. Recordedframe500
+single-frame CPU replay .10m=>118/118free/bootstrap_ready vs .30m167/166free/
+1unknown. Independent SolHigh ACCEPT47scoped pass exit0/29.59s. Artifacts
+runs/guard-10cm-20261030/. State implemented+correctness-verified;native45pending.
+No fullP10/parity30cm/20Hz claim,installs/downloads/sourceedits/push.
+
+Native45s frozen10cm smoke exit0/completed,completiontrue/noobservererror/capbreach;
+1.48679946m observedbodytranslation lowerbound,588motionproofs,4arrival events.
+2bootstrapblocked/114collisionwaitticks remain;finalgoal waiting. Runtime-validated
+bounded10cm wiring;not all stalls eliminated or fullP10/20Hz certified. Evidence
+runs/guard-10cm-20261030/native-result.json,native45/. Final3hashes match.
+
+### Missing selected-object best views — 2026-10-30
+
+Rootcause confirmed run102221:13objects havepersistedcrops,publicationcontains
+3globalpreviewimages allfromfirstobject;other12unavailablebecauseUI onlysearched
+previewtuple. Implemented selectedobject lazyread in Qtchild usingreadonlyownerDB/
+contenthashedassets,pinnedgallery/source/alias/revisionchecks,oneboundedcropcache;
+keeps3previewpixelbudget. Compaction preserves existingoldergalleryrefs for all
+objects. Noquality/confidencegate added,noverificationpromotion. Refresh13existing
+UI scriptpins(8JSON/5YAML). User's13/13objects nowload/show viarealQtselectionaudit
+exit0;artifact audit.json/selected-object.png visuallyinspected.
+
+Finalfocused34passed exit0/7.95s;independentSolHigh ACCEPT28scopedpass exit0/7.46s
+plus13/13archiveauditexit0. InitialmixedfullCPUhad7fail(staleYAMLpins+fixtureupdate
+whiletestsloaded);fixedpins/finalmetadata,andseparatefinalfrozenCPUrerunongoing.
+Artifacts runs/best-view-selection-20261030/. Implemented+focusedcorrectness+
+archivedQtvalidated;notnativepipeline/P10/performanceclaim. NoGPU/install/download/
+sourcefolderedits/commit/push. Restartdemo toloadchildassetprovider.
+
+FinalfrozenbestviewCPU1923passed/2skipped/3nativedeselected exit0/110.22s;
+final-cpu-suite.log,fourfinalhashesmatch,git diff --check exit0. Independent
+reviewACCEPT+actualarchivedQt13/13showimages. State implemented/correctness-verified/
+archivedUI-validated;no nativeP10/performanceupgrade. Requestedfixcomplete.
+
+### Additional150% entire demo UI scale — 2026-10-30
+
+User asks whole demo another50%. UiProcess multiplies child-only QT_SCALE_FACTOR
+by1.5;allQtwidgets/paintedcontent scale together;logical screen bounds/maximize
+remain. Existingpreferred2160x1350logical=>3240x2025physical atbasescale1 when
+screenallows. Parent environment/control untouched.13UIworker scriptpinsupdated.
+Subprocess regression RED exit1,then actualchild devicePixelRatio1.5 andparent
+scale1.0 verified. RelatedUI/profile/crop suite88passed exit0/8.66s;gitdiffcheck0.
+Artifacts runs/ui-scale-150-20261030/. Implemented+subprocessUI-validated;no new
+nativeGPU/realtime/P10claim. Restartdemo required. Mainreview closedcosmeticchange.
+
+### User-requested retention: only latest five run directories — 2026-10-30
+
+User authorizes deletion of oldruns. Kept latest5 top-level directories by mtime:
+ui-scale-150-20261030;demo...103827;best-view-selection-20261030;demo...102221;
+guard-10cm-20261030. Deleted68olderdirs+oneoldrootlog;verifiedexactly5entries.
+Freed~31.19GiB;remaining~3.14GiB. No activeprocesscmd/openFD matched deletedruns
+atprecheck. Toavoidbreakingdemo,byte-verified11runtimeassets(binary,buildrecipe,
+provenance/calibrations) relocated to.runtime/retained-assets(~2.5MB);updated72
+config/buildtestpathfiles. BinarySHAunchanged;no build/install/download needed.
+DemoGPU preflight exit0;nativeprofile61tests passed exit0/1.19s;gitdiffcheck0.
+Manifest docs/run-cleanup-20261030.json;verificationlogs in.runtime/retained-assets/.
+Historical docs references to deleted evidence are now intentionally unavailable;
+priorgateclaims not reverified by cleanup. No nativeGPUbenchmark/commit/push.
+
+### GitHub delivery authorized — 2026-10-30
+
+User explicitly requests all current source changes split into logical commits
+and pushed directly to origin/main. Existingbranchmain/remotemain synchronized
+beforestaging. Sixcommitgroups:offlinequalityevaluation;mapping/frontier/region
+performance;goalcommitment/recovery/safety;runtime+UIintegration;runtimeasset
+relocation;documentation. Indexedconfigversions separate feature/pin changes from
+retainedassetpaths without editingworkingtree. No models/datasets/runs/envs in
+publishset:150source/test/config/doc files,~1.45MB;credential/privatekey scan no
+findings. Fresh finalCPU1924passed/2skipped/3nativedeselected exit0/107.12s;
+gitdiffcheck0. Native/P10/realtime limits remain as documented. Actual commit IDs
+and finalremoteverification retained in.runtime/github-delivery-20261030/;
+sourcepublication does not imply newnativeacceptance. Authorizeddestination:
+git@github.com:hiiluo/NeuSymNav.git,main. No forcepush/rewrite intended.

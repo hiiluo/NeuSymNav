@@ -259,3 +259,76 @@ bounded operation deadline and0.2s retry wait (maximum3 trials), with every fina
 missing/truncated sample still counted as unsupported. See the retained first
 600s attempt as well as the final profile's evidence; earlier incomplete runs
 are not erased or relabelled complete.
+
+Optional CUDA raycasting demo (existing local GPU environment required):
+
+```sh
+bash tools/run_gpu_demo.sh --preflight
+bash tools/run_gpu_demo.sh 60
+```
+
+This explicit profile keeps YOLOE-26m/640×480 and navigation depth240×180, uses
+an isolated Triton/CUDA raycasting worker, and requests primary5/navigation30Hz.
+The CPU demo remains available with run_long_demo.sh. Request rates are ceilings;
+actual source-ready control/motion and p95/p99 must come from each run's artifacts.
+GPU failures stop the dependent lane; no implicit CPU fallback. See
+[gpu mapping design](gpu-mapping-design.md) for bounds and current validation.
+
+### Giữ cố định goal khám phá
+
+Runtime `Navigator` mặc định giữ nguyên ID và tọa độ world XY của goal đã chọn.
+Frontier đổi hình dạng/ID, đích khác gần hơn hoặc hết thời gian hysteresis không
+làm đổi goal. Đường đi được lập lại trên NavMap mới tới cùng tọa độ. Khi robot
+cách tọa độ đã chốt không quá **0.05 m (5 cm)**, một tick dừng ghi nhận đạt đích;
+tick kế tiếp mới chọn goal mới. Reset episode xóa commitment của episode cũ.
+
+Nếu goal/đường đi thiếu free-space, floor support hoặc clearance, robot dừng và
+chờ đường tới cùng goal hợp lệ trở lại. Guard veto giữ goal và áp dụng cooldown
+map revisions hiện có trước khi thử lại. Ngoại lệ được người dùng cho phép:
+**>=8 giây bị chặn bởi lý do hình học, >=20 map revisions mới và không tiến gần
+goal thêm 3 cm** => đánh dấu thất bại, giữ failed-ID/spatial cooldown, xóa goal
+thất bại; tick sau mới chọn goal khác. Đây là xác nhận không tiến triển kéo dài,
+không phải bằng chứng toán học rằng mọi đường trên toàn scene đều bất khả thi.
+Tiến gần thêm 3 cm đặt lại cửa sổ theo dõi; lặp cùng map revision không tăng bộ
+đếm. Stale depth/nav, lỗi clock, Pause hoặc các lý do không hình học không kích
+hoạt cơ chế này. Không ghi nhận goal thất bại là đã tới/đã khám phá.
+
+UI giữ marker **HELD GOAL** khi đang bị chặn, bỏ route không thể thực thi và ghi
+lý do upstream cụ thể thay vì nhãn actuator tổng quát `expired_or_zero`. Trạng
+thái Pause/Stop vẫn ẩn goal. `summary.json` -> `runtime.metrics.navigation` lưu
+reason counts, goal ID/XY, route availability, frontier count và lần thất bại
+cuối để chẩn đoán lượt sau. Counts tối đa65nhãn, bão hòa số đếm; không giữ lịch sử
+map/goal vô hạn. TTL 300 ms, RGB-D/pose binding, footprint và kiểm tra đường đi
+vẫn áp dụng. Cần khởi động lại demo đang chạy để nạp thay đổi code.
+Nếu control bỏ qua vì Pause/chờ source/exception, hoặc hai quan sát hình học cách
+nhau hơn 1 giây, cửa sổ xác nhận thất bại được đặt lại; thời gian thiếu evidence
+không được tính thành thời gian goal bị chặn.
+
+### Khoảng kiểm tra depth phía trước: 10 cm
+
+Theo yêu cầu người dùng, `MotionGuard` mặc định kiểm tra trước **0.10 m**, thay cho
+0.30 m. Khi quãng đường lệnh `v × command_horizon` lớn hơn 10 cm, kiểm tra đủ quãng
+đường đó (`max(0.10, v × horizon)`). Khi chỉ quay, kiểm tra footprint tại chỗ.
+Bán kính robot, margin, swept margin, TTL, unknown rejection và kiểm tra đường đi
+không thay đổi. Profile demo hiện tại dùng bán kính0.20m+margin0.05m và horizon
+100ms. Đây là thay đổi hành vi được cho phép, không claim parity30cm cũ.
+
+### Best view của object đang chọn
+
+UI vẫn nhận tối đa3ảnh preview để giữ publication gọn. Khi chọn object khác,
+Qtprocess đọc crop đã commit của chính object đó từ kho assets ở chế độ read-only;
+không phụ thuộc object có nằm trong3preview hay đã verified hay chưa. Gallery
+được xếp theo chất lượng như trước;ảnh chất lượng thấp vẫn được hiển thị nếu đó
+là evidence đang có. Nếu ảnh đứng đầu bị lỗi/mất,thử evidence tiếp theo. Trường
+hợp không còn crop hợp lệ sẽ báo unavailable,không lấy ảnh object khác thay thế.
+
+Chỉ cache1crop,bounded8MB;kiểm tra hash,source/episode/clock,canonicalalias và
+revision với publication đang pin. Crop đọc trên UIprocess,không chạy inference
+hoặc chặn control. Restart demo để Qtchild nhận đường dẫn assets và code mới.
+
+### Demo zoom 150%
+
+Qtchild được phóng thêm1.5× so với scale hệ thống hiện có (`QT_SCALE_FACTOR` chỉ
+được nhân trong môi trường child). Chữ,nút,ảnh và nội dung vẽ cùng được scale;
+không chỉ tăng kích thước cửa sổ ưu tiên. Qt vẫn giới hạn cửa sổ theo diện tích
+màn hình khả dụng. Restartdemo để nhận zoom mới;host/control không đổi scale.
