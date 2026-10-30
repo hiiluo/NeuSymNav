@@ -54,6 +54,24 @@ def _parser() -> argparse.ArgumentParser:
     evaluate = commands.add_parser("evaluate", help="evaluate an offline suite")
     evaluate.add_argument("--suite", required=True, metavar="PATH")
     evaluate.add_argument("--out", required=True, metavar="PATH")
+
+    quality = commands.add_parser("evaluate-quality", help="score offline object detection, geometry and identity")
+    quality.add_argument("--gt", required=True, metavar="PATH")
+    quality.add_argument("--predictions", required=True, metavar="PATH")
+    quality.add_argument("--out", required=True, metavar="PATH")
+    quality.add_argument("--confidence-threshold", type=float, default=0.25)
+    quality.add_argument("--iou-threshold", type=float, default=0.5)
+    quality.add_argument("--geometry-iou-threshold", type=float, default=0.25)
+    quality.add_argument("--point-tolerance-m", type=float, default=0.05)
+    quality.add_argument("--revisit-gap-frames", type=int, default=2)
+
+    export_quality = commands.add_parser("export-quality", help="prepare predictions and unannotated GT template from committed ledger")
+    export_quality.add_argument("--ledger", required=True, metavar="PATH")
+    export_quality.add_argument("--scene-id", required=True)
+    export_quality.add_argument("--recording-manifest", required=True, metavar="PATH")
+    export_quality.add_argument("--taxonomy", required=True, metavar="PATH")
+    export_quality.add_argument("--out", required=True, metavar="PATH")
+    export_quality.add_argument("--max-frames", type=int, default=100)
     return parser
 
 
@@ -92,6 +110,18 @@ def _evaluate(suite: str, out: str) -> int:
 
 
 def _dispatch(args: argparse.Namespace) -> int:
+    if args.command == "evaluate-quality":
+        quality = importlib.import_module("neusymnav.evaluation.quality_report")
+        result = quality.evaluate_quality(args.gt, args.predictions, out=args.out,
+            confidence_threshold=args.confidence_threshold, iou_threshold=args.iou_threshold,
+            geometry_iou_threshold=args.geometry_iou_threshold, point_tolerance_m=args.point_tolerance_m,
+            revisit_gap_frames=args.revisit_gap_frames)
+        return _emit_result(result)
+    if args.command == "export-quality":
+        quality = importlib.import_module("neusymnav.evaluation.quality_export")
+        return _emit_result(quality.export_quality(args.ledger, scene_id=args.scene_id,
+            recording_manifest=args.recording_manifest, taxonomy_path=args.taxonomy,
+            out=args.out, max_frames=args.max_frames))
     if args.command == "evaluate":
         return _evaluate(args.suite, args.out)
 

@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "binding": {
+    "scene_id": "analytic-example",
+    "episode_id": "synthetic-quality-example",
+    "recording_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "taxonomy_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "coordinate_convention": "canonical_z_up_m_v1"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "description": "Hand-authored diagnostic fixture; NOT real detector accuracy."
+  },
+  "frames": [
+    {
+      "frame_id": "frame-0",
+      "frame_index": 0,
+      "capture_monotonic_ns": 100000000,
+      "source_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+      "geometry_hash": "0000000000000000000000000000000000000000000000000000000000000014",
+      "width": 4,
+      "height": 4,
+      "annotated": true,
+      "objects": [
+        {
+          "id": "gt-chair-1",
+          "label": "chair",
+          "bbox": [
+            0,
+            0,
+            2,
+            2
+          ],
+          "mask": [
+            [
+              true,
+              true,
+              false,
+              false
+            ],
+            [
+              true,
+              true,
+              false,
+              false
+            ],
+            [
+              false,
+              false,
+              false,
+              false
+            ],
+            [
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "frame_id": "frame-1",
+      "frame_index": 1,
+      "capture_monotonic_ns": 200000000,
+      "source_sha256": "0000000000000000000000000000000000000000000000000000000000000003",
+      "geometry_hash": "0000000000000000000000000000000000000000000000000000000000000015",
+      "width": 4,
+      "height": 4,
+      "annotated": true,
+      "objects": [
+        {
+          "id": "gt-chair-1",
+          "label": "chair",
+          "bbox": [
+            0,
+            0,
+            2,
+            2
+          ],
+          "mask": [
+            [
+              true,
+              true,
+              false,
+              false
+            ],
+            [
+              true,
+              true,
+              false,
+              false
+            ],
+            [
+              false,
+              false,
+              false,
+              false
+            ],
+            [
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "frame_id": "frame-2",
+      "frame_index": 2,
+      "capture_monotonic_ns": 300000000,
+      "source_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+      "geometry_hash": "0000000000000000000000000000000000000000000000000000000000000016",
+      "width": 4,
+      "height": 4,
+      "annotated": true,
+      "objects": []
+    },
+    {
+      "frame_id": "frame-3",
+      "frame_index": 3,
+      "capture_monotonic_ns": 400000000,
+      "source_sha256": "0000000000000000000000000000000000000000000000000000000000000005",
+      "geometry_hash": "0000000000000000000000000000000000000000000000000000000000000017",
+      "width": 4,
+      "height": 4,
+      "annotated": true,
+      "objects": []
+    },
+    {
+      "frame_id": "frame-4",
+      "frame_index": 4,
+      "capture_monotonic_ns": 500000000,
+      "source_sha256": "0000000000000000000000000000000000000000000000000000000000000006",
+      "geometry_hash": "0000000000000000000000000000000000000000000000000000000000000018",
+      "width": 4,
+      "height": 4,
+      "annotated": true,
+      "objects": [
+        {
+          "id": "gt-chair-1",
+          "label": "chair",
+          "bbox": [
+            0,
+            0,
+            2,
+            2
+          ],
+          "mask": [
+            [
+              true,
+              true,
+              false,
+              false
+            ],
+            [
+              true,
+              true,
+              false,
+              false
+            ],
+            [
+              false,
+              false,
+              false,
+              false
+            ],
+            [
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "geometry_scope": "one observed analytic cube surface",
+  "geometry_objects": [
+    {
+      "id": "gt-chair-1",
+      "label": "chair",
+      "bounds": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ]
+    }
+  ],
+  "scope_gt_ids": [
+    "gt-chair-1",
+    "gt-unseen-2"
+  ]
+}
