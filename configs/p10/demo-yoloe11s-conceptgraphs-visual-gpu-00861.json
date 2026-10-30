@@ -38,8 +38,8 @@
     },
     "region": {
       "executable": {
-        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/retained-assets/p06-native/build/occusg_dude_worker",
-        "sha256": "c03c10d71a28e8fa7a2943de5d6d75cdad962d20101209e8e1c844645b7c366b"
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/retained-assets/p06-room-origin-v1/build/occusg_dude_worker",
+        "sha256": "d64acf40d0e4c96676de7905589699085e646c467f5caf5cfa1503ab39b4372b"
       }
     },
     "ui": {
@@ -49,7 +49,7 @@
       },
       "script": {
         "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/runtime/ui_transport.py",
-        "sha256": "9373d8eb6ed829cd63074c03dae21e008c2d3a68468012031ed709e32847f3c6"
+        "sha256": "2e6cec8af62f2ae4117d1a8788dd9352115ce8359cad93d65655bc9e2ed28efa"
       }
     },
     "raycast": {
@@ -115,7 +115,7 @@
   "appearance_mode": "openai_clip",
   "ui": {
     "enabled": true,
-    "publish_hz": 2
+    "publish_hz": 5
   },
   "budgets": {
     "byte_cap": 33554432,
@@ -232,7 +232,8 @@
   "provenance": {
     "association": "neusymnav:association:conceptgraphs:v1 with real image features; OpenAI CLIP local TorchScript ViT-B/32; explicit separate feature-space",
     "detector_selection": "Fixed79 diagnostic: YOLOE11s640 conf0.30 cap30; TP80FP134FN143/F1.36613; no heldout or universal improvement claim. CGvisual retained by explicit user choice.",
-    "robot_geometry": "User requested diameter0.25m/height1.0m; margin0.05m; explicit same native agent+navmesh dimensions. Fresh episode required."
+    "robot_geometry": "User requested diameter0.25m/height1.0m; margin0.05m; explicit same native agent+navmesh dimensions. Fresh episode required.",
+    "region_worker": "DuDe local origin-alignment-v1 tracked patch; source/build recipe .runtime/retained-assets/p06-room-origin-v1/build-config.json; no ground-truth room or map seeding"
   },
   "worker": {
     "checkpoint_path": "/home/hiiluo08/Works/NeuSym-Nav/NewOH3DSG/weights/clip/ViT-B-32.pt",
