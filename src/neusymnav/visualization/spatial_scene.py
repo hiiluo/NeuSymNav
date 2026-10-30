@@ -1,9 +1,9 @@
-"""Canonical Z-up spatial graph over historical measured RGB-D (Qt child only)."""
+"""Room/Floor anchors above measured objects and historical Z-up RGB-D."""
 import math
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from .hierarchy_view import hierarchy_rows
+from .hierarchy_view import hierarchy_rows, hierarchy_links
 
 
 class SpatialSceneWidget(QtWidgets.QWidget):
@@ -50,50 +50,101 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         self._invalidate()
 
     def _build_nodes(self):
-        if self.envelope is None: return
+        if self.envelope is None:
+            return
+        from ..regions.geometry import room_center, valid_ring
         envelope = self.envelope
-        floor = next((float(n.attributes['floor_z_m']) for n in envelope.hierarchy.nodes.values()
-                      if n.kind == 'floor' and 'floor_z_m' in n.attributes),
-                     envelope.sources.nav.floor_z_m if envelope.sources.nav is not None else 0.)
-        nodes = {}; polygons = []; hidden = unassigned = 0
-        for row in sorted(hierarchy_rows(envelope), key=lambda r: (r.kind != 'region', r.node_id)):
+        rows = hierarchy_rows(envelope)
+        nodes = {}; polygons = []; floor_geometry = {}; hidden = unassigned = 0
+        # Geometry anchors are rebuilt for every publication, independent of
+        # persistent IDs. Display heights never mutate measured source geometry.
+        for row in rows:
             attrs = envelope.hierarchy.nodes[row.node_id].attributes
+            measured_position = measured_bounds = None
             if row.kind == 'object':
                 if attrs.get('lifecycle') == 'retired' and not self.show_retired and row.node_id != self.selected:
-                    hidden += 1; continue
-                position = np.asarray(attrs.get('centroid', ()), dtype=float)
-                if row.status != 'assigned': unassigned += 1
+                    hidden += 1
+                    continue
+                measured_position = np.asarray(attrs.get('centroid', ()), dtype=float)
+                measured_bounds = np.asarray(attrs.get('bounds', ()), dtype=float)
+                position = measured_position.copy()
+                if row.status != 'assigned':
+                    unassigned += 1
                 label = str(attrs.get('category') or attrs.get('raw_label') or 'object')[:24] + ' · ' + row.node_id[:6]
-            elif row.kind == 'region':
-                polygon = np.asarray(attrs.get('polygon', ()), dtype=float)
-                if polygon.ndim != 2 or polygon.shape[1] != 2 or not len(polygon): continue
-                xy = polygon.mean(axis=0)
-                # Polygon area centroid; presentation anchor, not a room label
-                # or a certificate that this point is navigable/inside a concavity.
-                nxt = np.roll(polygon, -1, axis=0)
-                cross = polygon[:,0]*nxt[:,1] - nxt[:,0]*polygon[:,1]
-                if abs(cross.sum()) > 1e-9:
-                    xy = ((polygon+nxt)*cross[:,None]).sum(axis=0)/(3*cross.sum())
-                position = np.r_[xy, floor+.3]
-                polygons.append(np.column_stack((polygon, np.full(len(polygon),floor))))
-                label = 'Region · ' + row.node_id[-8:] + (' · STALE' if row.stale else '')
-            elif row.kind == 'place':
-                xy = np.asarray(attrs.get('xy', ()), dtype=float)
-                if xy.shape != (2,): continue
-                position = np.r_[xy, floor+.08]
-                label = 'Visited place'
-            else: continue
-            if position.shape != (3,) or not np.isfinite(position).all(): continue
+            elif row.kind == 'room':
+                try:
+                    polygon = np.asarray(attrs.get('polygon', ()), dtype=float)
+                except (ValueError, TypeError):
+                    hidden += 1
+                    continue
+                if polygon.ndim != 2 or polygon.shape[1] != 2 or len(polygon) < 3 or not np.isfinite(polygon).all():
+                    hidden += 1
+                    continue
+                if not valid_ring(tuple(map(tuple, polygon))):
+                    hidden += 1
+                    continue
+                try:
+                    center = attrs.get('center_xy')
+                    xy = np.asarray(room_center(polygon) if center is None else center, dtype=float)
+                except (ValueError, TypeError):
+                    hidden += 1
+                    continue
+                if xy.shape != (2,) or not np.isfinite(xy).all():
+                    hidden += 1
+                    continue
+                floor_node = envelope.hierarchy.nodes.get(row.parent_id)
+                floor_z = float(floor_node.attributes.get('floor_z_m', 0.)) if floor_node is not None else 0.
+                position = np.r_[xy, floor_z]
+                polygons.append(np.column_stack((polygon, np.full(len(polygon), floor_z))))
+                relative = polygon-polygon[0]
+                nxt = np.roll(relative, -1, axis=0)
+                area = abs(float(np.sum(relative[:,0]*nxt[:,1]-nxt[:,0]*relative[:,1])))/2
+                if area > 0 and row.parent_id is not None:
+                    floor_geometry.setdefault(row.parent_id, []).append((xy, area))
+                label = 'Room · ' + row.node_id[-8:] + (' · STALE' if row.stale else '')
+            else:
+                # Floor XY is filled from its own source-assigned rooms below.
+                position = np.array([0., 0., float(attrs.get('floor_z_m', 0.))])
+                label = row.label
+            if position.shape != (3,) or not np.isfinite(position).all():
+                hidden += 1
+                continue
             if len(nodes) >= self.MAX_NODES:
-                hidden += 1; continue
-            nodes[row.node_id] = dict(position=position, row=row, label=label, attrs=attrs)
-        edges = []
-        for edge in envelope.hierarchy.edges:
-            if (edge.status == 'assigned' and edge.source_id in nodes and edge.target_id in nodes
-                    and edge.kind in {'in_region','region_contains_place','place_connected_to','region_adjacent_to'}):
-                edges.append((edge.source_id, edge.target_id, edge.kind))
-        self.nodes, self.edges, self.polygons = nodes, tuple(edges[:1200]), tuple(polygons)
+                hidden += 1
+                continue
+            nodes[row.node_id] = dict(position=position, row=row, label=label, attrs=attrs,
+                                      measured_position=measured_position, measured_bounds=measured_bounds)
+        for node in nodes.values():
+            if node['row'].kind != 'floor':
+                continue
+            rooms = floor_geometry.get(node['row'].node_id, ())
+            if rooms:
+                # Area-weighted room anchors from this floor's source-assigned
+                # geometry. Hidden rooms still contribute; objects never do.
+                node['position'][:2] = np.average([xy for xy,_ in rooms], axis=0,
+                                                weights=[area for _,area in rooms])
+            else:
+                node['label'] += ' · room geometry unavailable'
+                nav = envelope.sources.nav
+                if nav is not None:
+                    node['position'][:2] = np.asarray(nav.origin_xy)+np.array(nav.states.shape[::-1])*nav.resolution_m/2
+        if nodes:
+            positions = np.array([n['position'] for n in nodes.values()])
+            measured_tops = [float(n['measured_bounds'][1,2]) for n in nodes.values()
+                             if n['measured_bounds'] is not None and n['measured_bounds'].shape == (2,3)
+                             and np.isfinite(n['measured_bounds']).all()]
+            measured_top = max(measured_tops, default=float(positions[:,2].max()))
+            gap = max(.5, float(np.ptp(positions[:,:2], axis=0).max())*.12)
+            base = max(measured_top, float(positions[:,2].max()))+gap
+            heights = {'room': base, 'floor': base+gap}
+            for node in nodes.values():
+                if node['row'].kind in heights:
+                    node['position'][2] = heights[node['row'].kind]
+        edges = hierarchy_links(envelope, nodes)
+        self.nodes, self.edges, self.polygons = nodes, tuple(edges), tuple(polygons)
         self.hidden_count, self.unassigned_count = hidden, unassigned
+        # Fit again when geometry/layers change; user orbit/zoom remain intact.
+        self._center = None
 
     def set_cloud(self, cloud):
         if (cloud is None or self.envelope is None or cloud.episode_id != self._episode
@@ -174,6 +225,10 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             # few far-depth outliers. All points/nodes remain available to pan.
             if len(cloud_points)>100:
                 low, high = np.quantile(cloud_points,[.01,.99],axis=0)
+                anchors = np.array([n['position'] for n in self.nodes.values()])
+                if len(anchors):
+                    low = np.minimum(low, anchors.min(axis=0))
+                    high = np.maximum(high, anchors.max(axis=0))
             else:
                 low, high = points.min(axis=0), points.max(axis=0)
             self._center = (low+high)/2
@@ -242,21 +297,23 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(*p) for p in np.vstack((points,points[0]))]))
         self._screen_nodes = {k:QtCore.QPointF(*project(n['position'])[0]) for k,n in self.nodes.items()}
         for source,target,kind in self.edges:
-            pen = QtGui.QPen(QtGui.QColor('#8aa4bb'),1.3)
-            if kind != 'in_region': pen.setStyle(QtCore.Qt.DotLine)
+            adjacency = kind == 'region_adjacent_to'
+            pen = QtGui.QPen(QtGui.QColor('#5adce8' if adjacency else '#8aa4bb'),
+                            1.8 if adjacency else 1.3,
+                            QtCore.Qt.DashLine if adjacency else QtCore.Qt.SolidLine)
             painter.setPen(pen)
             painter.drawLine(self._screen_nodes[source],self._screen_nodes[target])
         label_rects=[]
         painter.setFont(QtGui.QFont('DejaVu Sans',9))
-        ordered = sorted(self.nodes, key=lambda k:(k != self.selected,self.nodes[k]['row'].kind != 'region',k))
+        ordered = sorted(self.nodes, key=lambda k:({'floor':0,'room':1,'object':2}[self.nodes[k]['row'].kind], k != self.selected,k))
         for key in ordered:
             node=self.nodes[key];row=node['row'];pos=self._screen_nodes[key]
-            color = '#69baff' if row.kind == 'region' else '#c38aed' if row.kind == 'place' else '#efb451'
+            color = '#69baff' if row.kind == 'room' else '#60beb1' if row.kind == 'floor' else '#efb451'
             if node['attrs'].get('lifecycle') == 'retired': color='#768294'
             pen=QtGui.QPen(QtGui.QColor('#ffffff' if key==self.selected else '#152437'),2 if key==self.selected else 1)
             if row.kind=='object' and row.status!='assigned': pen.setStyle(QtCore.Qt.DashLine)
             painter.setPen(pen);painter.setBrush(QtGui.QColor(color))
-            radius=7 if row.kind=='region' or key==self.selected else 5
+            radius=7 if row.kind in {'room', 'floor'} or key==self.selected else 5
             painter.drawEllipse(pos,radius,radius)
             if key==self.selected:
                 bounds=np.asarray(node['attrs'].get('bounds',()),dtype=float)
@@ -269,15 +326,24 @@ class SpatialSceneWidget(QtWidgets.QWidget):
                             if a<b:painter.drawLine(QtCore.QPointF(*screen[a]),QtCore.QPointF(*screen[b]))
             label=node['label']+(' · '+row.status if row.kind=='object' and row.status!='assigned' else '')
             metrics=painter.fontMetrics();width=min(245,metrics.horizontalAdvance(label)+8)
-            rect=QtCore.QRectF(pos.x()+10,pos.y()-metrics.height()-2,width,metrics.height()+4)
-            if key!=self.selected and (len(label_rects)>=24 or any(rect.intersects(r) for r in label_rects)):continue
-            if not area.contains(rect.toRect()) and key!=self.selected:continue
+            height=metrics.height()+4
+            candidates = [QtCore.QRectF(x,y,width,height) for x,y in (
+                (pos.x()+10,pos.y()-height), (pos.x()-width-10,pos.y()-height),
+                (pos.x()+10,pos.y()+4), (pos.x()-width-10,pos.y()+4))]
+            rect = next((r for r in candidates if area.contains(r.toRect())
+                         and not any(r.intersects(old) for old in label_rects)), None)
+            if rect is None:
+                if key != self.selected:
+                    continue
+                rect = candidates[0]
+            if row.kind == 'object' and key != self.selected and len(label_rects)>=24:
+                continue
             painter.fillRect(rect,QtGui.QColor(12,20,33,200));painter.setPen(QtGui.QColor('#e3edf7'))
             painter.drawText(rect.adjusted(3,0,-3,0),QtCore.Qt.AlignVCenter,metrics.elidedText(label,QtCore.Qt.ElideRight,int(width)-6))
             label_rects.append(rect)
         painter.restore()
         painter.setFont(QtGui.QFont('DejaVu Sans',9));painter.setPen(QtGui.QColor('#a6ccec'))
-        graph = 'Waiting for spatial graph' if self.envelope is None else f'Graph object r{self.envelope.hierarchy.object_revision} / map r{self.envelope.hierarchy.map_revision} · canonical Z-up'
+        graph = 'Waiting for spatial graph' if self.envelope is None else f'Graph object r{self.envelope.hierarchy.object_revision} / map r{self.envelope.hierarchy.map_revision} · measured Objects / Room + Floor anchors'
         painter.drawText(10,19,graph)
         if self.cloud is None:
             cloud='RGB-D cloud unavailable · waiting for committed source assets'
@@ -297,7 +363,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
 
     @staticmethod
     def tool_instructions():
-        return 'Blue: geometry region centroid (not room semantics); gold: object; purple: visited place. Only assigned graph edges. Unassigned objects stay disconnected.'
+        return 'Teal: Floor; blue: Room geometry center; gold: Object. Objects and selected bounds retain measured XYZ in RGB-D. Room/Floor Z is a hierarchy display layout, not physical height. Solid lines: assigned membership. Cyan dashed lines: structural Room–Room connectivity, not a robot passage certificate. Unknown membership stays disconnected.'
 
     def mousePressEvent(self,event):
         self._drag=self._press=event.pos()

@@ -32,14 +32,14 @@ def show(view, **changes):
                   floor_support=np.zeros((20, 20), dtype=bool),
                   clearance=np.zeros((20, 20), dtype=float))
     values = dict(source=nav.source, capture_monotonic_ns=100, clock_domain='clock',
-                  map_revision=nav.revision + 7, computed_monotonic_ns=150,
+                  map_revision=nav.revision, computed_monotonic_ns=150,
                   frontier_points=((-2.5, 1.5),), viewpoints=((2.5, 1.5),),
                   goal_id='frontier-1', goal_xy=(0., -.5), path=((-3., -2.), (0., -.5)),
                   status='moving', truncated=False)
     values.update(changes)
     overlay = NavigationOverlay(**values)
-    sources = SimpleNamespace(robot=None, navigation=overlay)
-    widget.set_snapshot(nav, SimpleNamespace(sources=sources, hierarchy=SimpleNamespace(nodes={})))
+    sources = replace(envelope.sources, nav=nav, robot=None, navigation=overlay)
+    widget.set_snapshot(nav, SimpleNamespace(sources=sources, hierarchy=SimpleNamespace(nodes={}, map_revision=envelope.hierarchy.map_revision)))
     widget.show()
     app.processEvents()
     return widget.grab().toImage(), overlay
@@ -116,7 +116,8 @@ def test_missing_optional_overlay_remains_compatible(view):
     widget, app = view
     envelope = make_publisher()[0].read_latest()
     widget.set_snapshot(envelope.sources.nav, SimpleNamespace(
-        sources=SimpleNamespace(robot=None), hierarchy=SimpleNamespace(nodes={})))
+        sources=SimpleNamespace(robot=None, nav=envelope.sources.nav),
+        hierarchy=SimpleNamespace(nodes={}, map_revision=envelope.hierarchy.map_revision)))
     widget.show()
     app.processEvents()
     assert widget._navigation is None
@@ -146,3 +147,10 @@ def test_derived_camera_projection_is_identified_in_legend(view):
     widget._draw_robot(painter)
     painter.end()
     assert any('calibrated projection' in label for label in painter.labels)
+
+
+def test_plan_from_other_map_is_marked_stale(view):
+    image, _ = show(view, map_revision=999)
+    widget, _ = view
+    assert 'STALE' in widget._navigation_caption()
+    assert color_near(image, widget._world_to_pixel((0., -.5)), (164, 181, 202))

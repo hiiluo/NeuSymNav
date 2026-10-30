@@ -29,12 +29,14 @@ def _qimage_rgb(pixels: np.ndarray) -> QtGui.QImage:
 
 
 class MapWidget(QtWidgets.QWidget):
-    """Render only the NavSnapshot pinned by the current hierarchy envelope."""
+    """Render current display occupancy with separately pinned room outlines."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setMinimumSize(240, 220)
         self._nav: NavSnapshot | None = None
+        self._overview = None
+        self._raster_source = None
         self._map_image: QtGui.QImage | None = None
         self._map_revision: int | None = None
         self._regions: tuple[np.ndarray, ...] = ()
@@ -44,27 +46,150 @@ class MapWidget(QtWidgets.QWidget):
         self._now_ns = 0
         self._clock_domain = None
         self._draw_rect = QtCore.QRectF()
-        self.status_text = "Map unavailable · no pinned NavSnapshot"
+        self._map_context = None
+        self._view_center = None  # manual world XY; independent of map origin
+        self._view_scale = None   # manual pixels/metre; None means auto-fit
+        self._drag_pos = None
+        self.setToolTip('Wheel: zoom at cursor · Drag: pan · Double-click: fit entire accumulated map')
+        self.status_text = "Map unavailable · no NavSnapshot"
 
     def set_snapshot(self, nav: NavSnapshot | None, envelope: DisplayEnvelope) -> None:
-        if nav is not self._nav or (nav is not None and nav.revision != self._map_revision):
-            self._nav = nav
+        if nav is not None and (nav.episode_id, nav.clock_domain) != self._map_context:
+            self._map_context = (nav.episode_id, nav.clock_domain)
+            self.fit_view()
+        self._nav = nav
+        self._overview = getattr(envelope.sources, 'overview', None) if nav is not None else None
+        raster = self._overview if self._overview is not None else nav
+        if raster is not self._raster_source:
+            self._raster_source = raster
             self._map_revision = None if nav is None else nav.revision
-            self._map_image = None if nav is None else self._raster_image(nav)
-        self.status_text = "Map unavailable · no pinned NavSnapshot" if nav is None else f"Map available · nav revision {nav.revision}"
+            self._map_image = None if raster is None else self._raster_image(raster)
+        self.status_text = "Map unavailable · no NavSnapshot" if nav is None else f"Map available · nav revision {nav.revision}"
         regions = []
-        stale = False
+        pinned = envelope.sources.nav
+        stale = nav is not None and (nav.revision != envelope.hierarchy.map_revision
+                    or (pinned is not None and (nav.source, nav.capture_monotonic_ns, nav.clock_domain)
+                        != (pinned.source, pinned.capture_monotonic_ns, pinned.clock_domain)))
+        self._room_map_revision = envelope.hierarchy.map_revision
         for node in envelope.hierarchy.nodes.values():
             if node.kind == "region":
                 stale = stale or bool(node.attributes.get("stale", False))
                 polygon = node.attributes.get("polygon")
                 if isinstance(polygon, np.ndarray):
                     regions.append(polygon)
-        self._robot = envelope.sources.robot
+        robot = envelope.sources.robot
+        if robot is not None and nav is not None:
+            last = robot.samples[-1]
+            if (last.source, last.capture_monotonic_ns, last.clock_domain) != (
+                    nav.source, nav.capture_monotonic_ns, nav.clock_domain):
+                robot = None
+        self._robot = robot if nav is not None else None
         self._navigation = getattr(envelope.sources, "navigation", None)
         self._regions = tuple(regions)
         self._stale = stale
+        self._layout_map()
         self.update()
+
+    def _viewport_rect(self):
+        return QtCore.QRectF(self.rect().adjusted(8, 8, -8, -8))
+
+    def _fit_scale(self):
+        nav = self._raster_source
+        target = self._viewport_rect()
+        return min(target.width()/nav.states.shape[1], target.height()/nav.states.shape[0])/nav.resolution_m
+
+    def _layout_map(self):
+        if self._nav is None:
+            self._draw_rect = QtCore.QRectF()
+            return
+        nav = self._raster_source
+        width, height = np.array(nav.states.shape[::-1])*nav.resolution_m
+        center = (QtCore.QPointF(nav.origin_xy[0]+width/2, nav.origin_xy[1]+height/2)
+                  if self._view_center is None else self._view_center)
+        scale = self._fit_scale() if self._view_scale is None else self._view_scale
+        screen = self._viewport_rect().center()
+        self._draw_rect = QtCore.QRectF(screen.x()+(nav.origin_xy[0]-center.x())*scale,
+            screen.y()-(nav.origin_xy[1]+height-center.y())*scale, width*scale, height*scale)
+
+    def fit_view(self):
+        self._view_center = self._view_scale = self._drag_pos = None
+        self.unsetCursor()
+        if hasattr(self, '_nav'):
+            self._layout_map()
+        self.update()
+
+    def _manual_camera(self):
+        if self._view_scale is None:
+            nav = self._raster_source
+            self._view_scale = self._fit_scale()
+            self._view_center = QtCore.QPointF(
+                nav.origin_xy[0]+nav.states.shape[1]*nav.resolution_m/2,
+                nav.origin_xy[1]+nav.states.shape[0]*nav.resolution_m/2)
+
+    def focus_robot(self):
+        """Center once on robot; later publications do not steal the view."""
+        nav = self._nav
+        if nav is None:return
+        xy = (self._robot.samples[-1].xy if self._robot is not None else
+              (nav.origin_xy[0]+nav.states.shape[1]*nav.resolution_m/2,
+               nav.origin_xy[1]+nav.states.shape[0]*nav.resolution_m/2))
+        self._view_center = QtCore.QPointF(*xy)
+        rect = self._viewport_rect()
+        self._view_scale = min(rect.width()/nav.states.shape[1],rect.height()/nav.states.shape[0])/nav.resolution_m
+        self._layout_map();self.update()
+
+    def wheelEvent(self, event):
+        if self._nav is None:
+            return super().wheelEvent(event)
+        delta = event.angleDelta().y() or event.pixelDelta().y()*6
+        if not delta:
+            return super().wheelEvent(event)
+        self._manual_camera()
+        point = event.position() if hasattr(event, 'position') else event.posF()
+        offset = point-self._viewport_rect().center()
+        factor = math.exp(max(-2., min(2., delta/120.*math.log(1.15))))
+        old = self._view_scale
+        viewport = self._viewport_rect()
+        local_fit = min(viewport.width()/self._nav.states.shape[1],
+                        viewport.height()/self._nav.states.shape[0])/self._nav.resolution_m
+        upper = max(self._fit_scale()*64., local_fit*64., old)
+        lower = min(self._fit_scale()*.25, old)
+        new = max(lower, min(upper, old*factor))
+        self._view_center += QtCore.QPointF(offset.x()*(1/old-1/new), -offset.y()*(1/old-1/new))
+        self._view_scale = new
+        self._layout_map(); self.update(); event.accept()
+
+    def mousePressEvent(self, event):
+        if self._nav is not None and event.button() in (QtCore.Qt.LeftButton, QtCore.Qt.MiddleButton, QtCore.Qt.RightButton):
+            self._manual_camera()
+            self._drag_pos = event.pos()
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_pos is not None:
+            delta = event.pos()-self._drag_pos
+            self._view_center += QtCore.QPointF(-delta.x()/self._view_scale, delta.y()/self._view_scale)
+            self._drag_pos = event.pos()
+            self._layout_map(); self.update(); event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+        self.unsetCursor()
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        self.fit_view()
+        event.accept()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, '_nav'):
+            self._layout_map()
 
     @staticmethod
     def _raster_image(nav: NavSnapshot) -> QtGui.QImage:
@@ -82,43 +207,58 @@ class MapWidget(QtWidgets.QWidget):
             painter.setPen(QtGui.QColor("#e7edf3"))
             painter.drawText(self.rect(), QtCore.Qt.AlignCenter, self.status_text)
             return
-        target = self.rect().adjusted(8, 8, -8, -8)
+        self._layout_map()
+        draw_rect = self._draw_rect
         source = self._map_image.rect()
-        scaled = self._map_image.scaled(target.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.FastTransformation)
-        draw_rect = QtCore.QRectF(
-            target.center().x() - scaled.width() / 2,
-            target.center().y() - scaled.height() / 2,
-            scaled.width(), scaled.height(),
-        )
-        painter.drawImage(draw_rect, scaled)
+        painter.save()
+        painter.setClipRect(self._viewport_rect())
+        painter.drawImage(draw_rect, self._map_image)
         sx = draw_rect.width() / source.width()
         sy = draw_rect.height() / source.height()
         painter.setPen(QtGui.QPen(QtGui.QColor("#f4b942"), 2))
         for polygon in self._regions:
             points = [QtCore.QPointF(
-                draw_rect.left() + ((float(x) - self._nav.origin_xy[0]) / self._nav.resolution_m) * sx,
-                draw_rect.bottom() - ((float(y) - self._nav.origin_xy[1]) / self._nav.resolution_m) * sy,
+                draw_rect.left() + ((float(x) - self._raster_source.origin_xy[0]) / self._raster_source.resolution_m) * sx,
+                draw_rect.bottom() - ((float(y) - self._raster_source.origin_xy[1]) / self._raster_source.resolution_m) * sy,
             ) for x, y in polygon]
             if len(points) >= 3:
                 painter.drawPolygon(QtGui.QPolygonF(points))
         self._draw_rect = draw_rect
+        painter.restore()
         self._draw_navigation(painter)
         self._draw_robot(painter)
-        label = f"Nav revision {self._nav.revision} · measured occupancy"
-        if self._stale:
-            label += " · regions STALE"
+        label = self._map_caption()
         painter.setPen(QtGui.QColor("#e7edf3"))
-        painter.drawText(self.rect().adjusted(8, 2, -8, -2), QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter, label)
+        painter.drawText(self.rect().adjusted(8, 2, -8, -2), QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap, label)
+
+    def _map_caption(self):
+        nav = self._nav
+        if nav is None:
+            return self.status_text
+        if self._overview is not None:
+            overview = self._overview
+            source = overview.source_nav
+            age = (f'{(self._now_ns-source.capture_monotonic_ns)/1e6:.0f} ms'
+                   if source.clock_domain == self._clock_domain and self._now_ns >= source.capture_monotonic_ns else 'unavailable')
+            return (f'Accumulated map r{source.revision} · latest update {age} · historical cells'
+                    f' · {overview.resolution_m:.3g} m/cell · local r{nav.revision}'
+                    + (' · INCOMPLETE overview' if not overview.complete else '')
+                    + f' · room outlines r{self._room_map_revision}' + (' · STALE' if self._stale else ''))
+        age = (f"{(self._now_ns-nav.capture_monotonic_ns)/1e6:.0f} ms old"
+               if nav.clock_domain == self._clock_domain and self._now_ns >= nav.capture_monotonic_ns else "age unavailable")
+        return (f"Map r{nav.revision} · {nav.source.sensor_id}:{nav.source.frame_index} · {age}"
+                f" · room outlines map r{self._room_map_revision}" + (" · STALE" if self._stale else ""))
 
     def _world_to_pixel(self, xy):
-        nav, rect = self._nav, self._draw_rect
+        nav, rect = self._raster_source, self._draw_rect
         return QtCore.QPointF(rect.left()+(xy[0]-nav.origin_xy[0])/nav.resolution_m*rect.width()/nav.states.shape[1],
                              rect.bottom()-(xy[1]-nav.origin_xy[1])/nav.resolution_m*rect.height()/nav.states.shape[0])
 
     def _navigation_stale(self) -> bool:
         overlay = self._navigation
         return overlay is not None and (
-            overlay.clock_domain != self._clock_domain
+            (self._nav is not None and overlay.map_revision != self._nav.revision)
+            or overlay.clock_domain != self._clock_domain
             or self._now_ns < overlay.capture_monotonic_ns
             or self._now_ns - overlay.capture_monotonic_ns > 300_000_000
         )
@@ -140,7 +280,7 @@ class MapWidget(QtWidgets.QWidget):
         if overlay is not None:
             stale = self._navigation_stale()
             goal_color = QtGui.QColor("#a4b5ca" if stale else "#ff61d6")
-            painter.setClipRect(self._draw_rect)
+            painter.setClipRect(self._draw_rect.intersected(self._viewport_rect()))
             painter.setRenderHint(QtGui.QPainter.Antialiasing)
             if overlay.goal_xy is not None and overlay.path:
                 route = QtGui.QPainterPath(self._world_to_pixel(overlay.path[0]))
@@ -175,7 +315,7 @@ class MapWidget(QtWidgets.QWidget):
         if overlay is not None:
             goal_legend = "gray last goal" if self._navigation_stale() else "magenta goal"
             caption += f"\nYellow frontier · cyan viewpoint · {goal_legend} · dashed route"
-        painter.drawText(self.rect().adjusted(10, 24, -10, -42),
+        painter.drawText(self.rect().adjusted(10, 48, -10, -42),
                          QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft | QtCore.Qt.TextWordWrap, caption)
         painter.restore()
 
@@ -193,7 +333,7 @@ class MapWidget(QtWidgets.QWidget):
                  or self._now_ns-last.capture_monotonic_ns > 300_000_000)
         color = QtGui.QColor("#a4b5ca" if stale else "#69baff")
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.setClipRect(self._draw_rect)
+        painter.setClipRect(self._draw_rect.intersected(self._viewport_rect()))
         path = QtGui.QPainterPath()
         path.moveTo(self._world_to_pixel(samples[0].xy))
         for previous, sample in zip(samples, samples[1:]):
@@ -228,10 +368,10 @@ class MapWidget(QtWidgets.QWidget):
         painter.setBrush(color)
         painter.drawPolygon(QtGui.QPolygonF([tip,tip+QtCore.QPointF(-8*dx-4*dy,-8*dy+4*dx),
                                                tip+QtCore.QPointF(-8*dx+4*dy,-8*dy-4*dx)]))
-        painter.setClipping(False)
         painter.setPen(color)
-        if self._draw_rect.contains(point):
+        if self._draw_rect.intersected(self._viewport_rect()).contains(point):
             painter.drawText(point+QtCore.QPointF(12,-13), "ROBOT" + (" · STALE" if stale else ""))
+        painter.setClipping(False)
         text = "Pose STALE" if stale else "Measured robot pose"
         text += " · sampled trail" + (" (last 1024)" if self._robot.truncated else "")
         if camera is not None:
@@ -434,13 +574,19 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.rgb_caption.setObjectName("rgbCaption")
         self.rgb_caption.setWordWrap(True)
         live_layout.addWidget(self.rgb_caption)
-        middle, middle_layout = panel("OCCUPANCY MAP", "Measured geometry · region boundaries · robot trail")
+        middle, middle_layout = panel("OCCUPANCY MAP", "Accumulated map · Wheel: zoom · Drag: pan · Double-click: fit")
         self.map_panel = middle
         self.sensor_row.addWidget(middle)
         self.map_view = MapWidget(middle)
         self.map_view.setMinimumHeight(100)
         self.map_view.setObjectName("mapView")
         middle_layout.addWidget(self.map_view, 1)
+        map_controls = QtWidgets.QHBoxLayout()
+        self.map_fit_button = QtWidgets.QPushButton('Toàn bộ map')
+        self.map_fit_button.clicked.connect(self.map_view.fit_view)
+        self.map_robot_button = QtWidgets.QPushButton('Về robot')
+        self.map_robot_button.clicked.connect(self.map_view.focus_robot)
+        map_controls.addWidget(self.map_fit_button);map_controls.addWidget(self.map_robot_button)
         legend = QtWidgets.QLabel("● Free    <font color='#f55b4f'>● Obstacle</font>    <font color='#445265'>● Unknown</font>")
         legend.setStyleSheet("color:#3a916f; font-size:11px")
         legend.setWordWrap(True)
@@ -448,9 +594,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
         trail_legend = QtWidgets.QLabel("<font color='#69baff'>● Robot  ─ Sampled trail  ◁ Camera FOV</font>")
         trail_legend.setStyleSheet("font-size:11px")
         trail_legend.setWordWrap(True)
-        middle_layout.addWidget(trail_legend)
+        map_controls.insertWidget(0, trail_legend, 1)
+        middle_layout.addLayout(map_controls)
 
-        right, right_layout = panel("3D SCENE / SCENE GRAPH", "Measured RGB-D · spatial regions and objects · select an object for evidence")
+        right, right_layout = panel("3D SCENE / SCENE GRAPH", "Measured RGB-D · Measured Objects · Room / Floor hierarchy anchors · select an object for evidence")
         self.graph_panel = right
         self.workspace_split.addWidget(right)
         self.graph_split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -554,7 +701,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         controls.addStretch(1)
         graph_content.addLayout(controls)
         graph_content.addWidget(tabs, 1)
-        legend = QtWidgets.QLabel("● Blue: geometry region   ● Gold: object   ● Purple: visited place · left drag: orbit · Shift-drag: zoom · right drag: pan")
+        legend = QtWidgets.QLabel("● Teal: Floor   ● Blue: Room   ● Gold: Object · Solid: membership · Cyan dashes: Room links (structural) · Room/Floor Z is layout; RGB-D stays measured")
         legend.setWordWrap(True)
         legend.setObjectName("subtitle")
         graph_content.addWidget(legend)
@@ -629,11 +776,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.spatial_view.cloud_error = self._cloud_reader.error
         self.spatial_view.update()
         self._refresh_observation_age()
+        self._refresh_rgb_age()
         self._refresh_telemetry()
         self._refresh_command_status()
 
     def _render_envelope(self, envelope: DisplayEnvelope) -> None:
-        self.map_view.set_snapshot(envelope.sources.nav, envelope)
+        self.map_view.set_snapshot(getattr(envelope.sources, "live_nav", None) or envelope.sources.nav, envelope)
         if envelope.sources.rgb is None:
             self.rgb_view.setPixmap(QtGui.QPixmap())
             self.rgb_view.setText("RGB unavailable · no source image")
@@ -781,8 +929,18 @@ class DashboardWindow(QtWidgets.QMainWindow):
         age = (f"source age {(now-frame.capture_monotonic_ns)/1e6:.1f} ms"
                if domain == frame.clock_domain and now >= frame.capture_monotonic_ns else "source age unavailable")
         lines = self.observation_caption.text().split("\n")
-        lines[0] = f"Detector observation · {frame.source.sensor_id}:{frame.source.frame_index} · {age} · historical"
+        lines[0] = f"Detector observation · {frame.source.sensor_id}:{frame.source.frame_index} · {age} · capture {frame.capture_monotonic_ns} ns · historical"
         self.observation_caption.setText("\n".join(lines))
+
+    def _refresh_rgb_age(self):
+        if self._envelope is None or self._envelope.sources.rgb is None:
+            return
+        frame = self._envelope.sources.rgb
+        now = self._now_ns()
+        domain = self._clock_domain or self._envelope.clock_domain
+        age = (f"source age {(now-frame.capture_monotonic_ns)/1e6:.1f} ms"
+               if domain == frame.clock_domain and now >= frame.capture_monotonic_ns else "source age unavailable")
+        self.rgb_caption.setText(f"RGB · {frame.source.sensor_id}:{frame.source.frame_index} · {age} · capture {frame.capture_monotonic_ns} ns")
 
     def _scale_observation(self) -> None:
         if self._observation_pixels is not None:
@@ -792,14 +950,14 @@ class DashboardWindow(QtWidgets.QMainWindow):
     def _render_hierarchy(self, envelope: DisplayEnvelope) -> None:
         self.hierarchy.clear()
         items: dict[str, QtWidgets.QTreeWidgetItem] = {}
-        rank = {"building": 0, "floor": 1, "region": 2, "place": 3, "object": 4}
+        rank = {"floor": 0, "room": 1, "object": 2}
         rows = sorted(hierarchy_rows(envelope), key=lambda row: (rank.get(row.kind, 9), row.node_id))
-        for row in rows:
+        for row in rows[:SceneGraphWidget.MAX_NODES]:
             item = QtWidgets.QTreeWidgetItem([row.label])
             item.setData(0, QtCore.Qt.UserRole, row.node_id)
             if row.stale:
                 item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e89d32")))
-                item.setToolTip(0, "Region geometry is stale; no current membership is certified.")
+                item.setToolTip(0, "Room geometry is stale; no current membership is certified.")
             elif row.status in {"unassigned", "ambiguous", "unavailable"}:
                 item.setForeground(0, QtGui.QBrush(QtGui.QColor("#d58a78")))
                 item.setToolTip(0, f"Parent/membership status: {row.status}")
@@ -867,15 +1025,14 @@ class DashboardWindow(QtWidgets.QMainWindow):
         assert self._envelope is not None
         node = self._envelope.hierarchy.nodes[canonical]
         attrs = node.attributes
-        parent = next((edge.target_id for edge in self._envelope.hierarchy.edges
-                       if edge.kind == "in_region" and edge.source_id == canonical and edge.status == "assigned"), None)
-        membership = attrs.get("membership_status", self._envelope.hierarchy.statuses.get(canonical, "unknown"))
+        row = next(row for row in hierarchy_rows(self._envelope) if row.node_id == canonical)
+        parent, membership = row.parent_id, row.status
         lifecycle = attrs.get("lifecycle", "unknown")
         aliases = tuple(attrs.get("aliases", ()))
         verification, reason, record = resolve_verification(self._envelope, canonical)
         lines = [f"Object {canonical}", f"Lifecycle: {lifecycle}", f"Verification: {verification}",
                  f"Membership: {membership}",
-                 f"Parent region: {parent if parent is not None else 'unknown / unassigned'}"]
+                 f"Parent room: {parent if parent is not None else 'unknown / unassigned'}"]
         if record is not None:
             lines.append(f"Verification source events: {len(record.evidence)}")
             if record.evidence:
@@ -946,22 +1103,36 @@ class DashboardWindow(QtWidgets.QMainWindow):
         output_age = envelope.publication_age_ns(self._now_ns(), self._clock_domain or envelope.clock_domain)
         self.subtitle.setText(f"{envelope.hierarchy.episode_id}  /  publication {envelope.publication_sequence}")
         count = lambda kind: sum(n.kind == kind for n in envelope.hierarchy.nodes.values())
-        rgb_age = metrics.source_age_ns.get("rgb")
+        now = self._now_ns()
+        rgb = envelope.sources.rgb
+        rgb_age = (now-rgb.capture_monotonic_ns if rgb is not None
+                   and rgb.clock_domain == (self._clock_domain or envelope.clock_domain)
+                   and now >= rgb.capture_monotonic_ns else None)
         rgb_label = "—" if rgb_age is None else f"{rgb_age / 1e6:.0f} ms"
         hidden = self.graph_view.hidden_count
-        self.overview.setText(f"RGB  {rgb_label}     /     MAP  r{envelope.hierarchy.map_revision}     /     "
-                              f"OBJECTS  {count('object')}     /     REGIONS  {count('region')}     /     "
+        nav = self.map_view._nav
+        map_label = "unavailable" if nav is None else f"r{nav.revision} · {nav.source.sensor_id}:{nav.source.frame_index}"
+        self.overview.setText(f"RGB  {rgb_label}     /     MAP  {map_label}     /     "
+                              f"OBJECTS  {count('object')}     /     ROOMS  {count('region')}     /     "
                               f"DROPS  {metrics.dropped_count}     /     GRAPH HIDDEN  {hidden}")
         stale_region = any(n.kind == "region" and n.attributes.get("stale") for n in envelope.hierarchy.nodes.values())
-        badge = "STALE PUBLICATION" if output_age > 300_000_000 else "REGIONS STALE" if stale_region else "SNAPSHOT RECEIVED"
+        badge = "STALE PUBLICATION" if output_age > 300_000_000 else "ROOMS STALE" if stale_region else "SNAPSHOT RECEIVED"
         self.status_badge.setText(badge)
         self.status_badge.setStyleSheet("color:#db9630" if "STALE" in badge else "color:#60beb1")
         def frame(key):
             return "unavailable" if key is None else f"{key.sensor_id}:{key.frame_index}"
         ages = ", ".join(f"{name}={('unavailable' if age is None else f'{age / 1e6:.1f} ms')}"
                           for name, age in sorted(metrics.source_age_ns.items())) or "none"
-        stale = "stale regions" if any(node.kind == "region" and node.attributes.get("stale")
-                                       for node in envelope.hierarchy.nodes.values()) else "regions current"
+        stale = "stale rooms" if any(node.kind == "region" and node.attributes.get("stale")
+                                       for node in envelope.hierarchy.nodes.values()) else "rooms current"
+        nav = self.map_view._nav
+        def origin(value):
+            if value is None:
+                return "unavailable"
+            return f"{frame(value.source)} · capture {value.capture_monotonic_ns} ns · {value.clock_domain}"
+        observation = envelope.sources.observation
+        origins = (f"Display map: {origin(nav)} · RGB: {origin(envelope.sources.rgb)} · "
+                   f"detector: {origin(None if observation is None else observation.image)}")
         self.telemetry.setText(
             f"Episode {envelope.hierarchy.episode_id} · hierarchy r{envelope.hierarchy.revision} · "
             f"object/map/region r{envelope.hierarchy.object_revision}/{envelope.hierarchy.map_revision}/{envelope.hierarchy.region_revision} · {stale}\n"
@@ -969,7 +1140,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             f"published {frame(metrics.published_frame_id)} · drops {metrics.dropped_count} · replaced {metrics.replaced_count} · "
             f"profile {metrics.actual_profile or 'unavailable'}\n"
             f"Source ages: {ages} · hierarchy map age {envelope.hierarchy.source_map_age_ns / 1e6:.1f} ms · "
-            f"display publication age {output_age / 1e6:.1f} ms"
+            f"display publication age {output_age / 1e6:.1f} ms\n{origins}"
         )
 
     def _send_command(self, action: str) -> None:

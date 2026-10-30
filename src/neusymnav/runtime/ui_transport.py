@@ -26,10 +26,11 @@ if __package__ in (None,''):
 
 from neusymnav.contracts._base import Contract
 from neusymnav.contracts.serialization import _encode,_decode
-from neusymnav.contracts import ObjectSnapshot,age_ns
+from neusymnav.contracts import ObjectSnapshot,NavSnapshot,HierarchySnapshot,age_ns
 from neusymnav.visualization import publisher as dto
 from neusymnav.visualization.robot_overlay import RobotSample, CameraCone, CameraProjection, RobotTrack, RobotTrailBuffer
 from neusymnav.visualization.navigation_overlay import NavigationOverlay
+from neusymnav.mapping.overview import MapOverview, build_overview
 from neusymnav.recording.replay import _write_atomic
 
 MAX_PUBLICATION_BYTES=64*1024**2
@@ -39,6 +40,7 @@ MAX_COMMAND_DIAGNOSTICS_BYTES=128*1024
 _DTO={name:getattr(dto,name) for name in ('DisplayEnvelope','DisplayImage','DisplayInstance','DisplayObservation','DisplayMetrics','DisplaySources',
     'DisplayVerificationEvidence','DisplayVerificationRecord','DisplayVerificationSnapshot','UiCommand','UiCommandAck')}
 _DTO.update({c.__name__:c for c in (RobotSample,CameraCone,CameraProjection,RobotTrack,NavigationOverlay)})
+_DTO['MapOverview']=MapOverview
 
 
 def _encode_value(value):
@@ -56,9 +58,9 @@ def _decode_value(value,depth=0):
     if set(value)=={'dto','fields'}:
         cls=_DTO.get(value['dto'])
         if cls is dto.DisplaySources and isinstance(value['fields'],dict):
-            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation'}
+            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview'}
             if required <= incoming <= {f.name for f in fields(cls)}:
-                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,**value['fields']})
+                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,**value['fields']})
         if cls is None or not isinstance(value['fields'],dict) or set(value['fields'])!={f.name for f in fields(cls)}:
             raise ValueError('unknown UI DTO/schema fields')
         return cls(**{k:_decode_value(v,depth+1) for k,v in value['fields'].items()})
@@ -172,6 +174,8 @@ class UiEndpoint:
     """Child-side latest-publication reader and bounded pending command mailbox."""
     def __init__(self,root,*,clock_domain):
         self.root=Path(root);self.domain=clock_domain;self.sequence=None;self.latest=None
+        self._last_live_nav=None
+        self._last_overview_nav=None
         self.root.mkdir(parents=True,exist_ok=True)
         for name in ('commands','acks'):(self.root/name).mkdir(exist_ok=True)
         self.client=dto.UiControlClient(command_source='desktop',submit=self.submit,clock_domain=clock_domain)
@@ -200,6 +204,16 @@ class UiEndpoint:
         try:
             result=decode_publication(_read(path,MAX_PUBLICATION_BYTES))
             if result.clock_domain!=self.domain:raise ValueError('UI publication clock mismatch')
+            if self.latest is not None and (result.publication_sequence<=self.latest.publication_sequence
+                or result.hierarchy.episode_id!=self.latest.hierarchy.episode_id
+                or result.hierarchy.revision<self.latest.hierarchy.revision):
+                raise ValueError('UI publication stream moved backward')
+            if result.sources.live_nav is not None:
+                dto.DisplayPublisher._validate_live_stream(self._last_live_nav,result.sources.live_nav)
+            if result.sources.overview is not None:
+                dto.DisplayPublisher._validate_live_stream(self._last_overview_nav,result.sources.overview.source_nav)
+            if result.sources.live_nav is not None:self._last_live_nav=result.sources.live_nav
+            if result.sources.overview is not None:self._last_overview_nav=result.sources.overview.source_nav
             self.latest=result;self.sequence=stamp
         except (ValueError,OSError,TypeError,KeyError):return self.latest
         return self.latest
@@ -207,12 +221,17 @@ class UiEndpoint:
 
 class UiProcess:
     """Optional process. Failure is reported locally and never raises into control."""
-    def __init__(self,root,*,python,script,clock_domain,command_handler,assets_root=None,smoke_exit_ms=None,quota=None,publish_hz=None,navigation_provider=None):
+    def __init__(self,root,*,python,script,clock_domain,command_handler,assets_root=None,smoke_exit_ms=None,quota=None,publish_hz=None,navigation_provider=None,live_nav_provider=None,overview_provider=None):
         if navigation_provider is not None and not callable(navigation_provider):raise ValueError('navigation provider must be callable')
+        if live_nav_provider is not None and not callable(live_nav_provider):raise ValueError('live navigation provider must be callable')
         self._navigation_provider=navigation_provider
+        self._live_nav_provider=live_nav_provider
+        if overview_provider is not None and not callable(overview_provider):raise ValueError('overview provider must be callable')
+        self._overview_provider=overview_provider
+        self._display_overview=None;self._overview_tiles=None
         if publish_hz is not None and (type(publish_hz) not in (int,float) or not 0<publish_hz<=20):
             raise ValueError('publish_hz must be finite, positive and at most 20')
-        self._publish_hz=publish_hz;self._last_publication_ns=None
+        self._publish_hz=min(5.,publish_hz or 5.);self._last_publication_ns=None
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
         self.endpoint=UiEndpoint(self.root,clock_domain=clock_domain)
         self.publisher=dto.DisplayPublisher(clock_domain=clock_domain)
@@ -221,6 +240,7 @@ class UiProcess:
         from neusymnav.visualization.detector_observation import CommittedObservationReader
         self._observation_reader=None if self.assets_root is None else CommittedObservationReader(self.assets_root,clock_domain=clock_domain)
         self._rgb=None;self._stop=threading.Event();self._lock=threading.Lock();self.status=dict(failed=None,dropped_publications=0,coalesced_publications=0)
+        self._publication_wake=threading.Event();self._pending_bundle=None;self._display_bundle=None;self._display_live_nav=None
         command=[str(python),str(script),'--root',str(self.root),'--clock-domain',clock_domain]
         if self.assets_root is not None:command+=['--assets-root',str(self.assets_root)]
         if smoke_exit_ms is not None:command+=['--smoke-exit-ms',str(smoke_exit_ms)]
@@ -237,6 +257,8 @@ class UiProcess:
         if self.process is not None:
             self._reader=threading.Thread(target=self._drain,name='neusymnav-ui-log',daemon=True);self._reader.start()
         self.thread=threading.Thread(target=self._commands,name='neusymnav-ui-commands',daemon=True);self.thread.start()
+        self.publication_thread=threading.Thread(target=self._publications,name='neusymnav-ui-publication',daemon=True)
+        self.publication_thread.start()
 
     def _drain(self):
         try:
@@ -255,7 +277,7 @@ class UiProcess:
             self.status['robot_overlay_error']=f'{type(exc).__name__}: {exc}'[:256]
 
     def set_rgb(self,observation):
-        # Assign immutable source pointer only. Pixels are copied on graph lane.
+        # Assign immutable source pointer only. Pixels are copied on UI lane.
         with self._lock:self._rgb=observation
 
     def _images(self,sources):
@@ -280,18 +302,85 @@ class UiProcess:
         return best
 
     def publish(self,snapshot,metrics):
-        # The graph lane remains the sole publication writer. Do not retain
-        # skipped bundles: the next eligible call supplies current graph/source
-        # metadata and reads the latest immutable RGB pointer. Gate before image
-        # copies, committed-observation reads, serialization or filesystem work.
-        if self._publish_hz is not None:
+        """Offer one immutable graph/source bundle without doing display work."""
+        with self._lock:
+            if self._stop.is_set():return
+            if self._pending_bundle is not None:self.status['coalesced_publications']+=1
+            self._pending_bundle=(snapshot,metrics,time.monotonic_ns())
+        self._publication_wake.set()
+
+    def _publications(self):
+        """Single bounded display writer independent of graph/model workers."""
+        while not self._stop.is_set():
+            self._publication_wake.wait(.02);self._publication_wake.clear()
+            if self._stop.is_set():break
             now=time.monotonic_ns()
             if self._last_publication_ns is not None and (now-self._last_publication_ns)*self._publish_hz<1_000_000_000:
-                self.status['coalesced_publications']+=1
-                return
+                continue
+            with self._lock:
+                if self._pending_bundle is not None:
+                    self._display_bundle=self._pending_bundle;self._pending_bundle=None
+                bundle=self._display_bundle
+            live=self._display_live_nav
+            # Read global history before the local map so a navigation update
+            # racing these reads can only make the overview older, never future.
+            try:
+                if self._overview_provider is not None:
+                    tiles=self._overview_provider()
+                    if tiles is not None and tiles is not self._overview_tiles:
+                        overview=build_overview(tiles)
+                        age_ns(overview.source_nav.capture_monotonic_ns,overview.source_nav.clock_domain,now,self.domain)
+                        dto.DisplayPublisher._validate_live_stream(
+                            None if self._display_overview is None else self._display_overview.source_nav,overview.source_nav)
+                        self._display_overview=overview;self._overview_tiles=tiles
+                    self.status.pop('overview_error',None)
+            except Exception as exc:
+                self.status['overview_error']=f'{type(exc).__name__}: {exc}'[:256]
+            now=time.monotonic_ns()
+            try:
+                if self._live_nav_provider is not None:
+                    candidate=self._live_nav_provider()
+                    if candidate is not None:
+                        if not isinstance(candidate,NavSnapshot):raise ValueError('typed live NavSnapshot required')
+                        age_ns(candidate.capture_monotonic_ns,candidate.clock_domain,now,self.domain)
+                        self.publisher._validate_live_stream(live,candidate)
+                        if bundle is not None:
+                            if candidate.episode_id!=bundle[0].episode_id:raise ValueError('live map episode mismatch')
+                            pinned=bundle[1]['sources'].nav
+                            if pinned is not None:
+                                self.publisher._validate_live_stream(pinned,candidate)
+                        live=candidate;self._display_live_nav=candidate
+                    self.status.pop('live_nav_error',None)
+            except Exception as exc:
+                self.status['live_nav_error']=f'{type(exc).__name__}: {exc}'[:256]
+            if bundle is None:
+                if live is None:continue
+                # Display-only startup surface, never a canonical graph commit.
+                snapshot=HierarchySnapshot(live.episode_id,0,0,0,0,{},(),
+                    {'display':'awaiting_canonical_hierarchy'},0,0)
+                metrics=dict(captured_frame_id=None,processed_frame_id=None,published_frame_id=None,
+                    source_age_ns={},dropped_count=0,replaced_count=0,actual_profile=None,sources=dto.DisplaySources())
+                bundle=(snapshot,metrics,now)
             self._last_publication_ns=now
+            self._publish_bundle(*bundle,live_nav=live,overview=self._display_overview)
+        with self._lock:
+            self._pending_bundle=None;self._display_bundle=None;self._rgb=None
+
+    def _publish_bundle(self,snapshot,metrics,bundle_ns,*,live_nav,overview=None):
         try:
             metrics=dict(metrics);sources=metrics['sources'];ages=dict(metrics['source_age_ns'])
+            now=time.monotonic_ns()
+            elapsed=max(0,now-bundle_ns)
+            ages={key:None if value is None else value+elapsed for key,value in ages.items()}
+            if sources.nav is not None:
+                ages['map']=age_ns(sources.nav.capture_monotonic_ns,sources.nav.clock_domain,now,self.domain)
+            if live_nav is not None:
+                if (live_nav.episode_id!=snapshot.episode_id or
+                    (sources.nav is not None and live_nav.revision<sources.nav.revision)):
+                    live_nav=None
+                else:
+                    if sources.nav is not None:self.publisher._validate_map_geometry(sources.nav,live_nav)
+                    ages['live_map']=age_ns(live_nav.capture_monotonic_ns,live_nav.clock_domain,now,self.domain)
             with self._lock:obs=self._rgb
             if obs is not None:
                 rgb=dto.DisplayImage('rgb',obs.key,obs.capture_monotonic_ns,obs.clock_domain,obs.rgb)
@@ -313,11 +402,17 @@ class UiProcess:
                 self.status.pop('navigation_error',None)
             except Exception as exc:
                 navigation=None;self.status['navigation_error']=f'{type(exc).__name__}: {exc}'[:256]
-            sources=replace(sources,best_views=tuple(self._images(sources)),robot=self._robot_trail.for_nav(sources.nav),observation=observation,navigation=navigation)
+            displayed_nav=live_nav if live_nav is not None else sources.nav
+            if overview is not None:
+                if live_nav is None or overview.source_nav.revision>live_nav.revision:
+                    overview=None
+                else:
+                    ages['overview']=age_ns(overview.source_nav.capture_monotonic_ns,overview.source_nav.clock_domain,now,self.domain)
+            sources=replace(sources,live_nav=live_nav,overview=overview,best_views=tuple(self._images(sources)),robot=self._robot_trail.for_nav(displayed_nav),observation=observation,navigation=navigation)
             metrics.update(sources=sources,source_age_ns=ages)
             self.publisher.publish(snapshot,metrics)
             payload=encode_publication(self.publisher.read_latest())
-            _write_atomic(self.root/'publication.json',payload)
+            if not self._stop.is_set():_write_atomic(self.root/'publication.json',payload)
         except Exception as exc:
             self.status['dropped_publications']+=1;self.status['failed']=f'{type(exc).__name__}: {exc}'
 
@@ -373,15 +468,16 @@ class UiProcess:
     def close(self,timeout_s=1.):
         if type(timeout_s) not in (int,float) or not np.isfinite(timeout_s) or timeout_s<0:
             raise ValueError('UI shutdown timeout must be finite and nonnegative')
-        deadline=time.monotonic()+timeout_s;self._stop.set()
+        deadline=time.monotonic()+timeout_s;self._stop.set();self._publication_wake.set()
         from neusymnav.perception.appearance_client import _terminate_process_group
         if self.process is not None:
             # Existing bounded group cleanup handles descendants after leader exit.
             _terminate_process_group(self.process,grace_s=max(0.,deadline-time.monotonic())/2)
         self.thread.join(max(0.,deadline-time.monotonic()))
+        self.publication_thread.join(max(0.,deadline-time.monotonic()))
         if self._reader is not None:self._reader.join(max(0.,deadline-time.monotonic()))
         reader_pending=self._reader is not None and self._reader.is_alive()
-        clean=not self.thread.is_alive() and not reader_pending and (self.process is None or self.process.poll() is not None)
+        clean=not self.thread.is_alive() and not self.publication_thread.is_alive() and not reader_pending and (self.process is None or self.process.poll() is not None)
         if clean:
             if self.process is not None:self.process.stdout.close()
             with self._finalize_lock:
@@ -393,6 +489,7 @@ class UiProcess:
             clean=not self._finalizer.is_alive() and self._finalizer_error is None
         return dict(clean_shutdown=clean,process_reaped=self.process is None or self.process.poll() is not None,
             command_thread_pending=self.thread.is_alive(),reader_pending=reader_pending,
+            publication_thread_pending=self.publication_thread.is_alive(),
             diagnostics_pending=self._finalizer is not None and self._finalizer.is_alive(),
             diagnostics_error=self._finalizer_error,status=dict(self.status))
 

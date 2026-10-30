@@ -28,7 +28,7 @@ def test_changed_clock_context_clears_old_cloud_and_camera():
     cloud=CloudSnapshot('e','clock',np.array([[0,0,0.]],np.float32),np.array([[1,2,3]],np.uint8),(),FrameKey('e','rgbd',0),100,1)
     w.set_cloud(cloud);w.zoom=2
     # Change all clock-bearing optional sources out of the envelope together.
-    changed=replace(envelope,clock_domain='other',sources=replace(envelope.sources,rgb=None,best_views=(),observation=None,navigation=None,robot=None))
+    changed=replace(envelope,clock_domain='other',sources=replace(envelope.sources,nav=replace(envelope.sources.nav,clock_domain='other'),live_nav=None,rgb=None,best_views=(),observation=None,navigation=None,robot=None))
     w.set_envelope(changed)
     assert w.cloud is None and w.zoom==1.
     w.set_cloud(cloud);assert w.cloud is None

@@ -23,12 +23,16 @@ def test_measured_projection_constructed_once(tmp_path,monkeypatch):
     # Reconstructing pixel columns in core would reintroduce the measured work.
     original=np.column_stack;calls=[]
     def record(*args,**kwargs):
-        calls.append(True)
+        # Measured projection builds homogeneous 3-column pixel rays. The
+        # display overview separately groups 2-column grid row/col indices.
+        if len(args[0]) == 3:calls.append(True)
         return original(*args,**kwargs)
     monkeypatch.setattr(np,'column_stack',record)
     result=mapper(tmp_path).update(down(size=9))
     assert result.revision==1
     assert not calls,'core reconstructed the measured projection after preflight'
+    legacy_update(mapper(tmp_path/'legacy'),down(size=9))
+    assert calls == [True], 'probe must still detect the original reconstruction'
 
 
 @pytest.mark.parametrize('kind',['measured','empty','no_return','near_pinhole'])

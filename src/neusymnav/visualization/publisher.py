@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 import numpy as np
 
 from ..contracts import FrameKey, HierarchySnapshot, NavSnapshot, ObjectSnapshot, age_ns
+from ..mapping.overview import MapOverview
 
 
 from .robot_overlay import RobotTrack
@@ -233,10 +234,16 @@ class DisplaySources:
     robot: RobotTrack | None = None
     observation: DisplayObservation | None = None
     navigation: NavigationOverlay | None = None
+    live_nav: NavSnapshot | None = None
+    overview: MapOverview | None = None
 
     def __post_init__(self) -> None:
+        if self.overview is not None and not isinstance(self.overview, MapOverview):
+            raise ValueError('typed accumulated map overview required')
         if self.nav is not None and not isinstance(self.nav, NavSnapshot):
             raise ValueError("nav source must be NavSnapshot or None")
+        if self.live_nav is not None and not isinstance(self.live_nav, NavSnapshot):
+            raise ValueError("live_nav source must be NavSnapshot or None")
         if self.objects is not None and not isinstance(self.objects, ObjectSnapshot):
             raise ValueError("objects source must be ObjectSnapshot or None")
         if self.verification is not None and not isinstance(self.verification, DisplayVerificationSnapshot):
@@ -314,6 +321,16 @@ class DisplayEnvelope:
         # Keep the envelope closed even when constructed outside the publisher.
         DisplayPublisher._validate_episode(self.hierarchy, self.metrics)
         DisplayPublisher._validate_sources(self.hierarchy, self.metrics, self.sources)
+        for nav in (self.sources.nav, self.sources.live_nav):
+            if nav is not None and nav.clock_domain != self.clock_domain:
+                raise ValueError('map display clock mismatch')
+        if self.sources.live_nav is not None:
+            age_ns(self.sources.live_nav.capture_monotonic_ns, self.sources.live_nav.clock_domain,
+                   self.published_monotonic_ns, self.clock_domain)
+        if self.sources.overview is not None:
+            source = self.sources.overview.source_nav
+            age_ns(source.capture_monotonic_ns, source.clock_domain,
+                   self.published_monotonic_ns, self.clock_domain)
         if self.sources.navigation is not None and self.sources.navigation.clock_domain!=self.clock_domain:
             raise ValueError('planner display clock mismatch')
         image_bytes = sum(
@@ -343,6 +360,8 @@ class DisplayPublisher:
         self._now_ns = now_ns
         self._lock = RLock()
         self._latest: DisplayEnvelope | None = None
+        self._last_live_nav: NavSnapshot | None = None
+        self._last_overview_nav: NavSnapshot | None = None
         self._sequence = 0
 
     def publish(self, snapshot: HierarchySnapshot, metrics: Mapping[str, object]) -> None:
@@ -365,8 +384,15 @@ class DisplayPublisher:
 
         with self._lock:
             previous = self._latest
+            live = sources.live_nav
+            if live is not None:
+                self._validate_live_stream(self._last_live_nav, live)
+            if sources.overview is not None:
+                self._validate_live_stream(self._last_overview_nav, sources.overview.source_nav)
             if previous is not None:
                 old = previous.hierarchy
+                if snapshot.episode_id != old.episode_id:
+                    raise ValueError('display hierarchy episode changed')
                 if snapshot.revision < old.revision:
                     raise ValueError("hierarchy revision moved backward")
                 if snapshot.revision == old.revision and (
@@ -385,11 +411,41 @@ class DisplayPublisher:
             self._latest = DisplayEnvelope(
                 self._sequence, snapshot, telemetry, sources, self._now_ns(), self._clock_domain,
             )
+            if live is not None:
+                self._last_live_nav = live
+            if sources.overview is not None:
+                self._last_overview_nav = sources.overview.source_nav
 
     def read_latest(self) -> DisplayEnvelope | None:
         """Return one immutable pointer snapshot; this method never assembles data."""
         with self._lock:
             return self._latest
+
+    @staticmethod
+    def _validate_live_stream(previous: NavSnapshot | None, current: NavSnapshot) -> None:
+        if previous is None:
+            return
+        DisplayPublisher._validate_map_geometry(previous, current)
+        if (current.episode_id, current.clock_domain, current.source.sensor_id) != (
+                previous.episode_id, previous.clock_domain, previous.source.sensor_id):
+            raise ValueError('live map display stream identity changed')
+        if current.revision < previous.revision or current.capture_monotonic_ns < previous.capture_monotonic_ns:
+            raise ValueError('live map revision/time moved backward')
+        if current.revision == previous.revision:
+            if (current.source, current.capture_monotonic_ns) != (previous.source, previous.capture_monotonic_ns):
+                raise ValueError('one live map revision cannot change source/time')
+        elif (current.capture_monotonic_ns <= previous.capture_monotonic_ns
+              or current.source.frame_index <= previous.source.frame_index):
+            raise ValueError('live map new revision requires newer source/time')
+
+    @staticmethod
+    def _validate_map_geometry(pinned: NavSnapshot, live: NavSnapshot) -> None:
+        # Extent/origin may change as the local occupancy window moves. The
+        # measured floor, body and calibration convention may not change.
+        for name in ('resolution_m', 'robot_geometry_id', 'floor_z_m',
+                     'floor_datum_source', 'calibration_hash'):
+            if getattr(pinned, name) != getattr(live, name):
+                raise ValueError('live map geometry/calibration mismatch: '+name)
 
     @staticmethod
     def _validate_episode(snapshot: HierarchySnapshot, metrics: DisplayMetrics) -> None:
@@ -400,6 +456,17 @@ class DisplayPublisher:
 
     @staticmethod
     def _validate_sources(snapshot: HierarchySnapshot, metrics: DisplayMetrics, sources: DisplaySources) -> None:
+        if sources.overview is not None:
+            source = sources.overview.source_nav
+            live = sources.live_nav
+            if live is None or source.episode_id != snapshot.episode_id or source.revision > live.revision:
+                raise ValueError('overview source requires matching current local map and cannot be newer')
+            if 'overview' not in metrics.source_age_ns:
+                raise ValueError('overview requires its own source age')
+            try:
+                DisplayPublisher._validate_live_stream(source, live)
+            except ValueError as exc:
+                raise ValueError(f'overview source mismatch: {exc}') from exc
         if sources.navigation is not None:
             plan=sources.navigation
             if plan.source.episode_id!=snapshot.episode_id or (sources.nav is not None and plan.clock_domain!=sources.nav.clock_domain):
@@ -410,11 +477,21 @@ class DisplayPublisher:
         if sources.nav is not None:
             if sources.nav.episode_id != snapshot.episode_id or sources.nav.revision != snapshot.map_revision:
                 raise ValueError("display NavSnapshot must match the hierarchy's pinned episode/map revision")
+        if sources.live_nav is not None:
+            live = sources.live_nav
+            if live.episode_id != snapshot.episode_id:
+                raise ValueError('live map display episode mismatch')
+            if 'live_map' not in metrics.source_age_ns:
+                raise ValueError('live map requires an explicit live_map source age')
+            if sources.nav is not None:
+                if live.clock_domain != sources.nav.clock_domain or live.revision < sources.nav.revision:
+                    raise ValueError('live map clock/revision precedes pinned map')
+                DisplayPublisher._validate_live_stream(sources.nav, live)
         if sources.robot is not None:
-            nav = sources.nav
+            nav = sources.live_nav if sources.live_nav is not None else sources.nav
             sample = sources.robot.samples[-1]
             if nav is None or (sample.source, sample.capture_monotonic_ns, sample.clock_domain) != (nav.source, nav.capture_monotonic_ns, nav.clock_domain):
-                raise ValueError('robot display trail must match pinned map source/time/clock')
+                raise ValueError('robot display trail must match displayed map source/time/clock')
         if sources.objects is not None:
             if sources.objects.episode_id != snapshot.episode_id or sources.objects.revision != snapshot.object_revision:
                 raise ValueError("display ObjectSnapshot must match the hierarchy's pinned episode/object revision")

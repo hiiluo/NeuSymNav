@@ -161,6 +161,7 @@ class NavMapper:
             self._core.MAX_PLANAR_MEMORY_BYTES=max_active_tiles*n*5
             self._core.MAX_HEIGHT_MEMORY_BYTES=max_active_tiles*n*self._core.height_bin_count*4
         self._revision=0;self._clock_domain=None;self._frame_watermarks={};self._current_coverage=None
+        self._overview_tiles=None;self.overview_error=None;self._overview_incomplete=False
 
     def bind_archive_reservation(self, factory):
         """Bind the run owner's budget to actual tile archive transactions."""
@@ -171,6 +172,7 @@ class NavMapper:
     def reset(self, episode_id=None):
         if self._closed:raise RuntimeError('mapper closed')
         self._core.reset(episode_id);self._revision=0;self._clock_domain=None;self._frame_watermarks={};self._current_coverage=None
+        self._overview_tiles=None;self.overview_error=None;self._overview_incomplete=False
 
     def close(self,timeout_s=1.):
         self._closed=True
@@ -206,7 +208,21 @@ class NavMapper:
         if observation.no_return is None or not observation.no_return.any():
             coverage=self._coverage_from_votes(observation,delta.frame_votes)
             self._current_coverage=(observation.geometry_hash,coverage)
-        return self._snapshot(observation)
+        nav=self._snapshot(observation)
+        try:
+            from dataclasses import replace
+            from .overview import update_tiles
+            updated=update_tiles(self._overview_tiles,nav,self._core.grid,
+                self._core.snapshot()._cell_arrays,self._core.free_threshold,self._core.occupied_threshold)
+            if self._overview_incomplete: updated=replace(updated,complete=False)
+            self._overview_tiles=updated
+            self.overview_error=None
+        except Exception as exc:
+            self._overview_incomplete=True;self.overview_error=exc
+        return nav
+
+    def overview_tiles(self):
+        return self._overview_tiles
 
     def _coverage_from_votes(self,obs,votes):
         """Fresh-frame classification, equivalent to a new one-frame mapper.

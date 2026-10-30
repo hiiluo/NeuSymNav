@@ -144,7 +144,7 @@ def test_hierarchy_rows_keep_lifecycle_membership_staleness_and_alias_distinct()
     assert object_rows[VERIFIED].verification == "unverified"
     assert object_rows[CANDIDATE].verification == "unavailable"
     assert object_rows[OID].status == "unavailable"
-    assert any(row.kind == "region" and row.stale and "STALE" in row.label for row in rows)
+    assert any(row.kind == "room" and row.stale and "STALE" in row.label for row in rows)
     assert resolve_object_selection(envelope, ALIAS) == (OID, True)
 
 

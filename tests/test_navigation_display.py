@@ -103,11 +103,11 @@ def test_control_records_plan_once_and_ui_builds_it_later_with_pause_clear(tmp_p
 
 
 def test_ui_provider_is_called_only_after_publication_coalescing(tmp_path,monkeypatch):
-    from test_ui_publication_cadence import fixed_clock,ui_process
+    from test_ui_publication_cadence import fixed_clock,ui_process,wait_publication
     from neusymnav.runtime.ui_transport import decode_publication
     now=fixed_clock(monkeypatch);p,h,m,nav,fs,d=inputs();calls=[]
     a=from_plan(nav,fs,d,'follow_path',nav.capture_monotonic_ns)
     with ui_process(tmp_path,publish_hz=2,navigation_provider=lambda:(calls.append(1),a)[1]) as ui:
-        ui.publish(h,m);assert len(calls)==1
+        ui.publish(h,m);wait_publication(ui);assert len(calls)==1
         assert decode_publication((ui.root/'publication.json').read_bytes()).sources.navigation==a
-        now[0]+=10_000_000;ui.publish(h,m);assert len(calls)==1
+        now[0]+=10_000_000;ui.publish(h,m);wait_publication(ui);assert len(calls)==1

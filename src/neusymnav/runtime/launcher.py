@@ -696,6 +696,8 @@ def run(config_path,*,duration_s,out)->dict:
             ui=UiProcess(root/'ui',python=python,script=script,clock_domain=first.clock_domain,
                 command_handler=pipeline.handle_ui_command,assets_root=root/'objects'/'assets',
                 navigation_provider=pipeline.navigation_display,
+                live_nav_provider=pipeline.live_navigation_display,
+                overview_provider=pipeline.global_map_display,
                 smoke_exit_ms=config.data.get('ui',{}).get('smoke_exit_ms'),quota=pipeline.quota,
                 **({'publish_hz':config.data['ui']['publish_hz']} if 'publish_hz' in config.data.get('ui',{}) else {}))
             pipeline.publisher=ui

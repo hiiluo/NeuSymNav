@@ -69,6 +69,7 @@ class Pipeline:
         self._wake=Event();self._nav_wake=Event();self._region_wake=Event();self._ready=Event();self._recorder_done=Event()
         self._closing=False;self._paused=False;self._stop_requested=False;self._deadline=None
         self._latest_depth=None;self._nav_input=None;self._nav_pose_input=None;self._latest_nav=None;self._region_input=None
+        self._latest_overview_tiles=None
         self._pose_offer=None;self._pose_watermark=None;self._place_input=None
         self._place_counts=dict(offered=0,pose_replaced=0,pair_replaced=0,consumed=0,stale=0,unmatched=0)
         self._place_status='unavailable_no_measured_pose'
@@ -504,8 +505,15 @@ class Pipeline:
                 try:nav=self.mapper.update(obs)
                 finally:
                     if budget:self.quota.release('navigation-archive')
+                overview = None
+                try:
+                    provider = getattr(self.mapper, 'overview_tiles', None)
+                    if provider is not None:overview = provider()
+                except Exception:
+                    pass  # Optional display data must never fail control.
                 with self._lock:
                     self._latest_nav=nav
+                    self._latest_overview_tiles=overview
                     if proof is not None:
                         if self._place_input is not None:self._place_counts['pair_replaced']+=1
                         self._place_input=(nav,proof)
@@ -658,6 +666,14 @@ class Pipeline:
         clear=rejected or reason in {'runtime_paused','runtime_stopped','bootstrap_blocked','footprint_not_observed','path_segment_blocked'}
         return from_plan(nav,frontiers,decision,reason,computed,clear_goal=clear,
             held_goal=None if reason in {'runtime_paused','runtime_stopped'} else held_goal)
+
+    def live_navigation_display(self):
+        """Read the latest immutable map pointer; UI work stays outside control."""
+        with self._lock:return self._latest_nav
+
+    def global_map_display(self):
+        """Immutable overview tiles only; dense assembly runs on the UI lane."""
+        with self._lock:return self._latest_overview_tiles
 
     def _source_ages_locked(self):
         now=self.now_ns()

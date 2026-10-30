@@ -17,6 +17,7 @@ from neusymnav.contracts import FrameKey
 from neusymnav.contracts.serialization import dumps
 from neusymnav.visualization.point_cloud import CommittedCloudReader, AsyncCloudReader, project_rgbd
 from neusymnav.visualization.spatial_scene import SpatialSceneWidget
+from neusymnav.visualization.hierarchy_view import hierarchy_rows
 
 
 def fixture(tmp_path):
@@ -134,13 +135,14 @@ def app():
 def test_spatial_nodes_use_world_geometry_and_only_assigned_edges(app):
     envelope=make_publisher()[0].read_latest();original=tuple(envelope.hierarchy.edges)
     view=SpatialSceneWidget();view.set_envelope(envelope)
-    assert np.array_equal(view.nodes[OID]['position'],envelope.hierarchy.nodes[OID].attributes['centroid'])
+    assert np.array_equal(view.nodes[OID]['measured_position'],envelope.hierarchy.nodes[OID].attributes['centroid'])
+    assert np.array_equal(view.nodes[OID]['position'],view.nodes[OID]['measured_position'])
     assert np.allclose(view.nodes['r1']['position'][:2],[.5,.5])
-    assigned={(e.source_id,e.target_id,e.kind) for e in envelope.hierarchy.edges if e.status=='assigned'}
+    assigned={(r.parent_id,r.node_id,'contains') for r in hierarchy_rows(envelope) if r.parent_id} | {('r1','r2','region_adjacent_to')}
     assert set(view.edges)<=assigned
     no_memberships=replace(envelope,hierarchy=replace(envelope.hierarchy,edges=tuple(e for e in original if e.kind!='in_region')))
     view.set_envelope(no_memberships)
-    assert not any(kind=='in_region' for _,_,kind in view.edges)
+    assert not any(target==OID for _,target,_ in view.edges)
     assert tuple(envelope.hierarchy.edges)==original
     view.close()
 
