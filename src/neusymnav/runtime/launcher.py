@@ -202,6 +202,18 @@ def _wait_exact_navigation(pipeline,observation,run_deadline):
     return False
 
 
+def _sensor_launch_configuration(config, assets):
+    """Use navigation's physical body as the single native geometry authority."""
+    sensor_config=dict(config.data['sensor_config']);sensor_config.pop('scene',None)
+    sensor_config.pop('scene_dataset',None)
+    if 'scene_dataset' in assets:sensor_config['scene_dataset_config_file']=str(assets['scene_dataset'])
+    sensor_config['scene_id']=str(assets['scene']);sensor_config['episode_id']=config.data['episode']['id']
+    robot=config.data.get('navigation',{}).get('robot')
+    if robot is not None:
+        sensor_config['agent_geometry']={key:robot[key] for key in ('geometry_id','radius_m','height_m')}
+    return sensor_config
+
+
 def _assets(config):
     """Resolve all declared resources without starting interpreters/frameworks."""
     d=config.data;resolved={};issues=[]
@@ -593,10 +605,7 @@ def run(config_path,*,duration_s,out)->dict:
         if shutil.disk_usage(root).free<required:
             raise ValueError('long_demo requires free disk >= total_cap plus 1 GiB before worker startup')
     from ..sensors.client import HabitatPoseSource
-    sensor_config=dict(config.data['sensor_config']);sensor_config.pop('scene',None)
-    sensor_config.pop('scene_dataset',None)
-    if 'scene_dataset' in assets:sensor_config['scene_dataset_config_file']=str(assets['scene_dataset'])
-    sensor_config['scene_id']=str(assets['scene']);sensor_config['episode_id']=config.data['episode']['id']
+    sensor_config=_sensor_launch_configuration(config,assets)
     python,script=assets['sensor'];sensor=None;pipeline=None;recorder=None;ui=None;error=None;raw_cert=None;report=None;frames=0;admission_stop=None
     policy=_recording_policy(config);attempt=None
     measurement_options=config.data.get('measurements',{});measured=measurement_options.get('enabled',False)

@@ -445,6 +445,16 @@ def encode_packet(capture):
     return result
 
 
+def _agent_geometry(value):
+    if value is None:return None
+    if (not isinstance(value,dict) or set(value)!={'geometry_id','radius_m','height_m'}
+            or not isinstance(value['geometry_id'],str) or not value['geometry_id'].strip()
+            or any(type(value[k]) not in (int,float) or not math.isfinite(value[k]) or value[k]<=0
+                   for k in ('radius_m','height_m'))):
+        raise ValueError('invalid explicit agent geometry')
+    return dict(value)
+
+
 class HabitatCapture:
     """Real Habitat-Sim adapter, constructed only in the native interpreter.
 
@@ -455,6 +465,8 @@ class HabitatCapture:
     def __init__(self, config):
         self.config = config
         self.execution_ack = None
+        self.geometry_ack = None
+        geometry = _agent_geometry(config.get('agent_geometry'))
         if 'seed' in config and (type(config['seed']) is not int or not 0 <= config['seed'] <= 2**32 - 1):
             raise ValueError('sensor seed must be a uint32 integer')
         for key in ('scene_id', 'episode_id', 'initial_position', 'initial_rotation_xyzw', 'primary', 'navigation'):
@@ -480,6 +492,9 @@ class HabitatCapture:
         if config.get('scene_dataset_config_file'):
             simulator.scene_dataset_config_file = str(config['scene_dataset_config_file'])
         agent_config = habitat_sim.agent.AgentConfiguration()
+        if geometry is not None:
+            agent_config.radius = geometry['radius_m']
+            agent_config.height = geometry['height_m']
         specs = []
         self.specs = {}
         primary, navigation = config['primary'], config['navigation']
@@ -507,6 +522,24 @@ class HabitatCapture:
         agent_config.sensor_specifications = specs
         self.sim = habitat_sim.Simulator(habitat_sim.Configuration(simulator, [agent_config]))
         try:
+            if geometry is not None:
+                settings = self.sim.pathfinder.nav_mesh_settings
+                if settings is None:
+                    settings = habitat_sim.NavMeshSettings()
+                    settings.set_defaults()
+                settings.agent_radius = geometry['radius_m']
+                settings.agent_height = geometry['height_m']
+                if not self.sim.recompute_navmesh(self.sim.pathfinder, settings):
+                    raise RuntimeError('native navmesh recomputation failed for agent geometry')
+                actual = self.sim.pathfinder.nav_mesh_settings
+                agent = self.sim.get_agent(0).agent_config
+                values = dict(radius_m=float(agent.radius), height_m=float(agent.height),
+                              navmesh_radius_m=float(actual.agent_radius), navmesh_height_m=float(actual.agent_height))
+                if any(not math.isclose(values[key],geometry[target],rel_tol=0,abs_tol=1e-6)
+                       for key,target in [('radius_m','radius_m'),('height_m','height_m'),
+                                          ('navmesh_radius_m','radius_m'),('navmesh_height_m','height_m')]):
+                    raise RuntimeError('native agent/navmesh geometry readback mismatch')
+                self.geometry_ack = dict(geometry_id=geometry['geometry_id'],navmesh_recomputed=True,**values)
             if 'seed' in config:
                 # This ACK exists only after the actual native API succeeds.
                 # Apply before agent pose initialization or the first capture.
@@ -916,7 +949,8 @@ def main(argv=None):
             capture = HabitatCapture(config)
         output.write(json.dumps(dict(ready=True, wire_version=WIRE_VERSION,
                                     pose_source='simulator_ground_truth',
-                                    execution=capture.execution_ack)) + '\n')
+                                    execution=capture.execution_ack,
+                                    agent_geometry=capture.geometry_ack)) + '\n')
         while True:
             line = sys.stdin.buffer.readline(64 * 1024 + 1)
             if not line:

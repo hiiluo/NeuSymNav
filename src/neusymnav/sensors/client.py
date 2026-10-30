@@ -94,6 +94,22 @@ def observation_from_packet(packet: dict, *, deadline: float | None = None) -> O
         raise ValueError('invalid sensor wire payload') from exc
 
 
+def _validate_geometry_ack(requested, actual):
+    """Require both native agent and collision-navmesh dimensions on new launches."""
+    if requested is None:
+        if actual is not None:raise ValueError('unsolicited native agent geometry ACK')
+        return None
+    fields={'geometry_id','radius_m','height_m','navmesh_radius_m','navmesh_height_m','navmesh_recomputed'}
+    if (not isinstance(actual,dict) or set(actual)!=fields or actual['geometry_id']!=requested['geometry_id']
+            or actual['navmesh_recomputed'] is not True):
+        raise ValueError('native agent geometry ACK absent or mismatched')
+    for key,target in [('radius_m','radius_m'),('height_m','height_m'),('navmesh_radius_m','radius_m'),('navmesh_height_m','height_m')]:
+        if (type(actual[key]) not in (int,float) or not math.isfinite(actual[key])
+                or not math.isclose(actual[key],requested[target],rel_tol=0,abs_tol=1e-6)):
+            raise ValueError('native agent geometry ACK dimensions mismatch')
+    return dict(actual)
+
+
 class HabitatPoseSource:
     """Real worker launch with independently configured ``python`` and scene.
 
@@ -158,6 +174,8 @@ class HabitatPoseSource:
             ready = self._wire.receive(ready_deadline)
             if ready.get('ready') is not True or type(ready.get('wire_version')) is not int or ready['wire_version'] != 1:
                 raise RuntimeError('sensor worker unavailable: ' + str(ready.get('error', ready)))
+            geometry = _validate_geometry_ack(launch_config.get('agent_geometry'),ready.get('agent_geometry'))
+            if geometry is not None:self._runtime_metadata['agent_geometry']=geometry
             execution = ready.get('execution')
             if seed_requested:
                 fields = {'schema_version','episode_id','clock_domain','seed','seed_method',
