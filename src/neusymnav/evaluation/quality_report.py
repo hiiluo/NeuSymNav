@@ -36,6 +36,7 @@ def evaluate_quality(gt_path, prediction_path, *, out, confidence_threshold=0.25
     from .detection_quality import evaluate_detection
     from .association_quality import evaluate_association
     from .geometry_quality import evaluate_geometry
+    from .tracking_quality import evaluate_tracking
     pair = load_quality_pair(gt_path, prediction_path)
     root = Path(out)
     if root.exists() and any(root.iterdir()): raise ValueError('quality report requires empty output directory')
@@ -78,6 +79,17 @@ def evaluate_quality(gt_path, prediction_path, *, out, confidence_threshold=0.25
                 association['final_canonicalized'] = association['online']
             association['online'] = unavailable('ledger IDs rewritten by merge; original online IDs unavailable')
     association['confidence_threshold'] = confidence_threshold
+    if pred['identity_semantics'] == 'none':
+        tracking = dict(online=unavailable('prediction input has no identity history'),
+            final_canonicalized=unavailable('prediction input has no identity history'))
+    else:
+        tracking = evaluate_tracking(assoc_frames, final_aliases=pred.get('final_aliases'))
+        if pred['identity_semantics'] == 'final_canonical_only':
+            if pred.get('final_aliases') is None:
+                tracking['final_canonicalized'] = tracking['online']
+            tracking['online'] = unavailable('ledger IDs rewritten by merge; original online IDs unavailable')
+    association['tracking'] = tracking
+    association.pop('hota',None); association.pop('assa',None)
     geometry = unavailable('supply both observed-support geometry_objects and geometry_scope')
     if 'geometry_objects' in gt or 'geometry_objects' in pred:
         if not all('geometry_objects' in doc and isinstance(doc.get('geometry_scope'),str) and doc['geometry_scope'].strip() for doc in (gt,pred)):
@@ -104,7 +116,7 @@ def evaluate_quality(gt_path, prediction_path, *, out, confidence_threshold=0.25
             'AP is limited to supplied confidence floor and detection cap; empty/missing/failed predictions remain in frame scope.',
             'Association is conditional on selected annotated frame sequence; pairwise metrics use geometrically matched observations only.',
             'Revisit gaps count absent annotated frames, not elapsed seconds or all sensor frames.',
-            'HOTA/AssA require a verified standard evaluator and are unavailable here.',
+            'HOTA/AssA follow the TrackEval sequence algorithm with class-agnostic bbox IoU; this is a declared object-memory adaptation, not an official benchmark submission.',
             'No quality acceptance threshold, runtime acceptance, or causal model improvement is inferred.'])
     root.mkdir(parents=True,exist_ok=True)
     encoded = json.dumps(report,ensure_ascii=False,indent=2,allow_nan=False)+'\n'

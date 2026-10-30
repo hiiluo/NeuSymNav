@@ -75,3 +75,20 @@ reordered frames, changed frame metadata/source descriptor/HFOV and rehashed pos
 CPU verification under the actual sensor interpreter accepts the original
 12-frame request and rejects both reviewer reproductions before Habitat imports.
 This repair does not change the prospective RGB-D alignment or visibility policy.
+
+## Evaluator-only semantic scene registration
+
+The recorded runtime dataset intentionally has no semantic stage attributes.
+The first native attempt rejected the missing semantic scene and published no GT.
+The evaluator now derives a temporary dataset descriptor from the SHA-bound
+capture descriptor. It preserves shader/up/front/origin/lighting defaults,
+resolves original relative path patterns, limits stage registration to the exact
+hashed active geometry, and adds only the explicit hashed semantic mesh and
+descriptor plus `has_semantic_textures=true`. Both original and derived
+descriptors are retained with hashes; the runtime config is never modified.
+The same source pose, actual K comparison and prospective RGB-D gates apply.
+
+The 2026-10-30 pilot uses a retained run, not deleted historical run artifacts.
+Reproducible commands, masks, alignment/exclusions and reports are retained under
+`.runtime/quality-evaluation-20261030/`; see
+[pilot results](results/object-quality-pilot-2026-10-30.md).

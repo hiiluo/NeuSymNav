@@ -10,7 +10,7 @@ Không dùng test-pass, confidence hoặc số node làm accuracy.
 PYTHONPATH=src .venv/bin/python -m neusymnav.cli evaluate-quality \
   --gt configs/evaluation/quality-example/gt.json \
   --predictions configs/evaluation/quality-example/predictions.json \
-  --out runs/quality-example-new
+  --out .runtime/quality-example-new
 ```
 
 Output gồm `report.json` và `report.md`. Output directory phải mới/rỗng để không
@@ -20,12 +20,12 @@ ghi đè evidence cũ. Ví dụ này là analytic synthetic, không phải accur
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m neusymnav.cli export-quality \
-  --ledger runs/long-demo-fix-20261029/native-ui2-600s/objects \
+  --ledger runs/demo-yoloe26m-640x480-gpu-20261030-104928-497271978/objects \
   --scene-id 00861-GLAQ4DNUx5U \
-  --recording-manifest runs/long-demo-fix-20261029/native-ui2-600s/keyframes/recording/manifest.json \
+  --recording-manifest runs/demo-yoloe26m-640x480-gpu-20261030-104928-497271978/keyframes/recording/manifest.json \
   --taxonomy configs/taxonomy-v1.json \
   --max-frames 100 \
-  --out runs/object-quality-annotation-new
+  --out .runtime/object-quality-annotation-new
 ```
 
 Xuất theo thứ tự nguồn, giữ cả batch rỗng và detection không project được.
@@ -65,8 +65,12 @@ null, không lấy minimum observed confidence làm score floor. Muốn so AP mo
 Identity matching dùng geometry độc lập nhãn để không che association tốt bằng
 lỗi nhãn. Standard IDF1 tích lũy mọi cặp trajectory đủ IoU trước global identity
 assignment; các diagnostics pairwise/switch dùng local matching đã khai báo.
-HOTA/AssA chưa triển khai chuẩn, giữ unavailable thay vì gắn nhãn cho metric gần
-giống. Không dùng GT chưa từng visible làm FN của detector từng frame.
+HOTA/AssA nằm ở `association.tracking`: global soft alignment, Hungarian trước
+lọc alpha, trung bình 19 mức IoU .05:.05:.95 theo protocol TrackEval được pin.
+Đây là adaptation bbox class-agnostic cho object memory, không phải chứng nhận
+benchmark dataset chính thức. Alias làm hai observations cùng frame trùng final
+ID thì final HOTA unavailable, không tự deduplicate. Không dùng GT chưa từng
+visible làm FN của detector từng frame.
 
 Ledger rewrite ID sau merge nên bản xuất có identity_semantics=
 `final_canonical_only`: **không có online IDF1 lịch sử**. Input độc lập có IDs tại

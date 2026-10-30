@@ -11,6 +11,7 @@ def test_synthetic_report_and_cli_outputs(tmp_path):
     assert result['detection']['operating_point']['tp']==1
     assert result['geometry']['available'] is False
     assert result['association']['online']['idf1']['value']==1
+    assert result['association']['tracking']['online']['mean']['hota']==1
     assert (tmp_path/'report'/'report.md').exists()
     assert json.loads((tmp_path/'report'/'report.json').read_text())['native_runtime_validated'] is False
 
@@ -21,6 +22,8 @@ def test_final_ledger_identity_never_masquerades_as_online(tmp_path):
     result=evaluate_quality(a,b,out=tmp_path/'report')
     assert result['association']['online']['available'] is False
     assert result['association']['final_canonicalized']['idf1']['value']==1
+    assert result['association']['tracking']['online']['available'] is False
+    assert result['association']['tracking']['final_canonicalized']['mean']['assa']==1
 
 
 def test_existing_output_not_overwritten(tmp_path):

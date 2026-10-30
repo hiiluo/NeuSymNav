@@ -6,6 +6,7 @@ imports occur only in render_request(); runtime code must never import this file
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import hashlib
 import io
@@ -304,6 +305,31 @@ def materialize_frame(frame,source,rendered_rgb,rendered_depth,ids,annotations,t
         excluded=excluded,total_pixels=int(ids.size))
 
 
+def semantic_dataset(original,base,scene,semantic,annotation):
+    """Evaluator-only stage overlay; source renderer defaults stay unchanged.
+
+    Restrict stage registration to the exact hashed active geometry. Semantic
+    attributes must not accidentally apply to unrelated stages in the dataset.
+    """
+    if not isinstance(original,dict) or not isinstance(original.get('stages'),dict):
+        raise ValueError('source dataset requires stage configuration')
+    derived=copy.deepcopy(original);base=Path(base)
+    for section in derived.values():
+        if not isinstance(section,dict) or 'paths' not in section:continue
+        paths=section['paths']
+        if not isinstance(paths,dict):raise ValueError('dataset paths must be a mapping')
+        for extension,patterns in paths.items():
+            if not isinstance(patterns,list) or any(not isinstance(p,str) for p in patterns):
+                raise ValueError('dataset paths must contain string lists')
+            paths[extension]=[str(Path(p) if Path(p).is_absolute() else base/p) for p in patterns]
+    stage=derived['stages'];attrs=stage.setdefault('default_attributes',{})
+    if not isinstance(attrs,dict):raise ValueError('stage defaults must be a mapping')
+    stage['paths']={'.glb':[str(Path(scene).resolve())]}
+    attrs.update(semantic_descriptor_filename=str(Path(annotation).resolve()),
+                 semantic_asset=str(Path(semantic).resolve()),has_semantic_textures=True)
+    return derived
+
+
 def render_request(request_path,out):
     """One evaluator-owned Habitat simulator, closed even on alignment failure."""
     import tempfile
@@ -318,7 +344,12 @@ def render_request(request_path,out):
     from scipy.spatial.transform import Rotation
     backend=habitat_sim.SimulatorConfiguration()
     backend.scene_id=request['descriptors']['scene']['path']
-    backend.scene_dataset_config_file=request['descriptors']['dataset']['path']
+    # The capture dataset intentionally has no semantic inlet. Add the exact
+    # hashed semantic assets only to a separate evaluator-owned descriptor.
+    original_dataset=Path(request['descriptors']['dataset']['path'])
+    derived=semantic_dataset(json.loads(original_dataset.read_text()),original_dataset.parent,
+        request['descriptors']['scene']['path'],request['descriptors']['semantic']['path'],
+        request['descriptors']['annotation']['path'])
     backend.load_semantic_mesh=True;backend.enable_physics=False;backend.gpu_device_id=0
     specs=[]
     for name,kind in [('rgb',habitat_sim.SensorType.COLOR),('depth',habitat_sim.SensorType.DEPTH),('semantic',habitat_sim.SensorType.SEMANTIC)]:
@@ -331,12 +362,17 @@ def render_request(request_path,out):
     agent_config=habitat_sim.agent.AgentConfiguration();agent_config.sensor_specifications=specs
     annotations=parse_annotations(request['descriptors']['annotation']['path'])
     output.parent.mkdir(parents=True,exist_ok=True)
-    simulator=habitat_sim.Simulator(habitat_sim.Configuration(backend,[agent_config]))
+    dataset_temporary=tempfile.TemporaryDirectory(prefix='semantic-dataset-',dir=output.parent)
+    dataset_path=Path(dataset_temporary.name)/'offline.scene_dataset_config.json'
+    _json(dataset_path,derived);backend.scene_dataset_config_file=str(dataset_path)
+    simulator=None
     try:
+        simulator=habitat_sim.Simulator(habitat_sim.Configuration(backend,[agent_config]))
         if not getattr(simulator.semantic_scene,'objects',None):raise ValueError('no Habitat semantic scene objects')
         agent=simulator.get_agent(0)
         with tempfile.TemporaryDirectory(prefix='semantic-render-',dir=output.parent) as temporary:
             stage=Path(temporary);(stage/'masks').mkdir();frames=[];reports=[]
+            _json(stage/'offline.scene_dataset_config.json',derived)
             for ordinal,item in enumerate(request['frames']):
                 with np.load(request_path.parent/item['arrays']['path'],allow_pickle=False) as archive:
                     source={key:archive[key] for key in archive.files}
@@ -373,6 +409,8 @@ def render_request(request_path,out):
                 taxonomy_mapping='casefold exact category or frozen taxonomy alias; no scene-specific aliases',
                 alignment_policy=ALIGNMENT_POLICY,request_sha256=_sha(request_path),
                 assets=request['descriptors'],excluded_instances_report='alignment-exclusions.json',
+                offline_dataset_sha256=_sha(dataset_path),
+                offline_dataset_policy='exact active geometry only; original renderer defaults; explicit hashed semantic assets; resolved source-relative paths',
                 unsupported_scope='unmapped/unsupported/background/small semantic IDs are excluded from primary GT; their predictions are retained and may count as false positives')
             gt=dict(schema_version=1,binding=request['predictions']['binding'],provenance=provenance,frames=frames)
             _json(stage/'ground-truth.json',gt)
@@ -385,7 +423,9 @@ def render_request(request_path,out):
             _json(stage/'manifest.json',manifest)
             if output.exists():raise FileExistsError('render output appeared')
             stage.rename(output)
-    finally:simulator.close()
+    finally:
+        if simulator is not None:simulator.close()
+        dataset_temporary.cleanup()
     return output/'ground-truth.json'
 
 

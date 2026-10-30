@@ -24,7 +24,10 @@ Identity: observation-level IDF1, conditional pair precision/recall, merge/split
 pairs, switches, visible fragmentation, absent-frame revisit recovery. Report
 online and final aliases separately. Ledger IDs are rewritten on merge, hence
 ledger export supports final memory only; online identity cannot be reconstructed.
-HOTA/AssA remain explicitly unsupported without a verified standard implementation.
+HOTA/AssA are provided by a separate independently implemented, reference-pinned
+TrackEval sequence algorithm: class-agnostic bbox IoU, 19 alpha thresholds,
+global soft alignment then frame Hungarian before alpha filtering. Colliding
+final IDs within a frame are unavailable rather than silently deduplicated.
 
 ## Input and provenance
 
