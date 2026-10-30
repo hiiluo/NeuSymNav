@@ -23,6 +23,7 @@ class PolicyConfig:
     visited_viewpoint_radius_m: float = 0.0
     failed_viewpoint_radius_m: float = 0.0
     failed_viewpoint_cooldown_revisions: int = 100
+    commit_goal_until_reached: bool = False
 
     def __post_init__(self) -> None:
         if (self.goal_hold_s < 0 or not 0 <= self.switch_improvement < 1
@@ -101,7 +102,8 @@ class FrontierPolicy:
                 del self._failed_viewpoints[:-256]
             if blocked_edge is not None:
                 self._failed_edges_until_revision[_edge_key(*blocked_edge)] = map_revision + 100
-        if frontier_id and self._goal is not None and self._goal.frontier_id == frontier_id:
+        if (not self.config.commit_goal_until_reached and frontier_id
+                and self._goal is not None and self._goal.frontier_id == frontier_id):
             self._clear_goal()
 
     def report_goal_reached(self, frontier_id: str,
@@ -167,6 +169,13 @@ class FrontierPolicy:
             failed_viewpoints = tuple(point for point, _until in self._failed_viewpoints)
             failed_until_revision = dict(self._failed_until_revision)
         blocked_edges = self.blocked_edges(snapshot.revision)
+        if (self.config.commit_goal_until_reached and self._goal is not None
+                and self._goal_world_xy is not None):
+            return self._select_committed(
+                snapshot, robot_xy, now_monotonic_s, blocked_edges,
+                failed_until_revision, failed_viewpoints,
+                allow_validated_start_anchor=allow_validated_start_anchor,
+            )
         collision_suppressed = False
         spatially_suppressed = 0
         failed_spatially_suppressed = 0
@@ -419,6 +428,61 @@ class FrontierPolicy:
                 decision_reason=reason, candidate_status="no_reachable_candidate",
             ),
         )
+
+    def _select_committed(self, snapshot, robot_xy, now, blocked_edges,
+                          failed_until_revision, failed_viewpoints, *,
+                          allow_validated_start_anchor):
+        """Replan one immutable world target; an unsafe path means WAIT, not retarget."""
+        goal, target = self._goal, self._goal_world_xy
+        distance = math.dist(target, robot_xy)
+        diagnostics = {
+            "previous_goal_id": goal.frontier_id,
+            "previous_goal_xy": list(target),
+            "previous_goal_distance_m": distance,
+            "previous_goal_age_s": max(0., now - self._selected_at),
+            "selected_goal_id": goal.frontier_id,
+            "selected_goal_xy": list(target),
+            "commit_goal_until_reached": True,
+            "reached_distance_m": self.config.reached_distance_m,
+        }
+        if distance <= self.config.reached_distance_m:
+            self._visited_ids.add(goal.frontier_id)
+            self._mark_viewpoint_visited(target)
+            self._clear_goal()
+            reason = "frontier_viewpoint_reached"
+            diagnostics["decision_reason"] = reason
+            return NavigationDecision("OBSERVE", goal, None, reason, now,
+                                      goal_diagnostics=diagnostics)
+        cell = snapshot.world_to_cell(*target)
+        reason = None
+        if (snapshot.revision <= failed_until_revision.get(goal.frontier_id, -1)
+                or (self.config.failed_viewpoint_radius_m > 0 and any(
+                    math.dist(target, point) <= self.config.failed_viewpoint_radius_m
+                    for point in failed_viewpoints))):
+            reason = "committed_goal_waiting_after_collision"
+        elif cell is None:
+            reason = "committed_goal_outside_map"
+        path = None
+        if reason is None:
+            options = dict(allow_validated_start_anchor=allow_validated_start_anchor,
+                           blocked_edges=blocked_edges)
+            batch_planner = getattr(self.planner, "plan_many", None)
+            path = (batch_planner(snapshot, robot_xy, [cell], **options)[cell]
+                    if callable(batch_planner) else
+                    self.planner.plan(snapshot, robot_xy, cell, **options))
+            if not path.success:
+                reason = "committed_goal_blocked:" + path.reason
+        if reason is not None:
+            self._goal_path = None
+            diagnostics["decision_reason"] = reason
+            return NavigationDecision("WAIT", goal, None, reason, self._selected_at,
+                                      goal_diagnostics=diagnostics)
+        self._goal = replace(goal, map_revision=snapshot.revision,
+                             viewpoint_cell=cell, viewpoint_world_xy=target)
+        self._goal_path = path
+        diagnostics["decision_reason"] = "committed_goal_retained"
+        return NavigationDecision("MOVE", self._goal, path, "committed_goal_retained",
+                                  self._selected_at, goal_diagnostics=diagnostics)
 
     def _match_current(self, reachable: list[tuple[float, Frontier, PathResult]],
                        snapshot: GridSnapshot) -> tuple[float, Frontier, PathResult] | None:

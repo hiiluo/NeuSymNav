@@ -1,13 +1,16 @@
 """Latest measured-depth safety after planning; no graph/model worker calls."""
 from __future__ import annotations
 import math
+from collections import OrderedDict
+from itertools import islice
+import numpy as np
 from ..contracts import MotionCommand, age_ns, GridState
 from ..mapping.occupancy import capsule_cells
 
 
 class MotionGuard:
     def __init__(self, mapper, *, clock_domain: str, max_depth_age_ns=300_000_000,
-                 command_horizon_ns=100_000_000, bootstrap_corridor_m=.3):
+                 command_horizon_ns=100_000_000, bootstrap_corridor_m=.1):
         if not clock_domain.startswith('host_monotonic:'):raise ValueError('guard requires pinned live host domain')
         if not 0<max_depth_age_ns<=300_000_000:raise ValueError('depth TTL cannot exceed 300 ms')
         if command_horizon_ns<=0 or not math.isfinite(bootstrap_corridor_m) or bootstrap_corridor_m<=0:
@@ -15,6 +18,9 @@ class MotionGuard:
         self.mapper=mapper;self.clock_domain=clock_domain;self.max_depth_age_ns=max_depth_age_ns
         self.command_horizon_ns=command_horizon_ns;self.bootstrap_corridor_m=bootstrap_corridor_m
         self._bound=None;self._watermarks={}
+        # Geometry only: no map state, floor support, clearance or verdict.
+        # Immutable cell tuples are capped at 64 entries of at most 512 cells.
+        self._geometry_cache=OrderedDict()
 
     def bind_nav(self, nav, *, robot_xy, yaw_rad):
         if nav.robot_geometry_id!=self.mapper.robot.geometry_id:raise ValueError('robot geometry mismatch')
@@ -82,6 +88,41 @@ class MotionGuard:
 
     def _clear(self,nav,start,end,*,swept_margin_m=0.):
         radius=self.mapper.robot.radius_m+self.mapper.robot.margin_m+swept_margin_m
-        cells=capsule_cells(nav.origin_xy,nav.resolution_m,start,end,radius)
-        return all(0<=r<nav.states.shape[0] and 0<=c<nav.states.shape[1] and nav.states[r,c]==GridState.FREE
-            and nav.floor_support[r,c] and nav.clearance[r,c]>=self.mapper.robot.height_m for r,c in cells)
+        key=(tuple(nav.origin_xy),nav.resolution_m,tuple(start),tuple(end),radius)
+        # Optional reuse is initialized independently of map binding.
+        cache=getattr(self,'_geometry_cache',None)
+        if cache is None:cache=self._geometry_cache=OrderedDict()
+        cached=cache.get(key)
+        if cached is not None:
+            cache.move_to_end(key)
+            return self._cells_clear(nav,cached)
+        cells=iter(capsule_cells(nav.origin_xy,nav.resolution_m,start,end,radius))
+        first=tuple(islice(cells,512));batch=first;small=True
+        while batch:
+            if not self._cells_clear(nav,batch):return False
+            batch=tuple(islice(cells,512))
+            if batch:small=False;first=()
+        if small:
+            if len(cache)>=64:cache.popitem(last=False)
+            cache[key]=first
+        return True
+
+    def _cells_clear(self,nav,cells):
+        if not cells:return True
+        # capsule_cells yields Python integer indices, including indices outside
+        # native integer range for extreme public geometry calls. Those cannot
+        # index an ndarray and must fail before any array access.
+        try:indices=np.asarray(cells,dtype=np.intp)
+        except OverflowError:return False
+        rows,cols=indices.T
+        if not np.all((rows>=0)&(rows<nav.states.shape[0])&(cols>=0)&(cols<nav.states.shape[1])):
+            return False
+        if not np.all(nav.states[rows,cols]==GridState.FREE):return False
+        if not np.all(nav.floor_support[rows,cols]):return False
+        height=self.mapper.robot.height_m
+        # Scalar float32 >= Python float promotes to float64, whereas ndarray
+        # comparison may round the threshold down to float32. Preserve the old
+        # scalar predicate, including higher precision clearance arrays.
+        clearance=nav.clearance[rows,cols]
+        dtype=np.result_type(clearance.dtype,type(height))
+        return bool(np.all(clearance.astype(dtype,copy=False)>=height))

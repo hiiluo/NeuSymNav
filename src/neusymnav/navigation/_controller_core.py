@@ -67,6 +67,7 @@ class Controller:
              depth_front_min_m: float | None, depth_coverage_ok: bool,
              snapshot: GridSnapshot | None,
              path: PathResult | None, frame_id: str,
+             goal_world_xy: tuple[float, float] | None = None,
              blocked_edges: frozenset[tuple[tuple[int, int], tuple[int, int]]] = frozenset()
              ) -> ActionCommand:
         dt = min(max(float(dt_s), 0.0), self.config.max_dt_s)
@@ -88,9 +89,10 @@ class Controller:
         elif not path.cells:
             reason = "empty_path"
         else:
-            goal_xy = snapshot.cell_to_world(*path.cells[-1])
+            goal_xy = (snapshot.cell_to_world(*path.cells[-1])
+                       if goal_world_xy is None else goal_world_xy)
             target_xy = self._lookahead(snapshot, path.cells, robot_xy,
-                                        blocked_edges=blocked_edges)
+                                        blocked_edges=blocked_edges, goal_world_xy=goal_world_xy)
             if math.dist(robot_xy, goal_xy) <= self.config.goal_reached_distance_m:
                 reason = "goal_reached"
             elif target_xy is None:
@@ -189,11 +191,17 @@ class Controller:
 
     def _lookahead(self, snapshot: GridSnapshot, cells: tuple[tuple[int, int], ...],
                    robot_xy: tuple[float, float], *,
+                   goal_world_xy: tuple[float, float] | None = None,
                    blocked_edges: frozenset[tuple[tuple[int, int], tuple[int, int]]] = frozenset()
                    ) -> tuple[float, float] | None:
         points = [snapshot.cell_to_world(r, c) for r, c in cells]
         if not points:
             return None
+        if goal_world_xy is not None:
+            if (len(goal_world_xy) != 2 or not all(math.isfinite(v) for v in goal_world_xy)
+                    or snapshot.world_to_cell(*goal_world_xy) != cells[-1]):
+                return None
+            points[-1] = goal_world_xy
         signature = tuple(points)
         if signature != self._path_signature:
             self._path_signature = signature

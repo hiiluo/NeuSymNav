@@ -36,7 +36,7 @@ safety:
   live_clock_domain_required: true
   max_depth_age_ns: 300000000
   command_horizon_ns: 100000000
-  bootstrap_corridor_m: 0.30
+  bootstrap_corridor_m: 0.10
   max_linear_mps: 0.20
   max_yaw_radps: 0.5235987755982988
 provenance:
