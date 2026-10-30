@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 
@@ -77,6 +78,52 @@ def verify_source_closure(source_root: Path) -> dict:
     }
 
 
+def stage_patched_closure(source_root: Path, patch_set: Path, staging_root: Path):
+    """Apply an explicit hash-bound local patch to a copy of verified upstream."""
+    original=verify_source_closure(source_root)
+    recipe=json.loads(patch_set.read_text())
+    if recipe.get('schema_version')!=1 or not isinstance(recipe.get('files'),list) or not recipe['files']:
+        raise ValueError('invalid local patch recipe')
+    relative=Path(recipe['patch'])
+    if relative.is_absolute() or '..' in relative.parts:raise ValueError('patch path escapes recipe')
+    patch=patch_set.parent/relative
+    if patch.is_symlink() or sha256(patch)!=recipe['patch_sha256']:raise ValueError('patch checksum mismatch')
+    manifest=json.loads((source_root/'source-closure.json').read_text())
+    by_path={row['path']:row for row in manifest['files']};changes={}
+    for row in recipe['files']:
+        path=Path(row['path'])
+        if path.is_absolute() or '..' in path.parts or str(path) not in by_path or str(path) in changes:
+            raise ValueError('local patch file outside verified closure')
+        if sha256(source_root/path)!=row['before_sha256']:raise ValueError('local patch original checksum mismatch')
+        changes[str(path)]=row
+    if staging_root.exists():raise FileExistsError(staging_root)
+    staging_root.mkdir(parents=True)
+    for row in manifest['files']:
+        path=Path(row['path']);target=staging_root/path;target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(source_root/path,target)
+    shutil.copyfile(source_root/'CMakeLists.txt',staging_root/'CMakeLists.txt')
+    command=['git','apply','--no-index',str(patch.resolve())]
+    result=subprocess.run(command,cwd=staging_root,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if result.returncode:raise RuntimeError('local native patch could not be applied')
+    expected_files=set(by_path)|{'CMakeLists.txt'}
+    actual_files={str(path.relative_to(staging_root)) for path in staging_root.rglob('*') if path.is_file() or path.is_symlink()}
+    if actual_files!=expected_files or sha256(staging_root/'CMakeLists.txt')!=sha256(source_root/'CMakeLists.txt'):
+        raise ValueError('local native patch changed undeclared source/build files')
+    for row in manifest['files']:
+        relative=row['path'];digest=sha256(staging_root/relative)
+        expected=changes[relative]['after_sha256'] if relative in changes else row['vendored_sha256']
+        if digest!=expected:raise ValueError('local native patch output checksum mismatch')
+        if relative in changes:
+            row['upstream_source_sha256']=row['source_sha256']
+            row['source_sha256']=row['vendored_sha256']=digest
+            row['local_patch_set_sha256']=sha256(patch_set)
+    manifest['local_patch_provenance']=dict(original_source_manifest=original,
+        patch_set=str(patch_set.resolve()),patch_set_sha256=sha256(patch_set),patch_sha256=sha256(patch))
+    (staging_root/'source-closure.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    verify_source_closure(staging_root)
+    return staging_root,manifest['local_patch_provenance']
+
+
 def run_logged(command: list[str], cwd: Path, log_path: Path) -> tuple[int, str]:
     completed = subprocess.run(
         command,
@@ -118,11 +165,21 @@ def parse_args() -> argparse.Namespace:
         "--prebuilt-candidate-sha256",
         help="required expected SHA-256 when --prebuilt-candidate is supplied",
     )
+    parser.add_argument('--patch-set',type=Path,help='explicit hash-bound local patch recipe; upstream is not modified')
+    parser.add_argument('--output-dir',type=Path,help='new local build/evidence directory; default retained baseline location')
     return parser.parse_args()
 
 
 def main() -> int:
+    global RUN_ROOT, BUILD_ROOT, CONFIG_PATH, WORKER_PATH
     args = parse_args()
+    if args.patch_set and not args.output_dir:
+        raise SystemExit('--patch-set requires a fresh --output-dir to preserve the baseline')
+    if args.output_dir:
+        selected=args.output_dir.resolve()
+        if not selected.is_relative_to(REPO_ROOT) or selected.exists():
+            raise SystemExit('--output-dir requires a new directory inside NeuSymNav')
+        RUN_ROOT=selected;BUILD_ROOT=selected/'build';CONFIG_PATH=selected/'build-config.json';WORKER_PATH=BUILD_ROOT/'occusg_dude_worker'
     source_root = args.source_closure.resolve()
     dependency_prefix = args.dependency_prefix.resolve()
     try:
@@ -152,6 +209,10 @@ def main() -> int:
             "expected_sha256": expected_candidate_hash.lower(),
         }
 
+    patch_provenance=None
+    if args.patch_set:
+        RUN_ROOT.mkdir(parents=True,exist_ok=True)
+        source_root,patch_provenance=stage_patched_closure(source_root,args.patch_set.resolve(),RUN_ROOT/'patched-source')
     try:
         closure = verify_source_closure(source_root)
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
@@ -214,6 +275,7 @@ def main() -> int:
         "status": "in_progress",
         "source_closure": str(source_root),
         "source_closure_manifest": closure,
+        "local_patch_provenance": patch_provenance,
         "dependency_prefix": str(dependency_prefix),
         "dependency_library_directory": str(library_directory),
         "binary": str(WORKER_PATH),

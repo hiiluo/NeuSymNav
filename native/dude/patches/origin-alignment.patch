@@ -1,0 +1,66 @@
+--- a/upstream/include/inc_decomp.cpp
++++ b/upstream/include/inc_decomp.cpp
+@@ -5,6 +5,8 @@
+ #include <cstdint>
+ #include <cmath>
+ #include <cstring>
++#include <limits>
++#include <stdexcept>
+ #include <sstream>
+ #include <utility>
+ 
+@@ -14,6 +16,32 @@
+ namespace {
+ 
+ constexpr double kMinStableContourAreaPixels = 1.0;
++
++// NeuSymNav local modification (2026-10-31): preserve integer-cell world
++// alignment despite float origin/resolution representation. Non-grid-aligned
++// callers retain the source truncation convention; this is not a grid resnap.
++int originPixelCorrection(const float current, const float next,
++                          const float resolution) {
++	const float shift = (current - next) / resolution;
++	const double value = static_cast<double>(shift);
++	if (!std::isfinite(value) ||
++	    value < static_cast<double>(std::numeric_limits<int>::min()) ||
++	    value > static_cast<double>(std::numeric_limits<int>::max())) {
++		throw std::invalid_argument("origin correction exceeds integer pixel range");
++	}
++	const double nearest = std::round(value);
++	// Bound float input/subtraction/division error in pixel units. At coarse
++	// world coordinates where uncertainty reaches a quarter cell, do not infer
++	// grid alignment from that uncertainty.
++	const double tolerance = std::numeric_limits<float>::epsilon() *
++		(std::abs(static_cast<double>(current)) + std::abs(static_cast<double>(next)) +
++		 std::abs(static_cast<double>(resolution)) * (std::abs(value) + 1.0)) /
++		std::abs(static_cast<double>(resolution));
++	if (tolerance < 0.25 && std::abs(value - nearest) <= tolerance) {
++		return static_cast<int>(std::lround(value));
++	}
++	return static_cast<int>(shift);
++}
+ 
+ struct WrapperRunResult {
+ 	bool ok{false};
+@@ -519,8 +547,8 @@
+ 	sanitizeStableGraph(adjusted_state, image_cleaned.size(), "previous_state");
+ 	if (current_origin_ != new_origin_) {
+ 		cv::Point correction;
+-		correction.x = (current_origin_.x - new_origin_.x) / resolution;
+-		correction.y = (current_origin_.y - new_origin_.y) / resolution;
++		correction.x = originPixelCorrection(current_origin_.x, new_origin_.x, resolution);
++		correction.y = originPixelCorrection(current_origin_.y, new_origin_.y, resolution);
+ 		applyCorrection(adjusted_state, correction);
+ 		DUDE_ROS_DEBUGF(
+ 			"decompose_image adjusted_contours count=%zu correction=(%d,%d)",
+@@ -921,8 +949,8 @@
+ 	cv::Point correction;
+ 	
+ // considering constant resolution
+-	correction.x = (current_origin_.x - new_origin_.x) / resolution;
+-	correction.y = (current_origin_.y - new_origin_.y) / resolution;
++	correction.x = originPixelCorrection(current_origin_.x, new_origin_.x, resolution);
++	correction.y = originPixelCorrection(current_origin_.y, new_origin_.y, resolution);
+ 	
+ 	sanitizeStableGraph(Stable, Stable.image_size, "adjust_stable_contours");
+ 	for(int i=0; i < static_cast<int>(Stable.Region_contour.size());i++){

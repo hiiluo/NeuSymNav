@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "description": "NeuSymNav local fix: round representationally grid-aligned float offsets; preserve truly nonaligned truncation. Original upstream snapshot is kept unchanged.",
+  "patch": "origin-alignment.patch",
+  "patch_sha256": "088a6c7cba3aac4c58c34726261bb2c08e3efec14b204406a0ac3fe77d0fe76c",
+  "files": [
+    {
+      "path": "upstream/include/inc_decomp.cpp",
+      "before_sha256": "321d4a117313a895a1d0e4cafbb3ffe2f280cf1ae13c3d14a9f2e4da6a6ed2c2",
+      "after_sha256": "08eccd61536a3ef021f3dca9537c61568ce6117a41a459e67e4e1e25903803d8"
+    }
+  ]
+}

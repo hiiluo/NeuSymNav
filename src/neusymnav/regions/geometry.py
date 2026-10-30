@@ -170,3 +170,85 @@ def _valid_ring(ring):
     tris=_triangulate(ring)
     return bool(tris) and ring_area(ring)>1e-12 and abs(sum(ring_area(t) for t in tris)-ring_area(ring))<1e-7
 
+
+
+def room_center(polygon):
+    """Area centroid, with a bounded interior-clearance anchor for concave rings.
+
+    This is a presentation anchor for accepted geometry, not semantic room truth
+    or a navigable robot pose. No cross-revision geometry is retained.
+    """
+    import heapq
+    import numpy as np
+    values=np.asarray(polygon,dtype=float)
+    if values.ndim!=2 or values.shape[1]!=2 or not 3<=len(values)<=MAX_RING_VERTICES or not np.isfinite(values).all():
+        raise ValueError('valid bounded room polygon required')
+    ring=tuple(map(tuple,values))
+    if not valid_ring(ring):raise ValueError('simple nonzero room polygon required')
+    return _cached_room_center(ring)
+
+
+@lru_cache(maxsize=64)
+def _cached_room_center(ring):
+    # Pure exact geometry cache, never source/revision/membership freshness.
+    import heapq
+    import numpy as np
+    values=np.asarray(ring,dtype=float)
+    # Translation reduces loss of precision for large world origins.
+    base=values[0];p=values-base;nxt=np.roll(p,-1,axis=0)
+    cross=p[:,0]*nxt[:,1]-nxt[:,0]*p[:,1]
+    center=((p+nxt)*cross[:,None]).sum(axis=0)/(3*cross.sum())+base
+    candidate=tuple(map(float,center))
+    if ring_covers(candidate,ring) and min(_distance_segment(candidate,a,ring[(i+1)%len(ring)]) for i,a in enumerate(ring))>1e-9:
+        return candidate
+    low=values.min(axis=0);high=values.max(axis=0);width,height=high-low
+    size=max(min(width,height),max(width,height)/32)
+    if not math.isfinite(size) or size<=0:raise ValueError('nonzero room extent required')
+    def distance(x,y):
+        point=(x,y)
+        d=min(_distance_segment(point,a,ring[(i+1)%len(ring)]) for i,a in enumerate(ring))
+        return d if ring_covers(point,ring) else -d
+    heap=[];serial=0
+    def push(x,y,half):
+        nonlocal serial
+        d=distance(x,y);serial+=1
+        heapq.heappush(heap,(-(d+half*math.sqrt(2)),serial,x,y,half,d))
+    # Triangulation supplies a certified interior seed even in a very thin arm.
+    triangles=_triangulate(ring)
+    if not triangles:raise ValueError('room interior cannot be established')
+    seeds=[tuple(sum(t[i][axis] for i in range(3))/3 for axis in range(2)) for t in triangles]
+    best=max(((distance(*point),point) for point in seeds),key=lambda item:(item[0],-item[1][0],-item[1][1]))
+    for x in np.arange(low[0],high[0],size):
+        for y in np.arange(low[1],high[1],size):push(float(x+size/2),float(y+size/2),float(size/2))
+    tolerance=max(.01,max(width,height)*1e-5)
+    for _ in range(4096):
+        if not heap:break
+        bound,_,x,y,half,d=heapq.heappop(heap)
+        if d>best[0]:best=(d,(x,y))
+        if -bound-best[0]<=tolerance:continue
+        half/=2
+        for dx,dy in ((-1,-1),(-1,1),(1,-1),(1,1)):push(x+dx*half,y+dy*half,half)
+    if best[0]<=0:raise ValueError('room interior cannot be established')
+    return best[1]
+
+
+def normalize_room_ring(polygon):
+    """Remove exact zero-area consecutive collinear/duplicate wire vertices.
+
+    No rounding, hull, buffer or arbitrary intersection repair. The resulting
+    ring must still pass the unchanged simple-ring validator before publication.
+    """
+    try:ring=tuple(tuple(float(v) for v in point) for point in polygon)
+    except (ValueError,TypeError,OverflowError) as exc:raise ValueError('invalid room ring') from exc
+    if not 3<=len(ring)<=MAX_RING_VERTICES or any(len(p)!=2 or not all(math.isfinite(v) for v in p) for p in ring):
+        raise ValueError('invalid bounded finite room ring')
+    points=list(ring)
+    if len(points)>3 and points[-1]==points[0]:points.pop()
+    while len(points)>3:
+        changed=False
+        for i,b in enumerate(points):
+            a=points[i-1];c=points[(i+1)%len(points)]
+            if b==a or b==c or _cross(a,b,c)==0.:
+                points.pop(i);changed=True;break
+        if not changed:break
+    return tuple(points),len(ring)-len(points)

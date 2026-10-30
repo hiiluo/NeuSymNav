@@ -19,7 +19,7 @@ import time
 import numpy as np
 from ..contracts import RegionGrid
 from ._types import Polygon2D, RegionObservation
-from .geometry import valid_ring,MAX_RING_VERTICES
+from .geometry import valid_ring,MAX_RING_VERTICES,normalize_room_ring
 
 class CandidateGeometryRejected(ValueError):
     """Well-formed native candidate violates the unchanged polygon contract."""
@@ -176,7 +176,9 @@ class DuDeWorkerClient:
                     if not isinstance(adj,list) or any(type(v) is not int or v not in expected or v==i for v in adj):raise ValueError('invalid adjacency')
                     if r.get('holes_supported') is not False or r.get('holes'):raise ValueError('unsupported holes')
                     polygon=Polygon2D(tuple(map(tuple,outer)))
-                    observations.append(RegionObservation(i,polygon,timestamp,grid.source_map_revision,tuple(r.get('centroid_xy',())),r.get('area_m2'),adjacent_raw_ids=tuple(adj),metadata={'backend':'dude_incremental_cpp','preprocessing_policy':grid.preprocessing_policy,'branch':response.get('branch')}))
+                    normalized,removed=normalize_room_ring(polygon.outer)
+                    polygon=Polygon2D(normalized)
+                    observations.append(RegionObservation(i,polygon,timestamp,grid.source_map_revision,tuple(r.get('centroid_xy',())),r.get('area_m2'),adjacent_raw_ids=tuple(adj),metadata={'backend':'dude_incremental_cpp','preprocessing_policy':grid.preprocessing_policy,'branch':response.get('branch'),'ring_normalization':'exact_collinear_zero_area_v1','removed_vertices':removed}))
             except Exception as exc:
                 self._fail(str(exc));raise ValueError('DuDe response invalid: '+str(exc)) from exc
             # Finish schema/type/finite/cap validation for the entire response

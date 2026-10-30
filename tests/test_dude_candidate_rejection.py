@@ -56,7 +56,7 @@ for line in sys.stdin:
     return p
 
 
-@pytest.mark.parametrize('ring',[NATIVE_RETRACE,CROSSING,[[0.,0.],[1.,1.],[2.,2.]]],ids=['native-retrace','crossing','zero-area'])
+@pytest.mark.parametrize('ring',[CROSSING,[[0.,0.],[1.,1.],[2.,2.]]],ids=['crossing','zero-area'])
 def test_invalid_geometry_rejects_then_next_valid_update_same_process(tmp_path,ring):
     with DuDeWorkerClient(channel(tmp_path,[{'regions':[region(ring)]},{'regions':[region()]}])) as c:
         pid=c._proc.pid
@@ -69,7 +69,7 @@ def test_invalid_geometry_rejects_then_next_valid_update_same_process(tmp_path,r
 
 
 def test_real_backend_retains_accepted_pin_then_recovers_after_bad_candidate(tmp_path):
-    responses=[{'regions':[region()]},{'regions':[region(NATIVE_RETRACE)]},{'regions':[region()]}]
+    responses=[{'regions':[region()]},{'regions':[region(CROSSING)]},{'regions':[region()]}]
     with RegionBackend(channel(tmp_path,responses),floor_id='f') as b:
         first=b.update(nav(1));accepted=b.accepted_nav;tracks=b.processor.tracker.snapshot()
         rejected=b.update(nav(2))
@@ -122,3 +122,14 @@ def test_envelope_malformation_is_fatal_with_invalid_geometry(tmp_path,override)
     with DuDeWorkerClient(channel(tmp_path,[{'regions':[region(CROSSING)],'override':override}])) as c:
         with pytest.raises(ValueError):c.integrate(RegionGrid.from_nav(nav(1)))
         assert c._proc.poll() is not None
+
+
+def test_actual_native_zero_area_retrace_is_normalized_without_worker_poison(tmp_path):
+    from neusymnav.regions.geometry import valid_ring
+    from neusymnav.regions._types import ring_area
+    with DuDeWorkerClient(channel(tmp_path,[{'regions':[region(NATIVE_RETRACE)]}])) as c:
+        response,observations=c.integrate(RegionGrid.from_nav(nav(1)))
+        assert valid_ring(observations[0].polygon.outer)
+        assert ring_area(observations[0].polygon.outer)==ring_area(NATIVE_RETRACE)
+        assert observations[0].metadata['removed_vertices']>0
+        assert c._proc.poll() is None

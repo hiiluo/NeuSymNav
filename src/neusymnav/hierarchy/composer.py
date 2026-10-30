@@ -8,6 +8,7 @@ from ..contracts import (ObjectSnapshot,NavSnapshot,RegionSnapshot,HierarchySnap
                          HierarchyNode,HierarchyEdge,age_ns)
 from .membership import MembershipResolver,footprint_membership
 from .places import PlaceBuilder
+from ..regions.geometry import room_center
 
 class HierarchyComposer:
     def __init__(self,*,robot=None):
@@ -40,7 +41,7 @@ class HierarchyComposer:
             edges.append(HierarchyEdge(source,target,kind,'assigned',{'algorithm':'neusymnav_p06_v1',**provenance},objects.revision,nav.revision,regions.revision))
         edge(building,floor,'contains',scope='single_floor')
         for key,r in sorted(regions.regions.items()):
-            nodes[key]=HierarchyNode(key,'region',{'floor_id':regions.floor_id,'polygon':r.polygon,'predecessor_ids':r.predecessor_ids,'stale':regions.stale,'preprocessing_policy':'extended_unknown_boundary','geometry_only':True,'holes_supported':False})
+            nodes[key]=HierarchyNode(key,'region',{'floor_id':regions.floor_id,'polygon':r.polygon,'center_xy':room_center(r.polygon),'center_method':'area_centroid_or_interior_clearance_v1','predecessor_ids':r.predecessor_ids,'stale':regions.stale,'preprocessing_policy':'extended_unknown_boundary','geometry_only':True,'holes_supported':False})
             edge(floor,key,'contains',geometry_source_map_revision=regions.source_map_revision,stale=regions.stale)
         for key,r in sorted(regions.regions.items()):
             for target in sorted(r.adjacency):
