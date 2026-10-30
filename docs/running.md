@@ -1,5 +1,82 @@
 # Running NeuSymNav
 
+## Local Intel/CPU demo on this machine (2026-10-30)
+
+```sh
+bash tools/run_local_demo.sh --preflight
+bash tools/run_local_demo.sh 600
+```
+
+The default duration is **600 seconds (10 minutes)**. Run `bash tools/run_local_demo.sh`
+without arguments for this duration; Stop can end the demo earlier.
+
+The local wrapper reads the ignored `configs/demo.local.json`, with checksums
+for this checkout, scene 00802, measured floor calibration, Intel/Mesa EGL
+(`gpu_device_id=-1`), CPU raycasting and YOLOE-26m on Torch CPU. It opens the
+Qt viewer; run from a desktop terminal with `DISPLAY` available. Startup and
+model initialization add time beyond the requested capture duration. An optional
+second argument selects a new output directory. Use Ctrl+C or the viewer's Stop
+control to finish early.
+
+Core/UI/Numba are installed in `.venv`; the detector is isolated in
+`.runtime/detector26`. The sensor reuses the existing, read-only
+`/home/kiettran05/miniconda3/envs/habitat` (Python 3.9, Habitat-Sim 0.3.3), whose
+control-source hashes match the runtime contract. A newer local source build also
+reports version 0.3.3 but fails the planar adapter hash check; it is not selected.
+Model weights, the copied scene and the native worker are under `local-assets/`.
+Calibration, dependency snapshots and setup logs are in
+`.runtime/setup-20261030/`. No NVIDIA GPU is installed on this host; the historical
+CUDA wrappers and their absolute-path configs below target another machine.
+CPU demo readiness does not certify the historical GPU performance or P10 gates.
+
+The local launcher uses 100% Qt scale for this 1920×1080 display and removes
+inherited per-screen scale multipliers. To choose another zoom explicitly:
+`NEUSYMNAV_UI_SCALE=1.1 bash tools/run_local_demo.sh 600`. Restart the demo
+after changing scale; desktop-wide settings remain unchanged.
+
+## Spatial scene viewer
+
+The lower panel now defaults to **3D Scene**: historical measured RGB-D cloud,
+blue geometry-region nodes and gold object nodes in world coordinates. Drag to
+orbit, wheel to zoom, double-click to fit, and click an object for evidence.
+Use **Focus view → SCENE GRAPH** to enlarge it. Only assigned graph relations
+are connected; unassigned objects remain disconnected. **Graph layout** and
+**Hierarchy** retain the structural views. See [spatial scene controls and data
+limits](spatial-scene-ui.md). Restart the demo after updating UI code.
+
+## Choose a local HM3D map
+
+```sh
+bash tools/run_map_demo.sh --list
+bash tools/run_map_demo.sh 00800
+bash tools/run_map_demo.sh 00809 120
+bash tools/run_map_demo.sh 00803 --preflight
+```
+
+Choose one of `00800`, `00801`, `00802`, `00803`, `00804`, `00805`, `00806`,
+`00807`, `00808`, `00809`. Each command opens one demo; default duration is
+600 seconds, and the optional duration argument is in seconds. Stop ends early.
+The original `bash tools/run_local_demo.sh` still uses its original 00802 start.
+Map-specific configs use independently prepared, explicit starting poses.
+
+Each ignored `configs/demo-MAP.local.json` pins the available local scene,
+worker/model hashes and measured floor calibration. Preparation uses a seeded
+navmesh sample only to select a saved initial pose offline; live occupancy still
+starts empty and uses sensor depth. Preparation artifacts and RGB previews are
+in `.runtime/map-selection-20261030/`. Rebuild configs after moving dependencies
+or changing pinned worker scripts. To prepare one again with the sensor runtime:
+
+```sh
+EGL_PLATFORM=surfaceless PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 \
+  /home/kiettran05/miniconda3/envs/habitat/bin/python -B \
+  tools/prepare_local_maps.py 00800
+```
+
+`apt_0`–`apt_5` assets exist, but their full ReplicaCAD scenes require six
+articulated objects each. The current live sensor has physics disabled and omits
+these objects. Their trial renders/configs are quarantined as incomplete; the
+map launcher rejects them. They are not advertised as ready-to-run maps.
+
 ## Current demo: YOLOE-26m and 640×480 RGB-D
 
 ```sh

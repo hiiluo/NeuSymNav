@@ -229,10 +229,9 @@ class UiProcess:
         self._finalizer=None;self._finalizer_error=None;self._finalize_lock=threading.Lock()
         if quota is not None:quota.reserve('ui-transport',2*MAX_PUBLICATION_BYTES+512*1024)
         self.process=None
-        # Apply the additional 50% zoom only to the Qt child. Qt scales text,
-        # controls and painted content together and reports logical screen size.
+        # Honor the desktop's Qt scale without multiplying it again. An extra
+        # zoom compounds per-screen DPI and can push panels outside the screen.
         ui_env=os.environ.copy()
-        ui_env['QT_SCALE_FACTOR']=str(float(ui_env.get('QT_SCALE_FACTOR','1'))*1.5)
         try:self.process=subprocess.Popen(command,env=ui_env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,close_fds=True)
         except OSError as exc:self.status['failed']=str(exc)
         if self.process is not None:
@@ -409,8 +408,10 @@ def main():
     QtCore.QTimer.singleShot(0,lambda:_write_atomic(Path(args.root)/'ready.json',json.dumps(dict(pid=os.getpid(),desktop='run_desktop',device_pixel_ratio=app.devicePixelRatio())).encode()))
     from neusymnav.visualization.best_view_reader import SelectedBestViewReader
     reader=None if args.assets_root is None else SelectedBestViewReader(args.assets_root,clock_domain=args.clock_domain)
+    from neusymnav.visualization.point_cloud import AsyncCloudReader
+    cloud=None if args.assets_root is None else AsyncCloudReader(args.assets_root)
     return run_desktop(endpoint.read_latest,endpoint.client,clock_domain=args.clock_domain,
-        smoke_exit_ms=args.smoke_exit_ms,best_view_provider=None if reader is None else reader.read)
+        smoke_exit_ms=args.smoke_exit_ms,best_view_provider=None if reader is None else reader.read,cloud_reader=cloud)
 
 
 if __name__=='__main__':raise SystemExit(main())

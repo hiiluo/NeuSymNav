@@ -19,6 +19,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from ..contracts import NavSnapshot
 from .hierarchy_view import hierarchy_rows, resolve_object_selection, resolve_verification
 from .scene_graph import SceneGraphWidget
+from .spatial_scene import SpatialSceneWidget
 from .publisher import DisplayEnvelope, DisplayPublisher, UiCommandStatus, UiControlClient
 
 
@@ -255,6 +256,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         now_ns: Callable[[], int] = monotonic_ns,
         parent=None,
         best_view_provider=None,
+        cloud_reader=None,
     ) -> None:
         super().__init__(parent)
         if isinstance(publication_reader, DisplayPublisher):
@@ -267,6 +269,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
             raise ValueError("publication_reader must be a publisher, callable or None")
         self._control = control_client
         self._best_view_provider = best_view_provider
+        self._cloud_reader = cloud_reader
+        self._last_cloud_request_ns = None
+        self._graph_popup = None
+        self._graph_docked_sizes = None
         self._clock_domain = clock_domain
         self._now_ns = now_ns
         self._envelope: DisplayEnvelope | None = None
@@ -317,7 +323,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
             QTabBar::tab { background: #131d2d; color: #93a3b5; padding: 8px 12px; border-bottom: 2px solid transparent; }
             QTabBar::tab:selected { color: #c8e3ff; border-bottom: 2px solid #6eafe8; }
             QScrollArea { background: transparent; border: none; }
-            QSplitter::handle { background: #0a101b; width: 10px; }
+            QSplitter::handle { background: #29435e; margin: 2px; }
+            QSplitter::handle:hover { background: #6eafe8; }
             QScrollBar:vertical { background: #0c1421; width: 8px; }
             QScrollBar::handle:vertical { background: #354b65; min-height: 20px; border-radius: 4px; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
@@ -374,6 +381,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
             view_row.addWidget(toggle)
         layout.addLayout(view_row)
         self.workspace_split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.workspace_split.setHandleWidth(12)
+        self.workspace_split.setOpaqueResize(True)
         self.sensor_row = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.workspace_split.addWidget(self.sensor_row)
         split = self.sensor_row
@@ -429,6 +438,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.map_panel = middle
         self.sensor_row.addWidget(middle)
         self.map_view = MapWidget(middle)
+        self.map_view.setMinimumHeight(100)
         self.map_view.setObjectName("mapView")
         middle_layout.addWidget(self.map_view, 1)
         legend = QtWidgets.QLabel("● Free    <font color='#f55b4f'>● Obstacle</font>    <font color='#445265'>● Unknown</font>")
@@ -440,17 +450,31 @@ class DashboardWindow(QtWidgets.QMainWindow):
         trail_legend.setWordWrap(True)
         middle_layout.addWidget(trail_legend)
 
-        right, right_layout = panel("SCENE GRAPH", "FLOOR > ROOM > OBJECT · select a node for evidence")
+        right, right_layout = panel("3D SCENE / SCENE GRAPH", "Measured RGB-D · spatial regions and objects · select an object for evidence")
         self.graph_panel = right
         self.workspace_split.addWidget(right)
-        graph_row = QtWidgets.QHBoxLayout()
-        right_layout.addLayout(graph_row, 1)
-        graph_content = QtWidgets.QVBoxLayout()
-        graph_row.addLayout(graph_content, 3)
+        self.graph_split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.graph_split.setHandleWidth(12)
+        self.graph_split.setChildrenCollapsible(False)
+        self.graph_split.splitterMoved.connect(lambda *_: QtCore.QTimer.singleShot(0, self._resize_images))
+        right_layout.addWidget(self.graph_split, 1)
+        graph_container = QtWidgets.QWidget()
+        graph_content = QtWidgets.QVBoxLayout(graph_container)
+        graph_content.setContentsMargins(0, 0, 0, 0)
+        self.graph_split.addWidget(graph_container)
         evidence_frame = QtWidgets.QWidget()
         evidence_layout = QtWidgets.QVBoxLayout(evidence_frame)
         evidence_layout.setContentsMargins(10, 0, 0, 0)
-        graph_row.addWidget(evidence_frame, 1)
+        evidence_scroll = QtWidgets.QScrollArea()
+        evidence_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        evidence_scroll.setWidgetResizable(True)
+        evidence_scroll.setMinimumSize(180, 100)
+        evidence_scroll.setWidget(evidence_frame)
+        self.graph_split.addWidget(evidence_scroll)
+        self.graph_split.setStretchFactor(0, 4)
+        self.graph_split.setStretchFactor(1, 1)
+        self.graph_split.setSizes([1200, 300])
+        self.graph_split.handle(1).setToolTip("Drag left/right to resize graph and object evidence")
         label = QtWidgets.QLabel("OBJECT EVIDENCE")
         label.setObjectName("panelTitle")
         evidence_layout.addWidget(label)
@@ -468,17 +492,70 @@ class DashboardWindow(QtWidgets.QMainWindow):
 
 
         tabs = QtWidgets.QTabWidget()
+        self.scene_tabs = tabs
+        self.spatial_view = SpatialSceneWidget()
+        self.spatial_view.object_selected.connect(self.select_object)
+        tabs.addTab(self.spatial_view, "3D Scene")
         self.graph_view = SceneGraphWidget()
         self.graph_view.setObjectName("sceneGraph")
         self.graph_view.object_selected.connect(self.select_object)
-        tabs.addTab(self.graph_view, "Graph")
+        tabs.addTab(self.graph_view, "Graph layout")
         self.hierarchy = QtWidgets.QTreeWidget()
         self.hierarchy.setObjectName("hierarchyTree")
         self.hierarchy.setHeaderHidden(True)
         self.hierarchy.itemSelectionChanged.connect(self._tree_selection_changed)
         tabs.addTab(self.hierarchy, "Hierarchy")
+        controls = QtWidgets.QHBoxLayout()
+        self.graph_controls = {}
+        for label, tip, callback in (
+            ("−", "Zoom out", lambda: self._zoom_graph(1/1.25)),
+            ("+", "Zoom in", lambda: self._zoom_graph(1.25)),
+            ("Fit", "Fit the current graph in view", self._fit_graph),
+            ("Top", "View the spatial scene from above", self._top_graph),
+            ("Expand", "Expand graph in the main window / restore all panels", self._expand_graph),
+            ("Pop out", "Open a separate graph window; drag its borders to resize", self._toggle_graph_popup),
+        ):
+            button = QtWidgets.QToolButton()
+            button.setText(label); button.setToolTip(tip)
+            button.clicked.connect(callback)
+            controls.addWidget(button); self.graph_controls[label] = button
+        self.cloud_menu_button = QtWidgets.QToolButton()
+        self.cloud_menu_button.setText("Cloud")
+        self.cloud_menu_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        cloud_menu = QtWidgets.QMenu(self.cloud_menu_button)
+        self.cloud_cutaway_action = cloud_menu.addAction("Filter cloud height")
+        self.cloud_cutaway_action.setCheckable(True)
+        self.cloud_cutaway_action.setChecked(True)
+        height_widget = QtWidgets.QWidget()
+        height_form = QtWidgets.QFormLayout(height_widget)
+        self.cloud_lower_spin = QtWidgets.QDoubleSpinBox()
+        self.cloud_lower_spin.setRange(0, .5)
+        self.cloud_lower_spin.setValue(self.spatial_view.height_min_m)
+        self.cloud_lower_spin.setSpecialValueText("Keep floor")
+        self.cloud_upper_spin = QtWidgets.QDoubleSpinBox()
+        self.cloud_upper_spin.setRange(.6, 10.)
+        self.cloud_upper_spin.setValue(self.spatial_view.height_max_m)
+        for spin in (self.cloud_lower_spin,self.cloud_upper_spin):
+            spin.setDecimals(2); spin.setSingleStep(.05); spin.setSuffix(" m")
+        height_form.addRow("Above floor",self.cloud_lower_spin)
+        height_form.addRow("Below height",self.cloud_upper_spin)
+        height_action = QtWidgets.QWidgetAction(cloud_menu)
+        height_action.setDefaultWidget(height_widget)
+        cloud_menu.addAction(height_action)
+        self.cloud_menu_button.setMenu(cloud_menu)
+        self.cloud_menu_button.setToolTip("Display-only height cutaway above the calibrated floor; upper walls are clipped too. Nodes and stored geometry stay complete.")
+        def apply_cloud_filter(*_):
+            self.spatial_view.configure_height_filter(self.cloud_cutaway_action.isChecked(),
+                self.cloud_lower_spin.value(),self.cloud_upper_spin.value())
+        self.cloud_cutaway_action.toggled.connect(apply_cloud_filter)
+        self.cloud_lower_spin.valueChanged.connect(apply_cloud_filter)
+        self.cloud_upper_spin.valueChanged.connect(apply_cloud_filter)
+        controls.addWidget(self.cloud_menu_button)
+        controls.addStretch(1)
+        graph_content.addLayout(controls)
         graph_content.addWidget(tabs, 1)
-        legend = QtWidgets.QLabel("◇ Region   □ Place / floor   ○ Object")
+        legend = QtWidgets.QLabel("● Blue: geometry region   ● Gold: object   ● Purple: visited place · left drag: orbit · Shift-drag: zoom · right drag: pan")
+        legend.setWordWrap(True)
         legend.setObjectName("subtitle")
         graph_content.addWidget(legend)
         select_row = QtWidgets.QHBoxLayout()
@@ -501,8 +578,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
         detail_scroll.setWidget(self.object_details)
         evidence_layout.addWidget(detail_scroll)
         self.sensor_row.setSizes([1100, 1000])
-        self.workspace_split.setSizes([720, 420])
+        self.workspace_split.setSizes([430, 650])
         self.workspace_split.setChildrenCollapsible(False)
+        self.workspace_split.setCollapsible(0, True)
+        self.workspace_split.handle(1).setToolTip("Drag up/down to resize the graph; drag fully up to hide camera/map")
+        self.rgb_view.setMinimumHeight(80)
+        self.observation_view.setMinimumHeight(80)
         self.sensor_row.setChildrenCollapsible(False)
         layout.addWidget(self.workspace_split, 1)
 
@@ -538,6 +619,15 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.map_view._now_ns = self._now_ns()
         self.map_view._clock_domain = self._clock_domain or (None if self._envelope is None else self._envelope.clock_domain)
         self.map_view.update()
+        self.spatial_view.now_ns = self._now_ns()
+        if self._cloud_reader is not None and self._envelope is not None:
+            now = self._now_ns()
+            if self._last_cloud_request_ns is None or now-self._last_cloud_request_ns >= 500_000_000:
+                self._cloud_reader.offer(self._envelope)
+                self._last_cloud_request_ns = now
+            self.spatial_view.set_cloud(self._cloud_reader.latest)
+            self.spatial_view.cloud_error = self._cloud_reader.error
+        self.spatial_view.update()
         self._refresh_observation_age()
         self._refresh_telemetry()
         self._refresh_command_status()
@@ -559,6 +649,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.rgb_caption.setText(f"RGB · {frame.source.sensor_id}:{frame.source.frame_index} · {age_label}")
         self._render_observation()
         self.graph_view.set_envelope(envelope)
+        self.spatial_view.set_envelope(envelope)
         self._render_hierarchy(envelope)
         if self._selected_object_id is None:
             first = next((node_id for node_id, node in envelope.hierarchy.nodes.items() if node.kind == "object"), None)
@@ -588,8 +679,69 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.sensor_row.setVisible(all_panels or title != "SCENE GRAPH")
         self.sensor_panel.setVisible(all_panels or title == "RGB FRAME")
         self.map_panel.setVisible(all_panels or title == "OCCUPANCY MAP")
-        self.graph_panel.setVisible(all_panels or title == "SCENE GRAPH")
+        self.graph_panel.setVisible(all_panels or title == "SCENE GRAPH" or self._graph_popup is not None)
         QtCore.QTimer.singleShot(0, self._resize_images)
+
+    def _zoom_graph(self, factor) -> None:
+        view = self.scene_tabs.currentWidget()
+        if view in (self.spatial_view, self.graph_view):
+            view.zoom_by(factor)
+
+    def _fit_graph(self) -> None:
+        view = self.scene_tabs.currentWidget()
+        if view is self.spatial_view:
+            view.reset_view()
+        elif view is self.graph_view:
+            view.fit_view()
+
+    def _top_graph(self) -> None:
+        self.scene_tabs.setCurrentWidget(self.spatial_view)
+        self.spatial_view.yaw = 0.
+        self.spatial_view.pitch = math.pi/2
+        self.spatial_view.reset_view()
+
+    def _expand_graph(self) -> None:
+        if self._graph_popup is not None:
+            self._graph_popup.showMaximized()
+        else:
+            self.focus_selector.setCurrentText(
+                "All panels" if self.focus_selector.currentText() == "SCENE GRAPH" else "SCENE GRAPH")
+
+    def _toggle_graph_popup(self) -> None:
+        if self._graph_popup is not None:
+            self._graph_popup.close()
+            return
+        self._graph_docked_sizes = self.workspace_split.sizes()
+        popup = QtWidgets.QDialog(self, QtCore.Qt.Window)
+        self._graph_popup = popup
+        popup.setWindowTitle("NeuSymNav / Graph debug")
+        popup.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        popup.setSizeGripEnabled(True)
+        popup.setMinimumSize(500, 360)
+        body = QtWidgets.QVBoxLayout(popup)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.addWidget(self.graph_panel)
+        available = self.screen().availableGeometry()
+        popup.resize(min(1500, available.width()-40), min(950, available.height()-40))
+        popup.finished.connect(self._restore_graph_panel)
+        self.graph_controls["Pop out"].setText("Dock back")
+        self.graph_panel.show()
+        popup.show()
+
+    def _restore_graph_panel(self, _result=None) -> None:
+        if self._graph_popup is None:
+            return
+        self._graph_popup = None
+        self.workspace_split.addWidget(self.graph_panel)
+        if self._graph_docked_sizes is not None:
+            self.workspace_split.setSizes(self._graph_docked_sizes)
+        self.graph_controls["Pop out"].setText("Pop out")
+        self.focus_panel(self.focus_selector.currentText())
+
+    def closeEvent(self, event) -> None:
+        if self._graph_popup is not None:
+            self._graph_popup.close()
+        super().closeEvent(event)
 
     def _render_observation(self, _checked=None) -> None:
         observation = None if self._envelope is None else self._envelope.sources.observation
@@ -766,6 +918,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self._selection_was_alias = self._selection_was_alias or canonical != self._selected_object_id
         self._selected_object_id = canonical
         self.graph_view.select_object(canonical)
+        self.spatial_view.select_object(canonical)
         self.object_details.setText(self._object_detail(canonical, alias=self._selection_was_alias))
         view = next((item for item in self._envelope.sources.best_views
                      if self._envelope.sources.objects is not None and
@@ -859,13 +1012,16 @@ def run_desktop(
     clock_domain: str | None = None,
     smoke_exit_ms: int | None = None,
     best_view_provider=None,
+    cloud_reader=None,
 ) -> int:
     """Application entrypoint for a P09-owned external-process adapter."""
     if smoke_exit_ms is not None and (type(smoke_exit_ms) is not int or smoke_exit_ms < 1):
         raise ValueError("smoke_exit_ms must be a positive integer or None")
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
     app.setStyle("Fusion")
-    window = DashboardWindow(publication_reader, control_client, clock_domain=clock_domain, best_view_provider=best_view_provider)
+    window = DashboardWindow(publication_reader, control_client, clock_domain=clock_domain, best_view_provider=best_view_provider, cloud_reader=cloud_reader)
+    if cloud_reader is not None:
+        app.aboutToQuit.connect(cloud_reader.close)
     window.show()
     print("NEUSYMNAV_UI_READY", flush=True)
     if smoke_exit_ms is not None:

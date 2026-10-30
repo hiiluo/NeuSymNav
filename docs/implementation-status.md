@@ -952,3 +952,174 @@ gitdiffcheck0. Native/P10/realtime limits remain as documented. Actual commit ID
 and finalremoteverification retained in.runtime/github-delivery-20261030/;
 sourcepublication does not imply newnativeacceptance. Authorizeddestination:
 git@github.com:hiiluo/NeuSymNav.git,main. No forcepush/rewrite intended.
+
+### Local Intel/CPU demo environment — 2026-10-30
+
+User authorizes full environment preparation before further code development.
+Installed project-local core/dev/UI/Numba and Torch2.7.1CPU/torchvision0.22.1/
+Ultralytics8.4.24/CLIP; downloaded official YOLOE26m+MobileCLIP2 with exact recipe
+SHA matches. Reused stock Habitat0.3.3 Python3.9 read-only, Intel/Mesa EGL(-1),
+copied local00802 scene/native worker, measured floor calibration1200samples.
+Added ignored checksum-pinned configs/demo.local.json and run_local_demo.sh.
+No production source/contract/safety change. See [setup report](local-demo-setup-20261030.md).
+
+Implemented + bounded runtime-validated: preflight0 readytrue, actual desktopQt/
+RGB-D/detector/object/motion45s smoke0 completed,291frames/12objects,139executed
+controlresults,0.4064409m observed translationlowerbound,cleanworkers/completiontrue/
+noobservererrors/capbreaches. Native protocol/preprocessingprobe0. One accepted
+command lacks proof; aggregateactuationcompletefalse; no acceptedregion/membership.
+No CUDA hardware on this host; no P10/realtime/quality certification. Initial20s
+smoke preserved with unsupported modern Habitat planarhash; stock0.3.3 fixes
+qualification through environment selection, no gate relaxed.
+
+CPU correctness initially1924pass/1skip/3deselect/1fail exit1; execution-proof
+20msfixture isolatedrerun1pass0/grouped51pass1fail1. Final idle rerun1924pass/1skip/3deselect/1fail exit1/124.26s; earlierproof
+testpassesbutcapture-pairtesttimesoutwaiting3sfortwocommits. FullCPUgate
+notgreen; no production/testfixperformed. Core/detector dependencycheck0,
+shellsyntax/config-smokebinding/diffcheck0.
+Evidence .runtime/setup-20261030/, runs/setup-demo-intel-stock-20261030/;
+commands/exits/limitations in setupreport. No training/commit/push/publication.
+Finalcapture-pairisolatedrerun1pass exit0/.87s; fullsuitefailure retained.
+Environmenttaskcomplete; unresolvedCPUtimingfailuresreported, no P10upgrade.
+
+### Local UI scale correction — 2026-10-30
+
+User requests readable demo scaling. Found inherited per-screen1.375 multiplied
+by hardcoded UI1.5 => actual2.0625. Removed unconditional child zoom; general UI
+honors desktop settings. Local Intel launcher selects100%/clears per-screen
+multipliers, supports NEUSYMNAV_UI_SCALE override. Refreshed13tracked+1local UI
+scriptSHApins. Existing unrelated environment/docs deltas preserved.
+Implemented + scoped correctness-verified:21UI tests passed exit0/9.78s;
+actualdesktopfixture preview exit0,ratio1.0,1920x1018available/frame fits,
+1920x978client; screenshot visuallychecked. Prior1.375preview retained in probe
+history; actual final screenshot .runtime/ui-scale-fix-20261030/preview.png.
+Preflightreadytrue0; shellsyntax/diffcheck0. No simulator/model/benchmark rerun,
+no navigation/safety/semantic change or P10upgrade. Restartdemo to apply.
+Evidence .runtime/ui-scale-fix-20261030/{tests.log,desktop.json,preview.png,pins.txt,
+preflight.json}; commands: QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest
+ tests/test_ui_scale.py tests/test_ui_reference_layout.py tests/test_ui_transport.py
+ tests/test_ui_offscreen.py -q; bash tools/run_local_demo.sh --preflight.
+
+### Longer local demo default — 2026-10-30
+
+User requests longer demo. Local wrapper default20s->600s(10minutes); explicit
+argument still overrides duration, UI Stop ends early. docs/running.md updated.
+Implemented/config-verified: bash -n tools/run_local_demo.sh exit0;
+git diff --check exit0; Python assertion local max_duration_s>=600 exit0.
+Artifact tools/run_local_demo.sh; no quota/safety/profile changes or new native
+run. A full600s run on this Intel host remains runtime-unvalidated; prior45s
+smoke evidence is unchanged. No P10/performance claim.
+
+### Select local maps from CLI — 2026-10-30
+
+User asks commands for each available map. Added run_map_demo.sh MAP [seconds]
+[output] / --list / MAP --preflight; local wrapper accepts explicit config via
+NEUSYMNAV_DEMO_CONFIG, default remains existing00802. Duration600s/scale100% stay.
+Added offline prepare_local_maps.py; calibrated10HM3D scenes00800–00809,1200valid
+floor samples each, explicit frozen initialposes, source/script/asset/floor pins
+in ignoredconfigs/demo-MAP.local.json. Setup navmesh seed0 used only for spawn;
+runtime map starts empty, no navmesh occupancy input or random live spawn.
+
+ActualReplicaCADapt_0–apt_5 renders omit6articulated objects each because live
+sensor has physics disabled. Trialconfigs quarantined under.runtime; preparation
+and launcher now reject these scenes rather than certify incomplete geometry.
+Assets exist but full ReplicaCAD demo remains unsupported; no Bullet/contract
+change or download performed. Source folders read-only.
+
+Implemented + scoped/native-preparation validated:10/10HM3D preflightreadytrue,
+issuesempty/exit0; shellsyntax/AST/diffcheck0; invalidmap2,unsupportedReplicaCAD1.
+Actual00800 45s wrapper smoke exit0/completed,330frames/7objects,cleanworkers,
+measurementcompletiontrue/noobservererrors/capbreaches,0.25972448m observedbody
+translationlowerbound. Aggregateactuationcompletefalse; no fullP10/quality/Hz
+claim. EachotherHM3D has nativeRGB-D/floorpreview only, not fullpipeline/600srun.
+Evidence .runtime/map-selection-20261030/{preparation.json,preparation.log,
+preflight-results.json,smoke-result.json,*-calibration.json,*.png}; runartifact
+runs/map-00800-smoke-20261030/. docs/running.md has commands. No commit/push.
+
+### Spatial RGB-D / scene graph viewer — 2026-10-30
+
+User requests reference-style 3D cloud + spatial room/object debug view.
+Implemented default3DScene tab, canonicalZ-up objectcentroids/bluegeometryregion
+anchors/purplevisitedplaces,orbit/pan/zoom/fit,canonicalselection/bounds/evidence.
+ExistingGraphlayout/Hierarchy remain. Edgesonlyassignedrelations; preserve
+unavailable/ambiguous/unassigned, no guessedmembership/roomsemantic/traversability.
+Retiredhiddenunlessselected. UIchild readonlycommittedRGB-D/SHA/source/clock/
+geometry/calibration/pose binding,oneasyncworker/queue1,80kvoxels/.04m/12kperframe/
+128sources/300nodes. No sensor/control/owner/IPCcontract/geometry change.24UI
+scriptpins refreshed(13tracked/11local). Source repos read-only.
+
+Implemented+scopedcorrectnessverified+archivedQt/native45wiringvalidated.
+Finalfocused65pass exit0/11.10s; finalcaption25pass0. IndependentSolHighACCEPT,
+43focused0+15axis/24occlusionprobes; finalsourcehashesmatch. Fourreviewfindings
+reproducedRED4fail1 thenfixed(Z,clock,splat,emptydepthage); preservedlogs.
+Archivedreal00805:31,293points/21sources/25nodes,20notassigned,27hidden; realQt
+screenshots inspected. Newnative45exit0/completed389frames/8objects/2detector
+commits/acceptedregion/cleanworkers/completiontrue/noobservererrors/capbreaches;
+translationlowerbound.63528688m; aggregateactuationcompletefalse. Nativeprecedes
+onlytwofinalcaptionexpressions.10mappreflightsreadytrue0,diffcheck/hashcheck0.
+
+WholeCPU1948pass/1skip/3deselect/2fail exit1/145.83s: samepreviouslyseen testnames
+capture-paircommitwait and20msexecution-proofsourcefixture. Failuresretained,
+notfixedhere; nofullCPUgreenclaim or proof of causalindependence. No P10/Hz/
+quality/assignedmembership/600s certification. Cloudhistorical/committedonly,
+canlagLiveRGB; no fabricatedobject-roomedges. Evidence
+runs/spatial-scene-ui-20261030/{report.md,verify.sh,review/,final-source-sha256.txt,
+preview.json,dashboard.png,spatial-focus.png,native-result.json,native45/}.
+Guide docs/spatial-scene-ui.md. Restartdemo; no commit/push/publish.
+
+### Resizable graph panel and navigation controls — 2026-10-30
+
+User requests freely resizing and mousezoom/orbit fordebug. Implemented visible
+12pxvertical-workspace/horizontalgraph-evidence splitters;collapsibleupperrow;
+scrollingevidence;largerdefaultgraphshare. Toolbarzoom-/+,Fit,Top,Expand,Popout;
+normalresizablewindow/sizegrip,Dockback/close restores samepanel,andmainclose
+closespopup. No duplicatecloud/modelworker.3DShift-leftdragzoom,leftorbitfull
+above/belowpitch,right/middlepan,wheelzoom.2DGraphlayoutwheelzoom/Ctrlwheelrotate/
+leftpan,manualtransform survivespublication/selection/resize. Canonicalselection
+and3Dcamera surviveundock/redock. No geometry/provenance/IPC/control/safetychange.
+
+Implemented+scopedcorrectnessverified:6newQtinput/lifecycletests pass0/1.74s;
+finalcombined71UI/display/gallery/transport/spatialtests pass0/12.98s. Actual
+archive00805Qtpreviewfloated/resized1500x900,31,293points/21sources; screenshot
+inspected,exit0. Preflightreadytrue0,diffcheck0,sourcehashesrecorded. No new
+nativepipeline/600s/performance/fullCPUrun; priorwholeCPU2timingfailures remain
+unresolved in previous checkpoint. Evidence runs/graph-controls-20261030/
+{report.md,controls.log,final-focused.log,source-sha256.txt,preview.json,
+floating-graph.png,preflight.json}. Guide docs/spatial-scene-ui.md; restartdemo.
+No installs/downloads/commit/push/publish. MainclosedUI-scope review.
+
+### Floor / ceiling cloud cutaway — 2026-10-30
+
+Implemented: default display-only height cutaway at 0.12–2.20 m above the
+published calibrated floor. Cloud menu toggles the filter and adjusts both
+thresholds. Missing floor datum leaves cloud complete; no guessed zero.
+The same mask preserves point/color pairing. Nodes, relations, bounds, source
+cloud, RGB-D, navigation and control remain unchanged. Upper walls and other
+points outside the range are clipped too; this is not semantic classification.
+
+Correctness-verified: 81 focused Qt/spatial/display/transport tests passed,
+exit 0 in 12.25 s, including 10 cutaway cases for translated floor elevations,
+reversibility, missing datum, menu controls and invalid limits. Runtime-validated
+only for the archived real 00805 desktop preview: exit 0, screenshots inspected,
+20,198 / 31,293 points visible, 21 RGB-D sources, no reader error. No new native
+pipeline, full CPU suite, long-duration run or P10 certification. The two
+previous whole-suite timing failures remain unresolved at the prior checkpoint.
+Evidence: runs/cloud-cutaway-20261030/{focused.log,focused.exit,preview.py,
+preview.json,preview.log,floating-graph.png,all-points.png,preflight.json,
+source-sha256.txt,report.md}. Guide: docs/spatial-scene-ui.md. Restart the demo.
+No dependencies, downloads, commit, push or publish.
+
+### Restore floor cloud by default — 2026-10-30
+
+User revised the display preference to include floor point cloud. Implemented:
+default lower threshold 0 means no lower clipping (including small negative
+reconstruction offsets), upper cutaway remains 2.20 m above published floor.
+Cloud menu now says Filter cloud height; lower spin displays Keep floor at 0.
+Positive lower values still hide low points. Stored geometry and graph unchanged.
+Correctness-verified: offscreen pytest tests/test_cloud_cutaway.py
+tests/test_graph_controls.py tests/test_spatial_scene.py
+tests/test_spatial_scene_regressions.py -q, with OPENBLAS_NUM_THREADS=1 and
+OMP_NUM_THREADS=1: 41 passed in 2.80 s, exit 0. git diff --check exit 0.
+Artifact: runs/cloud-floor-restored-20261030/focused.log. Main reviewed the
+small display change; no new native runtime validation or full-suite run.
+Restart demo to load the new default; no installs, commit or push.
