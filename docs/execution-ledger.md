@@ -1,5 +1,34 @@
 # Execution ledger — docs/implementation-plan.md
 
+## Five-minute quality run — 2026-10-30
+
+User requested ~5min demo and accuracy metrics.300sCGspatial live run retained,
+117source/configpins stable; nativeexit1/incomplete from1RSSreadsampleerror,
+recording4571/4571complete and79detectorcommits clean. All79keyframes scored,
+7strictalignedGT batches merge79/223GT/19IDs; no failed frame dropped.154outputs,
+137projected,108assigned;17projectionlosses+29unresolved explicitly excluded only
+from assigned-memory scope with allGT retained. DetectorP29.87/R20.63/F124.40,
+memoryIDF125.98/HOTA22.28/AssA29.45;fixedinputlegacyIDF126.90/HOTA25.81/AssA34.34.
+No spatial-only improvement/default promotion. Artifact .runtime/quality-five-minute-20261030/;
+report docs/results/object-quality-five-minute-2026-10-30.md. Fullsource unchanged,
+no install/training/download/publish. Independent actualartifact audit tracked there.
+
+## ConceptGraphs association completion — 2026-10-30
+
+User approved design and requested implementation. See approved spec and plan
+`docs/superpowers/{specs/2026-10-30-conceptgraphs-association-design.md,plans/2026-10-30-conceptgraphs-association.md}`.
+Main integrated recipe/config/owner; SolHigh workers implemented engine and GT-free
+replay; independentSolHigh ACCEPT93tests +188distance/assignmentoracles +90legacy
+parityframes. Fresh fullCPU2024passed/2skipped/3nativedeselected exit0/105.73s,
+351source/test/config/toolpins unchanged; opt-in preflight readytrue exit0.
+Fixed12frame spatial replay/evaluators exit0:17projected inputs,44GT; same8identity
+partitions aslegacy, IDF132.79/HOTA33.81/AssA65.95%. No quality gain observed.
+Fullvisual comparison unavailable, no native/GPU/P10acceptance. Existing evaluator
+deltas preserved; no commits/push/install/download/training/source-sibling edits.
+Commands/exits/hashpins/review: `.runtime/conceptgraphs-association-20261030/`.
+Usage/results: `docs/conceptgraphs-association.md`,
+`docs/results/conceptgraphs-association-2026-10-30.md`.
+
 ## Authorization and method (2026-10-27)
 
 User explicitly requested execution of the documented merge plan. Core P00–P10 authorized; extensions, training, large downloads, source modifications, commit/push/publish excluded. Main owns shared contracts, dependency/config integration and status. Delegation follows agent-orchestration.md (Luna xhigh inventory, Sol high semantic implementation/review).
@@ -702,3 +731,168 @@ FinalCPU1924pass/2skip/3nativedeselected exit0/107.12s. Sixlogicalcommitgroups,
 sourceonly~1.45MB;models/datasets/envs/runs ignored. No credentialfinding. Local/
 originmain synchronizedbeforecommit. Finaldeliveryreceipt/IDs/remoteverification:
 .runtime/github-delivery-20261030/. No newnativeP10/20Hzclaim.
+
+
+## Offline object quality completion — 2026-10-30
+
+Source-bound evaluator and offline semantic stage overlay completed. Final fresh
+CPU1960pass/2skip/3native-deselected0,314pinsstable; independent finalSolHigh
+ACCEPT108focused+nativeartifact/mask/identity/HOTA/geometryinputaudit.
+Measured12-keyframe00861pilot retainedunder .runtime/quality-evaluation-20261030
+after earlier runs were intentionally deleted. Main bounded semanticGPUrender
+firstfailed missingsemanticregistration, then repaired evaluator-only dataset
+passed all12RGBD/K/posegates with unchangedthresholds. All outcomes retained.
+Detection21outputs TP7FP14FN37; projectedmemory17/all44GT finalIDF1=20/61,
+HOTA=.33814361174308977. See docs/results/object-quality-pilot-2026-10-30.md
+for source/config/GTscope, filteredAP and smallsample limitations. No publication,
+training, download, runtimecontract change or P10acceptance in this continuation.
+
+
+### ConceptGraphs real visual completion — 2026-10-30
+
+Implemented / correctness-verified / scoped native runtime-validated. Missing real
+visual path is now closed with explicit local openai_clip/openai_jit CPU backend,
+strict SHA/architecture/transform/feature-space provenance and full runtime/owner
+wiring. Earlier “complete within available assets” wording was too narrow for the
+user's requested full integration; this checkpoint supersedes that visual gap.
+No install/download/training/sibling edits/default promotion/commit/push.
+
+Fresh fullCPU2048passed/2skipped/3native-deselected exit0/105.22s,356pins unchanged.
+IndependentSolHigh ACCEPT:44focused tests exit0 and artifact audit exit0, all154
+vectors/79bindings/223GT, model+space hashes, independent four-mode globalIDF1 and
+nativeDB proof. Native60s exit0/completed (70.996s wrapper),117pins unchanged,
+1350/1350raw,15durable actualfeaturevectors,8/8objects appearance,14visualpairs,
+0fallback. This is separate from fixed79 quality; no300s fullvisual/P10 claim.
+
+Same79frames/137clouds/223GT: CGspatial→CGvisual IDF125.98→26.54%,
+HOTA22.28→25.51%,AssA29.45→42.43%, but unresolved29→36, IDTP unchanged43.
+237realvisualpairs/0fallback. Legacy+visual highestIDF128.57/HOTA26.32 on sample.
+Detection unchanged; no heldout/multiscene improvement claim. Cache trust limitation
+and conditional switch/revisit supports documented. Fullvisual launch:
+`bash tools/run_conceptgraphs_demo.sh 300`; `--preflight` supported.
+Report: docs/results/conceptgraphs-visual-completion-2026-10-30.md.
+Evidence: .runtime/conceptgraphs-visual-20261030/; exactcommands/exits/pins,
+replay/fixed79/, evaluation/, native-visual-proof.json, full-suite-result.json,
+final-audit/{review.md,result.json}. Next: unresolved/ontology audit and independent
+validation scenes before calibration/default decisions.
+
+### CGvisual selected; measured detection improvement — 2026-10-30
+
+User explicitly selects CG+Visual; tools/run_gpu_demo.sh and
+run_conceptgraphs_demo.sh now use demo-yoloe11s-conceptgraphs-visual-gpu-00861.json.
+YOLOE11s640/conf.30/cap30, pairedlocalMobileCLIPblt; existingCGcanonicalowner+real
+openai_clip retained. Implemented/source+offlinecorrectness verified/livecomponent
+wiring demonstrated. Overallnative acceptance remainsincomplete (detailsbelow).
+
+Executed original79/223GT audit;29labelconfusions(table→diningtable14),24localization,
+2duplicates, raw46TP108FP177FN unchanged. GT-free realGPU6variants+2runtimecap30
+checks allexit0. Selected11s TP80FP134FN143, P37.38/R35.87/F136.61% versus
+29.87/20.63/24.40 original. MoreFPabsolute; doorTP9→42 butchair21→19 andtable,
+lamp,island,oven still0TP. Prompts and960 tested; no promptrewrite/perclassfitted
+threshold promoted. APfloor/cap differences and one11slowfloorcap recorded.
+79frames alreadydevelopment; noheldout/multiscene/generalizationclaim.
+
+Fresh wholeCPU2084pass/2skip/3native-deselected0/113.86s,367pins stable.
+IndependentSolHigh offline/sourceoracle reproduces allbbox/maskAP+PR within1e-12,
+allsource/GT/mask/59classbindings and449ledgerassets;36freshfocused tests0.
+Syntax/preflight0readytrue. Native117pins unchanged inbothattempts: firstfails
+30.829s exit1 navigationIPCdeadline, secondaryexportmismatch, hostpausecorrelated
+nearfirstcommit (rootcauseunproven); unchangedrepeat runsfull60s/71.772wrapper,
+nohealth/exportfailure,25realfeatures/36visualpairs/0fallback,1256/1256raw. Repeat
+still exit1/incomplete due1RSSreaderror. NoTTL/deadline/safetyweakened, nofixclaim,
+no fullnative/P10/stabilityclaim. Failedattemptretained; no retrytohideRSSfailure.
+
+Trainingreadiness:79RGB/223candidateCOCOmasks RLE/hash/bboxverified; one-scene
+nonexhaustiveannotationsnottrainready. Existing1400Hypersimtriplets/14scenes
+inventoried, HDF5/NYUmapping/completeness/splitsunvalidated; notraining/download/
+install/source-siblingwrite/commit/push. Remaining: dataaudit/independentscene
+validation and hostdeadline/RSS reliability diagnosis; SAHI/temporalconfirmation
+notimplemented. Actualassociationquality undernewdetector notremeasured.
+Report docs/results/detection-improvement-2026-10-30.md; traininghandoff
+ docs/detection-finetuning-readiness.md. Evidence .runtime/detection-improvement-20261030/
+(commandsexits,replays/evaluation,audit,training-readiness,fullsuite,pins,
+final-review,native-attempt-1/2,native-proof.json). No sourcepublication.
+
+Detection final review: scoped SolHigh ACCEPT source/offline/livewiring/reporting;
+36tests0+independentoracle/provenance/nativeDBaudit0. Native overall unaccepted;
+firstdeadline+repeatRSSfailure retained, nohiddenretry or sourcefixclaim.
+
+### User body geometry: radius12.5cm / diameter25cm / height1m — 2026-10-30
+
+Implemented/correctness-verified/nativeagent+navmesh+sensor smoke-validated.
+Main11sCGvisualprofile now cylinder-r125-h1000-v1, radius.125m,height1m;
+margin.05m/near-ground.05m/map5cm/speed/yaw/TTL/sensortransforms unchanged.
+Idealbody+margin diameter35cm; rasterboundaries canrequiremore, notapassageguarantee.
+Launcher derives nativegeometry from navigation.robot; worker validates/setsagent,
+recomputes simulator-only navmesh preserving allnonbody loadedsettings, validates
+actualreadback; hostrequires matchingclosedgeometryACK. No navmesh intoonline map.
+Legacy noexplicitgeometry standalonepathcompatible;8currentworkerpinsresynced,
+historicalconfigsnapshotpins/dimensionsnotmassrewritten. Need freshoutput/restart.
+
+RED10fail1pass→focused100pass0; settingspreservation RED1fail→finalfocused208pass0.
+FreshwholeCPU2097pass/2skip/3native-deselected0/114.83s,368pins unchanged.
+IndependentSolHigh ACCEPT,13freshgeometrytests0, IPCACK/reaping+sweptguard probes0;
+73snapshothashes/8profilepins/finalnativeartifact verified. Finalpreflight0readytrue,
+gitdiffcheck0. ActualHabitat0.3.3 sensor-smokeexit0 agentradius.125,height1 and
+navmesh.125/1readback, RGBD480x640/navdepth180x240, cleanreapedshutdown.
+Nativepassagetraversal/collisionrate/coverage/fullpipelineP10/runtimeperformance
+notmeasured; priorIPC/RSS issuesnotclaimedfixed. Source siblingsread-only;
+noinstall/download/training/commit/push.
+Report docs/results/household-robot-geometry-2026-10-30.md. Evidence
+.runtime/robot-geometry-20261030/{red.log,preserve-settings-red.log,focused.log,
+full-cpu.log,verification.json,native-smoke.json,preflight-final.json,review/}.
+
+### GitHub main updated; all local changes retained — 2026-10-30
+
+User requests pull/conflictcheck and explicitly allcurrentlocalchanges applied to
+latestrepo. Fetched origin/main1e45fe8→4366089 (e222b24UI+PRmerge4366089), then
+fast-forwardedmain. IntermediategitpullnetworkfailedSSHpublickey; localffmerge
+usesalreadyverifiedsuccessfulfetch. No newprojectcommit/push/historyrewrite.
+64dirtypaths backedupintar+binarypatches+stash7654d823c252fa3ff2f655b63047fcffca4fda84.
+Stashapplycontentconflict onlydocs/implementation-status.md; resolvedpreserving
+completeupstreamUI/environment+localquality/CG/detection/bodycheckpointlines.
+Sourcesmergedwithouttextconflict;3local-onlyCGprofilesrepinnewupstreamUIworker.
+All64localpathsverifiedpreserved; upstreamUI codebyteidenticaltoorigin/main.
+SelectedCGvisual/11s.30/radius.125m/height1m retained. Localchangesremainunstaged/
+uncommitted, indexempty/no unresolvedentries; stashandarchivekeptasbackup.
+
+FreshwholeCPU2138pass/2skip/3native-deselected exit0/118.75s,377functionalpins
+unchanged; mainGPUdemo preflightreadytrue0, gitdiffcheck0. NoGPU/native rerun or
+newruntime/performance/qualityclaim; priorIPC/RSSlimitsnotclaimedfixed.
+Evidence .runtime/git-pull-20261030/{report.md,before.json,working-files.tar.gz,
+tracked.patch,index.patch,stash-commit.txt,preservation-verification.json,
+conflict-resolution.json,integration-pin-updates.json,full-cpu.log,verification.json}.
+
+### Other-map selection and00770demo — 2026-10-30
+
+Prepared currentGPUprofiles00770 and00802 from existingpinnedscene/measurement/
+explicitspawn sources, retaining11s640/.30+CGvisual+robotradius.125/height1/margin.05.
+Mapselector supports00770/00802/00861 and keepsIntel.localprofiles fallback;
+GPUwrappers acceptNEUSYMNAV_DEMO_CONFIG, default00861 unchanged.00337meshpresent
+butnotprepared; upstream00800–00809configs/assets absent onthisCUDAhost.
+
+Implemented/configverified:3maps actualpreflight0readytrue, bashsyntax0/list0,
+unknownmap99999expectedexit2, gitdiffcheck0. Config/wrapper/docs only; prior2138
+CPUtestsnotrerun/reclaimed. Actual00770UI60s/wrapper72.036s exit1/incomplete due
+1RSSsampleerror, nohealth/admission/exportfailure, cleanworkers.1107/1107raw,
+11committedbatches/9objects/23realfeatures,379pinsstable. Actualagent/navmesh.125/1.
+Noquality/P10/nativeoverallacceptance or previousRSSfixclaim. ReadonlySQLbackup
+used forfirstsourceRGBpreview; strictqualityexportrefusednonemptyWAL, noexport/
+checkpointrepairclaim. No modeldownload/install/source-siblingwrite/commit/push.
+Evidence .runtime/map-switch-20261030/report.md +requests/exits/pins/proof/preflights.
+Usage docs/running.md: bash tools/run_map_demo.sh 00770 300 (or00802/00861).
+
+### User-authorized publication in logical commits — 2026-10-30
+
+User explicitly requests allcurrentlocalchanges committed byfunction andpushedto
+origin/main. Remote successfulfetch:HEAD=origin/main4366089 beforecommits. Publish
+set68source/test/config/docfiles962527bytes; noruns/models/datasets/venvs/runtime
+artifacts, no credential/privatekey patternfindings. Sixgroups:evaluationmetrics;
+CGspatial+realCLIPassociation; detectorreplay/audit/calibration; nativebodygeometry;
+GPU/multimapdemo profiles; results/statusdocumentation. Sharedlauncher staged in
+twoparts tokeep appearanceassociation separatefromnativebodybinding, workingfile
+unchanged. FullcurrentCPU2138passed/2skipped/3native-deselected in116.41s;
+preflightreadytrue0,diffcheck0. NativeRSS/IPC andsingle-scenequalitylimitsremain;
+publicationdoesnotclaimnewruntimeacceptance. Authorizeddestination
+ git@github.com:hiiluo/NeuSymNav.git main; noforcepush/historyrewrite.
+CommitIDs/pushresult/remoteverification saved .runtime/github-push-20261030/.
