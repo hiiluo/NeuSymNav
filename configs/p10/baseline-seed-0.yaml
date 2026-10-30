@@ -27,7 +27,7 @@ workers:
     startup_timeout_s: 30.0
   region:
     executable:
-      path: ../../runs/p06-native/build/occusg_dude_worker
+      path: ../../.runtime/retained-assets/p06-native/build/occusg_dude_worker
       sha256: c03c10d71a28e8fa7a2943de5d6d75cdad962d20101209e8e1c844645b7c366b
   ui:
     python: null

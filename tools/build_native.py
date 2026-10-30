@@ -15,7 +15,7 @@ import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE_CLOSURE = REPO_ROOT / "native/dude"
-RUN_ROOT = REPO_ROOT / "runs/p06-native"
+RUN_ROOT = REPO_ROOT / ".runtime/retained-assets/p06-native"
 BUILD_ROOT = RUN_ROOT / "build"
 CONFIG_PATH = RUN_ROOT / "build-config.json"
 WORKER_PATH = BUILD_ROOT / "occusg_dude_worker"

@@ -40,7 +40,7 @@ safety:
   max_linear_mps: 0.20
   max_yaw_radps: 0.5235987755982988
 provenance:
-  source_manifest: runs/p03/source-provenance.json
+  source_manifest: .runtime/retained-assets/p03/source-provenance.json
   algorithm_oracles: tests/fixtures/navigation/oracles-v1.json
   near_ground_policy: first_height_bin_ignored_floor_tolerance_declared
   safety_policy: measured_floor_and_all_body_bins_plus_swept_footprint

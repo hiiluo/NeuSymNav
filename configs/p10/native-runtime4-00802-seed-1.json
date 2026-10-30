@@ -9,7 +9,7 @@
   },
   "floor": {
     "z_m": -0.0045659542083740234,
-    "datum_source": "native-depth-calibration-v1:/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/p10-native-preparation/sensor-calibration-00802-runtime2/calibration.json",
+    "datum_source": "native-depth-calibration-v1:/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/retained-assets/p10-native-preparation/sensor-calibration-00802-runtime2/calibration.json",
     "calibration_sha256": "d19b63a850e9fe2459844cc217783059af3a331ef8a9aa2dfdafe6b32c0a9a95"
   },
   "workers": {
@@ -38,7 +38,7 @@
     },
     "region": {
       "executable": {
-        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/p06-native/build/occusg_dude_worker",
+        "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/.runtime/retained-assets/p06-native/build/occusg_dude_worker",
         "sha256": "c03c10d71a28e8fa7a2943de5d6d75cdad962d20101209e8e1c844645b7c366b"
       }
     }

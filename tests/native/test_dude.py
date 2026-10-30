@@ -12,7 +12,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = REPO_ROOT / "runs/p06-native/build-config.json"
+DEFAULT_CONFIG = REPO_ROOT / ".runtime/retained-assets/p06-native/build-config.json"
 POLICY = "extended_unknown_boundary"
 COORDINATE_CONVENTION = (
     "world_x=origin_x+col*resolution; world_y=origin_y+row*resolution"
