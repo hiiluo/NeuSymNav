@@ -15,6 +15,7 @@ def fixture():
     p._latest_nav=nav_for(source(),1);p._accepted_nav=None;p._regions=None
     p.region_factory=None;p.floor_id='f';p._captured=source().key;p._processed=source().key
     p._verification=None;p._latest_depth=None;p._publication_revisions=None
+    p._room_publication=None
     p.now_ns=lambda:clock[0];p.clock_domain=DOMAIN;p._closing=False
     p.mapper=None;p._place_status='unavailable_no_measured_pose';p.publisher=None;p._counts={'missing':0}
     p.measurements=SimpleNamespace(publication=published.append)

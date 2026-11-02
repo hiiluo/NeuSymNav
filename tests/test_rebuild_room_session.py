@@ -67,15 +67,25 @@ for line in sys.stdin:
 '''
 
 
-def _session(tmp_path, mode, *, timeout=5.):
-    source = "/home/kiettran05/Desktop/test_Room_segmentation/Rebuild_3DScene_OccuSG"
-    m23 = source + "/build/native-m3/occupancy/standalone_sg_octomap_fixture_runner"
-    m4 = source + "/build/native-m4-dude/occusg_dude_worker"
-    constants = (
-        "60aebf8a0433afa23dbdf94e6ed8415347b03e58464a0f7a71c3b8c7d07b0da0",
-        "617477524aa81acb0a0a46575741497aa15ed9b095f8fd72f92e09a81043cdc6",
-        "6ff1fb5ba2275c9311004bcb7bd41995a7f4c64c76107dda8fba785d964a3693",
-    )
+def _session(tmp_path, mode, *, timeout=5., monkeypatch):
+    from neusymnav.regions import rebuild_room_session as session_module
+    source = tmp_path / "Rebuild_3DScene_OccuSG"
+    package = source / "src" / "standalone_sg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("# fake pinned source for IPC test\n")
+    m23 = source / "build" / "native-m3" / "occupancy" / "standalone_sg_octomap_fixture_runner"
+    m4 = source / "build" / "native-m4-dude" / "occusg_dude_worker"
+    m23.parent.mkdir(parents=True)
+    m4.parent.mkdir(parents=True)
+    m23.write_bytes(b"fake m23 worker")
+    m4.write_bytes(b"fake m4 worker")
+    m23.chmod(0o755)
+    m4.chmod(0o755)
+    constants = ("d" * 64, hashlib.sha256(m23.read_bytes()).hexdigest(),
+                 hashlib.sha256(m4.read_bytes()).hexdigest())
+    monkeypatch.setattr(session_module, "EXPECTED_SOURCE_TREE_SHA256", constants[0])
+    monkeypatch.setattr(session_module, "EXPECTED_M23_SHA256", constants[1])
+    monkeypatch.setattr(session_module, "EXPECTED_M4_SHA256", constants[2])
     command = (sys.executable, "-u", "-c", _FAKE_WORKER, *constants, mode)
     return RebuildRoomSession(
         source_root=source, m23_binary=m23, m4_binary=m4,
@@ -85,8 +95,8 @@ def _session(tmp_path, mode, *, timeout=5.):
     )
 
 
-def test_empty_episode_closes_cleanly_without_fabricating_a_map(tmp_path):
-    session = _session(tmp_path, "pair")
+def test_empty_episode_closes_cleanly_without_fabricating_a_map(tmp_path, monkeypatch):
+    session = _session(tmp_path, "pair", monkeypatch=monkeypatch)
     assert session.snapshot() is None
     result = session.close()
     assert result["clean_shutdown"]
@@ -95,8 +105,8 @@ def test_empty_episode_closes_cleanly_without_fabricating_a_map(tmp_path):
     assert session.snapshot() is None
 
 
-def test_session_bounds_pending_queue_and_publishes_exact_accepted_map_pair(tmp_path):
-    session = _session(tmp_path, "pair")
+def test_session_bounds_pending_queue_and_publishes_exact_accepted_map_pair(tmp_path, monkeypatch):
+    session = _session(tmp_path, "pair", monkeypatch=monkeypatch)
     try:
         first = session.submit(observation())
         assert first.accepted
@@ -140,8 +150,8 @@ def test_session_bounds_pending_queue_and_publishes_exact_accepted_map_pair(tmp_
     assert (run_dir / "admission-journal.jsonl").is_file()
 
 
-def test_native_failure_poison_requires_new_session_and_stales_publication(tmp_path):
-    session = _session(tmp_path, "fatal")
+def test_native_failure_poison_requires_new_session_and_stales_publication(tmp_path, monkeypatch):
+    session = _session(tmp_path, "fatal", monkeypatch=monkeypatch)
     try:
         assert session.submit(observation()).accepted
         assert session.wait_idle(5.)
@@ -158,8 +168,8 @@ def test_native_failure_poison_requires_new_session_and_stales_publication(tmp_p
     assert result["recording_complete"] and not result["runtime_complete"]
 
 
-def test_worker_response_must_bind_to_admitted_frame_prefix(tmp_path):
-    session = _session(tmp_path, "badsource")
+def test_worker_response_must_bind_to_admitted_frame_prefix(tmp_path, monkeypatch):
+    session = _session(tmp_path, "badsource", monkeypatch=monkeypatch)
     try:
         assert session.submit(observation()).accepted
         assert session.wait_idle(5.)
@@ -172,8 +182,8 @@ def test_worker_response_must_bind_to_admitted_frame_prefix(tmp_path):
     assert result["recording_complete"] and not result["runtime_complete"]
 
 
-def test_worker_response_must_match_startup_resource_pins(tmp_path):
-    session = _session(tmp_path, "badpin")
+def test_worker_response_must_match_startup_resource_pins(tmp_path, monkeypatch):
+    session = _session(tmp_path, "badpin", monkeypatch=monkeypatch)
     try:
         assert session.submit(observation()).accepted
         assert session.wait_idle(5.)
@@ -186,8 +196,8 @@ def test_worker_response_must_match_startup_resource_pins(tmp_path):
     assert result["recording_complete"] and not result["runtime_complete"]
 
 
-def test_failure_after_accepted_publication_keeps_old_pair_stale(tmp_path):
-    session = _session(tmp_path, "pairfatal")
+def test_failure_after_accepted_publication_keeps_old_pair_stale(tmp_path, monkeypatch):
+    session = _session(tmp_path, "pairfatal", monkeypatch=monkeypatch)
     try:
         assert session.submit(observation()).accepted
         assert session.wait_idle(5.)
@@ -208,8 +218,8 @@ def test_failure_after_accepted_publication_keeps_old_pair_stale(tmp_path):
         session.close()
 
 
-def test_complete_recording_replays_in_order_with_the_same_prefixes(tmp_path):
-    original = _session(tmp_path, "pair")
+def test_complete_recording_replays_in_order_with_the_same_prefixes(tmp_path, monkeypatch):
+    original = _session(tmp_path, "pair", monkeypatch=monkeypatch)
     for index in range(3):
         base = observation()
         depth = base.depth_m.copy()
@@ -227,7 +237,7 @@ def test_complete_recording_replays_in_order_with_the_same_prefixes(tmp_path):
     original_result = original.close()
     assert original_result["recording_complete"]
 
-    replay = _session(tmp_path / "replay", "pair")
+    replay = _session(tmp_path / "replay", "pair", monkeypatch=monkeypatch)
     try:
         assert replay_recording(recording_dir, replay) == 3
         assert replay.snapshot().latest_map.revision == 3

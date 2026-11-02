@@ -154,15 +154,18 @@ def test_no_free_is_unavailable_and_never_calls_rebuild_stage():
 
 def test_region_backend_config_is_opt_in_and_rejects_unused_source_root(tmp_path):
     import json
-    source = "/home/kiettran05/Desktop/test_Room_segmentation/Rebuild_3DScene_OccuSG"
+    source = tmp_path / "Rebuild_3DScene_OccuSG"
+    package = source / "src" / "standalone_sg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("\n")
     base = {"schema_version": 1, "mode": "live", "profile": "baseline",
         "episode": {"id": "e", "primary_sensor_id": "rgbd", "floor_id": "f"},
         "floor": {"z_m": 0.0, "datum_source": "calibration", "calibration_sha256": "a" * 64},
-        "workers": {"region": {"backend": "rebuild_m4_m5", "source_root": source}}}
+        "workers": {"region": {"backend": "rebuild_m4_m5", "source_root": str(source)}}}
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(base))
     assert load_config(config_path).data["workers"]["region"]["backend"] == "rebuild_m4_m5"
-    base["workers"]["region"] = {"backend": "dude", "source_root": source}
+    base["workers"]["region"] = {"backend": "dude", "source_root": str(source)}
     config_path.write_text(json.dumps(base))
     with pytest.raises(ValueError, match="only valid for rebuild_m4_m5"):
         load_config(config_path)
@@ -172,19 +175,36 @@ def test_region_backend_config_is_opt_in_and_rejects_unused_source_root(tmp_path
         load_config(config_path)
 
 
-def test_full_room_pipeline_config_is_explicit_and_validated(tmp_path):
+def test_full_room_pipeline_config_is_explicit_and_validated(tmp_path, monkeypatch):
     import json
     from neusymnav.runtime.configuration import file_sha256
-    source = Path("/home/kiettran05/Desktop/test_Room_segmentation/Rebuild_3DScene_OccuSG")
+    from neusymnav.regions import rebuild_room_worker
+    source = tmp_path / "Rebuild_3DScene_OccuSG"
+    package = source / "src" / "standalone_sg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("# pinned source fixture\n")
+    m23 = source / "build" / "native-m3" / "occupancy" / "standalone_sg_octomap_fixture_runner"
+    m4 = source / "build" / "native-m4-dude" / "occusg_dude_worker"
+    m23.parent.mkdir(parents=True)
+    m4.parent.mkdir(parents=True)
+    m23.write_bytes(b"fixture m23")
+    m4.write_bytes(b"fixture m4")
+    m23.chmod(0o755)
+    m4.chmod(0o755)
+    m23_sha = file_sha256(m23)
+    m4_sha = file_sha256(m4)
+    source_sha = "d" * 64
+    monkeypatch.setattr(rebuild_room_worker, "EXPECTED_M23_SHA256", m23_sha)
+    monkeypatch.setattr(rebuild_room_worker, "EXPECTED_M4_SHA256", m4_sha)
+    monkeypatch.setattr(rebuild_room_worker, "EXPECTED_SOURCE_TREE_SHA256", source_sha)
+    monkeypatch.setattr(rebuild_room_worker, "_source_tree_sha256", lambda _root: source_sha)
     base = {"schema_version": 1, "mode": "live", "profile": "baseline",
         "episode": {"id": "e", "primary_sensor_id": "rgbd", "floor_id": "f"},
         "floor": {"z_m": 0., "datum_source": "calibration", "calibration_sha256": "a" * 64},
         "workers": {"room_pipeline": {
             "source_root": str(source),
-            "m23_binary": {"path": str(source / "build/native-m3/occupancy/standalone_sg_octomap_fixture_runner"),
-                           "sha256": "617477524aa81acb0a0a46575741497aa15ed9b095f8fd72f92e09a81043cdc6"},
-            "m4_binary": {"path": str(source / "build/native-m4-dude/occusg_dude_worker"),
-                          "sha256": "6ff1fb5ba2275c9311004bcb7bd41995a7f4c64c76107dda8fba785d964a3693"},
+            "m23_binary": {"path": str(m23), "sha256": m23_sha},
+            "m4_binary": {"path": str(m4), "sha256": m4_sha},
             "ipc_timeout_s": 60., "resolution_m": .05, "backprojection_stride": 1,
             "min_depth_m": .1, "max_depth_m": 10., "max_range_m": 8.}}}
     config_path = tmp_path / "room-pipeline.json"
@@ -195,7 +215,7 @@ def test_full_room_pipeline_config_is_explicit_and_validated(tmp_path):
     from neusymnav.runtime.configuration import Configuration
     from neusymnav.runtime.launcher import _assets
     resources, _issues = _assets(Configuration(config_path, loaded.data))
-    assert resources["room_pipeline_pins"]["source_sha256"] == "60aebf8a0433afa23dbdf94e6ed8415347b03e58464a0f7a71c3b8c7d07b0da0"
+    assert resources["room_pipeline_pins"]["source_sha256"] == source_sha
     assert resources["room_m23"].is_file() and resources["room_m4"].is_file()
     base["workers"]["room_pipeline"]["backprojection_stride"] = 0
     config_path.write_text(json.dumps(base))
