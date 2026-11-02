@@ -224,6 +224,10 @@ class NavMapper:
     def overview_tiles(self):
         return self._overview_tiles
 
+    def room_input_tiles(self):
+        """Exact immutable measured history; dense room assembly is off this lane."""
+        return self._overview_tiles
+
     def _coverage_from_votes(self,obs,votes):
         """Fresh-frame classification, equivalent to a new one-frame mapper.
 

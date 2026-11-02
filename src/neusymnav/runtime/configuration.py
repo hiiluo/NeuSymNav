@@ -74,7 +74,7 @@ def load_config(path):
     sampling=value.get('keyframe_sampling','novelty')
     if type(sampling) is not str or sampling not in {'novelty','capacity_deferred'}:raise ValueError('invalid keyframe_sampling')
     if sampling=='capacity_deferred' and value['mode']!='live':raise ValueError('capacity_deferred sampling requires live mode')
-    if value['profile'] not in {'baseline','geometry-only','appearance'}:raise ValueError('unsupported profile')
+    if value['profile'] not in {'baseline','geometry-only','appearance','rebuild-rgbd-m1-m5-v1'}:raise ValueError('unsupported profile')
     _mapping(value['episode'],'episode',{'id','primary_sensor_id','floor_id'},{'id','primary_sensor_id','floor_id'})
     for key,item in value['episode'].items():
         if not isinstance(item,str) or not item.strip():raise ValueError('episode.'+key+' must be explicit nonempty text')
@@ -85,9 +85,44 @@ def load_config(path):
     if not isinstance(floor['calibration_sha256'],str) or not SHA.fullmatch(floor['calibration_sha256']):raise ValueError('floor.calibration_sha256 is required')
     if 'fixture' in value:_mapping(value['fixture'],'fixture',{'detections'},{'detections'})
     if 'workers' in value:
-        _mapping(value['workers'],'workers',{'sensor','detector','region','appearance','ui','raycast'})
+        _mapping(value['workers'],'workers',{'sensor','detector','region','appearance','ui','raycast','room_pipeline'})
         for name,worker in value['workers'].items():
-            _mapping(worker,'workers.'+name,{'python','script','executable','timeout_s','startup_timeout_s'})
+            if name=='region':
+                _mapping(worker,'workers.'+name,{'python','script','executable','timeout_s','startup_timeout_s','backend','source_root'})
+                backend=worker.get('backend','dude')
+                if not isinstance(backend,str) or backend not in {'dude','rebuild_m4_m5'}:raise ValueError('workers.region.backend must be dude or rebuild_m4_m5')
+                if backend=='rebuild_m4_m5':
+                    source_root=worker.get('source_root')
+                    if not isinstance(source_root,str) or not source_root.strip():raise ValueError('workers.region.source_root is required for rebuild_m4_m5')
+                    resolved=Path(source_root).expanduser()
+                    if not resolved.is_absolute():resolved=path.parent/resolved
+                    if not (resolved/'src'/'standalone_sg'/'__init__.py').is_file():raise ValueError('workers.region.source_root must contain src/standalone_sg')
+                    worker['source_root']=str(resolved.resolve())
+                elif 'source_root' in worker:
+                    raise ValueError('workers.region.source_root is only valid for rebuild_m4_m5')
+            elif name=='room_pipeline':
+                _mapping(worker,'workers.room_pipeline',
+                    {'source_root','m23_binary','m4_binary','ipc_timeout_s','m23_timeout_s','m4_timeout_s',
+                     'resolution_m','backprojection_stride','min_depth_m','max_depth_m','max_range_m'},
+                    {'source_root','m23_binary','m4_binary'})
+                source_root=worker['source_root']
+                if not isinstance(source_root,str) or not source_root.strip():
+                    raise ValueError('workers.room_pipeline.source_root is required')
+                resolved=Path(source_root).expanduser()
+                if not resolved.is_absolute():resolved=path.parent/resolved
+                if not (resolved/'src'/'standalone_sg'/'__init__.py').is_file():
+                    raise ValueError('workers.room_pipeline.source_root must contain src/standalone_sg')
+                worker['source_root']=str(resolved.resolve())
+                for key in ('ipc_timeout_s','m23_timeout_s','m4_timeout_s'):
+                    if key in worker:_positive(worker[key],'workers.room_pipeline.'+key,maximum=120)
+                for key in ('resolution_m','min_depth_m','max_depth_m','max_range_m'):
+                    if key in worker:_positive(worker[key],'workers.room_pipeline.'+key)
+                if 'backprojection_stride' in worker:
+                    _positive(worker['backprojection_stride'],'workers.room_pipeline.backprojection_stride',integer=True)
+                if worker.get('max_depth_m',10.)<=worker.get('min_depth_m',.1):
+                    raise ValueError('workers.room_pipeline.max_depth_m must exceed min_depth_m')
+            else:
+                _mapping(worker,'workers.'+name,{'python','script','executable','timeout_s','startup_timeout_s'})
     if 'navigation' in value:_mapping(value['navigation'],'navigation',{'robot','mapper'})
     if 'long_demo' in value:
         long=value['long_demo']
@@ -174,6 +209,9 @@ def _validate_nested(value):
     for key,cap in [('byte_cap',32*1024**2),('raw_cap',(24 if extended else 2)*1024**3),('total_cap',(32 if extended else 8)*1024**3)]:
         if value.get('budgets',{}).get(key,0)>cap:raise ValueError(key+' exceeds locked runtime policy cap')
     if value.get('budgets',{}).get('raw_cap',2*1024**3)>value.get('budgets',{}).get('total_cap',8*1024**3):raise ValueError('raw_cap exceeds total_cap')
+    if ('room_pipeline' in value.get('workers',{}) and
+            value.get('budgets',{}).get('total_cap',8*1024**3)<2*1024**3+128*1024**2):
+        raise ValueError('room_pipeline requires 2 GiB plus 128 MiB reserved run space')
     for name,worker in value.get('workers',{}).items():
         for key in ('timeout_s','startup_timeout_s'):
             if key in worker:_positive(worker[key],'workers.'+name+'.'+key,maximum=60)

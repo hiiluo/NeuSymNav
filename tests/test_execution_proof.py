@@ -77,6 +77,9 @@ def test_actual_cpu_worker_ack_binds_to_real_launcher_attempt_provenance(tmp_pat
     import hashlib
     original_run=launcher.run
     def run(config_path,**kwargs):
+        # This test needs actual decoded captures for provenance binding; the
+        # reused helper's 20 ms run is not a sensor scheduling/latency contract.
+        kwargs['duration_s']=1.0
         checked=launcher._checked
         def pinned_checked(path):
             cfg,assets=checked(path);script=assets['sensor'][1];spec=dict(path=str(script),sha256=hashlib.sha256(script.read_bytes()).hexdigest())
