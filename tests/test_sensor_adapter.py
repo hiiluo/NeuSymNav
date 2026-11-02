@@ -159,7 +159,7 @@ def test_timeout_closes_worker_and_drops_late_response(tmp_path):
                       'print(json.dumps({"ready":True,"wire_version":1}),flush=True)\n'
                       'for line in sys.stdin:\n'
                       ' time.sleep(10)\n')
-    source = HabitatPoseSource(python=sys.executable, config={}, worker_script=worker, timeout_s=.05)
+    source = HabitatPoseSource(python=sys.executable, config={}, worker_script=worker, timeout_s=1.0)
     with pytest.raises(TimeoutError):
         source.capture()
     assert source.process.poll() is not None

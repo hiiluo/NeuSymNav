@@ -2,6 +2,7 @@
 from dataclasses import replace
 from threading import Event
 from types import MappingProxyType
+import time
 import numpy as np
 from neusymnav.mapping.occupancy import RobotGeometry
 from neusymnav.mapping.overview import OverviewTiles
@@ -41,14 +42,17 @@ def _wait_for_publication_with_virtual_time(p, clock, predicate):
     # An earlier publication can finish after the region result is ready and
     # consume the one cadence tick. Advance on every poll, as a running clock
     # would, until the desired source-bound publication is observed.
-    def poll():
+    deadline = time.monotonic() + 5.
+    while time.monotonic() < deadline:
         result = p.snapshot()
         if result is not None and predicate(result):
-            return True
+            return
         clock[0] += 100_000_000
         p._wake.set()
-        return False
-    wait_for(poll)
+        # Yield to the graph owner after each virtual cadence tick. Advancing
+        # virtual time in a tight 5 ms polling loop starved this worker on CI.
+        time.sleep(.01)
+    raise AssertionError('timed out waiting for a coalesced hierarchy publication')
 
 
 def test_blocked_room_worker_does_not_block_or_replace_local_navigation(tmp_path):
