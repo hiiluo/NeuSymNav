@@ -37,6 +37,32 @@ def _checksum(metadata, payload):
     return hashlib.sha256(_canonical(metadata) + b'\0' + payload).hexdigest()
 
 
+def _calibration_id(K, T_agent_sensor, configuration):
+    """Hash static camera calibration without pose-dependent float noise.
+
+    Habitat exposes world sensor transforms as native floating-point values.
+    Inverting the agent transform after a body action introduces tiny numeric
+    changes in the recovered static mount. Quantize only this calibration
+    identity matrix to micrometre/1e-6 precision; per-frame world pose remains
+    lossless and is carried separately in ``Observation.T_world_camera``.
+    """
+    mount = np.asarray(T_agent_sensor, dtype=np.float64)
+    if mount.shape != (4, 4) or not np.isfinite(mount).all():
+        raise ValueError('invalid agent-to-sensor calibration transform')
+    stable_mount = np.round(mount, decimals=6)
+    stable_mount[np.abs(stable_mount) < 0.5e-6] = 0.0
+    calibration = dict(
+        K=np.asarray(K, dtype=np.float64).tolist(),
+        T_agent_sensor=stable_mount.tolist(),
+        configuration=configuration,
+        depth_convention='metric_axial_v1', source_world='new_y_up_v1',
+        camera_basis='habitat_gl_v1',
+        calibration_method='actual_render_projection_and_sensor_state_v2',
+        identity_policy='static_mount_quantized_1e-6_v1',
+    )
+    return 'habitat:' + hashlib.sha256(_canonical(calibration)).hexdigest()
+
+
 def host_clock_domain():
     # Stable across worker restarts within a host boot. No random per-worker
     # fallback: domains with unknown comparability must fail closed.
@@ -608,11 +634,7 @@ class HabitatCapture:
         # Hash actual K, local calibration and configured depth semantics. World
         # pose stays per-capture, so moving the agent does not change calibration.
         local_extrinsic = np.linalg.inv(sensor_pose(state)) @ T
-        calibration = dict(K=K.tolist(), T_agent_sensor=local_extrinsic.tolist(),
-                           configuration=spec, depth_convention='metric_axial_v1',
-                           source_world='new_y_up_v1', camera_basis='habitat_gl_v1',
-                           calibration_method='actual_render_projection_and_sensor_state_v1')
-        calibration_id = 'habitat:' + hashlib.sha256(_canonical(calibration)).hexdigest()
+        calibration_id = _calibration_id(K, local_extrinsic, spec)
         packet = normalize_capture(
             rgb=rgb, depth=depth, K=K, T_world_habitat=T,
             episode_id=self.episode_id, sensor_id=spec['sensor_id'], frame_index=self.indices[lane],

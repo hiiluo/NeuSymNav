@@ -13,7 +13,8 @@ import pytest
 from neusymnav.contracts.observations import require_rgbd
 from neusymnav.sensors.client import HabitatPoseSource, observation_from_packet
 from neusymnav.sensors.habitat_worker import (normalize_capture, encode_packet,
-                                               sensor_pose, intrinsics_from_projection)
+                                               sensor_pose, intrinsics_from_projection,
+                                               _calibration_id)
 
 
 def sample(modality='rgbd'):
@@ -68,6 +69,23 @@ def test_intrinsics_use_actual_projection_and_sensor_extrinsics():
     state = SimpleNamespace(position=[2., 4., -1.],
                             rotation=SimpleNamespace(x=0., y=0., z=0., w=1.))
     np.testing.assert_array_equal(sensor_pose(state)[:3, 3], [2., 4., -1.])
+
+
+def test_calibration_identity_is_stable_when_pose_inverse_has_native_float_noise():
+    k = np.array([[320., 0., 319.5], [0., 320., 239.5], [0., 0., 1.]])
+    mount = np.eye(4)
+    mount[:3, 3] = [0., 1.2, 0.]
+    config = dict(position_xyz=[0., 1.2, 0.], orientation_xyz_rad=[0., 0., 0.])
+    noisy = mount.copy()
+    noisy[0, 3] = 2e-7
+    noisy[1, 3] += 1e-7
+    assert _calibration_id(k, mount, config) == _calibration_id(k, noisy, config)
+    changed_mount = mount.copy()
+    changed_mount[1, 3] += 1e-3
+    assert _calibration_id(k, mount, config) != _calibration_id(k, changed_mount, config)
+    changed_k = k.copy()
+    changed_k[0, 0] += 0.01
+    assert _calibration_id(k, mount, config) != _calibration_id(changed_k, mount, config)
 
 
 def test_wire_checksum_rejects_changed_payload_and_semantic_fields():
