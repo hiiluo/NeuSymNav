@@ -223,8 +223,11 @@ def _assets(config):
     if d['mode']=='fixture_cpu_no_models':
         check('detections',lambda:config.asset(d.get('fixture',{}).get('detections'),'fixture.detections'))
     else:
-        for name in ('sensor','detector','region'):
+        for name in ('sensor','detector'):
             check(name,lambda name=name:config.worker(name))
+        room_config=d.get('workers',{}).get('room_pipeline')
+        if room_config is None:
+            check('region',lambda:config.worker('region'))
         sensor=d.get('sensor_config',{})
         check('scene',lambda:config.asset(sensor.get('scene'),'sensor_config.scene'))
         if not sensor.get('navigation'):issues.append('sensor_config.navigation requires a calibrated independent depth sensor')
@@ -357,6 +360,7 @@ def _pipeline(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,me
 def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,measurements=None,raycast_backend=None):
     d=config.data;e=d['episode'];mapper=_mapper(config,root,raycast_backend=raycast_backend)
     encoder=None;region=None;room_pipeline=None;navigator=None;guard=None;worker_metadata={}
+    room_config=d.get('workers',{}).get('room_pipeline')
     if recorded is None:
         from ..perception.detector_client import DetectorClient,validate_recipe
         from ..contracts import Taxonomy
@@ -368,14 +372,15 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
         detector=lambda:_DetectorMetadata(DetectorClient(python=detector_python,worker_script=detector_script,recipe=recipe,
             timeout_s=detector_worker.get('timeout_s',2.),startup_timeout_s=detector_worker.get('startup_timeout_s',30.)),worker_metadata)
         region_config=d.get('workers',{}).get('region',{})
-        if region_config.get('backend','dude')=='rebuild_m4_m5':
-            from ..regions.rebuild_backend import RebuildRegionBackend
-            region=lambda:RebuildRegionBackend(assets['region'],floor_id=e['floor_id'],
-                source_root=region_config['source_root'],
-                timeout_s=region_config.get('timeout_s',30.))
-        else:
-            from ..regions.backend import RegionBackend
-            region=lambda:RegionBackend(assets['region'],floor_id=e['floor_id'],reset_on_geometry_change=True)
+        if room_config is None:
+            if region_config.get('backend','dude')=='rebuild_m4_m5':
+                from ..regions.rebuild_backend import RebuildRegionBackend
+                region=lambda:RebuildRegionBackend(assets['region'],floor_id=e['floor_id'],
+                    source_root=region_config['source_root'],
+                    timeout_s=region_config.get('timeout_s',30.))
+            else:
+                from ..regions.backend import RegionBackend
+                region=lambda:RegionBackend(assets['region'],floor_id=e['floor_id'],reset_on_geometry_change=True)
         if not domain.startswith('replay:'):
             from ..navigation.controller import Navigator
             from ..navigation.safety import MotionGuard
@@ -391,7 +396,6 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
                 max_request_bytes=worker.get('max_request_bytes',32*1024**2),
                 _worker_command=[str(appearance_python),str(appearance_script),'--worker']),worker_metadata)
     else:detector=lambda:recorded;vocabulary=recorded.vocabulary_id
-    room_config=d.get('workers',{}).get('room_pipeline')
     if room_config is not None:
         from ..regions.rebuild_rgbd_input import RebuildRGBDConfig
         from ..regions.rebuild_room_session import RebuildRoomSession

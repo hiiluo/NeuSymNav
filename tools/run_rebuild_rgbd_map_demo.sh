@@ -90,6 +90,7 @@ if not data.get("sensor_config", {}).get("scene", {}).get("path"):
     raise SystemExit(f"profile is missing a simulator scene asset path: {base}")
 data["profile"] = "rebuild-rgbd-m1-m5-v1"
 data.setdefault("workers", {}).setdefault("sensor", {})["timeout_s"] = 60.0
+data.setdefault("workers", {}).pop("region", None)
 data.setdefault("workers", {})["room_pipeline"] = {
     "source_root": str(source_root),
     "m23_binary": {"path": str(m23), "sha256": actual_m23},

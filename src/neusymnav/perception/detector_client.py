@@ -74,11 +74,13 @@ class _BoundedProcess:
     OS launch is synchronous; a close racing Popen reports incomplete until the
     launcher has observed cancellation, killed/reaped, and quiesced.
     """
-    def __init__(self, command, *, timeout_s, response_limit, lines=False):
+    def __init__(self, command, *, timeout_s, response_limit, lines=False,
+                 unset_environment=()):
         if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError('timeout_s must be positive finite')
         self.command, self.timeout_s = tuple(command), float(timeout_s)
         self.response_limit, self.lines = response_limit, lines
+        self.unset_environment = tuple(unset_environment)
         self.process = None
         self.lock = threading.Lock()
         self.process_lock = threading.Lock()
@@ -97,6 +99,8 @@ class _BoundedProcess:
         process = None
         try:
             environment = os.environ.copy()
+            for name in self.unset_environment:
+                environment.pop(name, None)
             environment.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                                HF_HUB_DISABLE_TELEMETRY='1', PYTHONNOUSERSITE='1')
             process = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,

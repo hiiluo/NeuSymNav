@@ -3,6 +3,17 @@ from types import SimpleNamespace
 from neusymnav.regions.rebuild_room_worker import _validated_m5_result
 
 
+def test_room_worker_record_consumption_does_not_reset_m3_update_mode():
+    from neusymnav.regions.rebuild_room_worker import _PersistentMappingRecords
+    records=_PersistentMappingRecords()
+    mode='full_refresh' if not records else 'partial_update'
+    records.append({'m3_mode':mode})
+    assert records.pop()['m3_mode']=='full_refresh'
+    assert len(records)==0 and bool(records)
+    mode='full_refresh' if not records else 'partial_update'
+    assert mode=='partial_update'
+
+
 def _candidate(polygon):
     return SimpleNamespace(
         persistent_id=7,

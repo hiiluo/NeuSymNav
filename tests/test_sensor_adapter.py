@@ -119,6 +119,26 @@ def test_independent_worker_process_protocol_and_shutdown(tmp_path):
             source.capture()  # old sensor samples cannot be republished as fresh
     finally:
         source.close()
+
+
+def test_habitat_worker_does_not_inherit_native_override_library_path(tmp_path, monkeypatch):
+    observed = tmp_path / 'worker-library-path.txt'
+    monkeypatch.setenv('LD_LIBRARY_PATH', '/bundle/native/lib:/project/local-assets/native/lib')
+    worker = tmp_path / 'env_worker.py'
+    worker.write_text(
+        'import json,os,sys\n'
+        f'open({str(observed)!r}, "w").write(os.environ.get("LD_LIBRARY_PATH", "<unset>"))\n'
+        'print(json.dumps({"ready": True, "wire_version": 1}), flush=True)\n'
+        'for line in sys.stdin:\n'
+        ' r=json.loads(line)\n'
+        ' if r["op"] == "close": break\n'
+        ' print(json.dumps({"ok": False, "error": "unexpected request"}), flush=True)\n'
+    )
+    source = HabitatPoseSource(python=sys.executable, config={}, worker_script=worker, timeout_s=2)
+    try:
+        assert observed.read_text() == '<unset>'
+    finally:
+        source.close()
     assert source.process.poll() is not None
 
 

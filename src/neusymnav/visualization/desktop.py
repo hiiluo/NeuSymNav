@@ -18,7 +18,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..contracts import NavSnapshot
 from ..contracts import RoomPipelinePublication
-from .hierarchy_view import hierarchy_rows, room_debug_items, resolve_object_selection, resolve_verification
+from .hierarchy_view import hierarchy_rows, resolve_object_selection, resolve_verification
 from .scene_graph import SceneGraphWidget
 from .spatial_scene import SpatialSceneWidget
 from .publisher import DisplayEnvelope, DisplayPublisher, UiCommandStatus, UiControlClient
@@ -41,10 +41,6 @@ class MapWidget(QtWidgets.QWidget):
         self._map_image: QtGui.QImage | None = None
         self._map_revision: int | None = None
         self._regions: tuple[np.ndarray, ...] = ()
-        self._stable_regions: tuple[tuple[str, str, np.ndarray], ...] = ()
-        self._debug_portals: tuple[object, ...] = ()
-        self.show_portal_candidates = False
-        self._selected_debug_id: str | None = None
         self._stale = False
         self._robot = None
         self._navigation = None
@@ -71,7 +67,6 @@ class MapWidget(QtWidgets.QWidget):
             self._map_image = None if raster is None else self._raster_image(raster)
         self.status_text = "Map unavailable · no NavSnapshot" if nav is None else f"Map available · nav revision {nav.revision}"
         regions = []
-        stable_regions = []
         pinned = envelope.sources.nav
         stale = nav is not None and (nav.revision != envelope.hierarchy.map_revision
                     or (pinned is not None and (nav.source, nav.capture_monotonic_ns, nav.clock_domain)
@@ -83,12 +78,6 @@ class MapWidget(QtWidgets.QWidget):
                 polygon = node.attributes.get("polygon")
                 if isinstance(polygon, np.ndarray):
                     regions.append(polygon)
-                    stable_id = node.attributes.get("stable_room_id")
-                    if stable_id is not None:
-                        status = str(node.attributes.get("stable_room_status", node.attributes.get("status", "unknown")))
-                        if node.attributes.get("stable_room_stale", False):
-                            status = "stale"
-                        stable_regions.append((str(stable_id), status, polygon))
         robot = envelope.sources.robot
         if robot is not None and nav is not None:
             last = robot.samples[-1]
@@ -98,31 +87,6 @@ class MapWidget(QtWidgets.QWidget):
         self._robot = robot if nav is not None else None
         self._navigation = getattr(envelope.sources, "navigation", None)
         self._regions = tuple(regions)
-        debug_items = room_debug_items(envelope)
-        stale = stale or any(item.stale for item in debug_items)
-        stable_by_id: dict[str, list[tuple[str, str, np.ndarray]]] = {}
-        for stable_id, status, polygon in stable_regions:
-            stable_by_id.setdefault(stable_id, []).append((stable_id, status, polygon))
-        for debug_item in debug_items:
-            if debug_item.kind != "room":
-                continue
-            debug_status = "stale" if debug_item.stale else debug_item.status
-            geometries = debug_item.geometries
-            if geometries:
-                parsed = []
-                for geometry in geometries:
-                    try:
-                        polygon = np.asarray(geometry, dtype=float)
-                        if polygon.ndim == 2 and polygon.shape[1] == 2 and len(polygon) >= 3:
-                            parsed.append(polygon)
-                    except (TypeError, ValueError):
-                        continue
-                if parsed:
-                    stable_by_id[debug_item.item_id] = [
-                        (debug_item.item_id, debug_status, polygon) for polygon in parsed
-                    ]
-        self._stable_regions = tuple(item for same_id in stable_by_id.values() for item in same_id)
-        self._debug_portals = tuple(item for item in debug_items if item.kind == "portal")
         self._stale = stale
         self._layout_map()
         self.update()
@@ -263,48 +227,6 @@ class MapWidget(QtWidgets.QWidget):
             ) for x, y in polygon]
             if len(points) >= 3:
                 painter.drawPolygon(QtGui.QPolygonF(points))
-        status_colors = {"tentative": "#f4b942", "confirmed": "#49d18d", "disputed": "#ef6ab5",
-                         "stale": "#9ca8b8", "unknown": "#c5a0ff"}
-        stable_label_ids = {stable_id: index + 1 for index, stable_id in enumerate(
-            sorted({stable_id for stable_id, _status, _polygon in self._stable_regions}))}
-        labeled_rooms = set()
-        for stable_id, status, polygon in self._stable_regions:
-            color = QtGui.QColor(status_colors.get(status.lower(), "#c5a0ff"))
-            line_style = QtCore.Qt.DashLine if status.lower() in {"tentative", "stale"} else QtCore.Qt.SolidLine
-            points = [QtCore.QPointF(
-                draw_rect.left() + ((float(x) - self._raster_source.origin_xy[0]) / self._raster_source.resolution_m) * sx,
-                draw_rect.bottom() - ((float(y) - self._raster_source.origin_xy[1]) / self._raster_source.resolution_m) * sy,
-            ) for x, y in polygon]
-            if len(points) >= 3:
-                if stable_id == self._selected_debug_id:
-                    painter.setPen(QtGui.QPen(QtGui.QColor("#ffffff"), 5, line_style))
-                    painter.drawPolygon(QtGui.QPolygonF(points))
-                painter.setPen(QtGui.QPen(color, 2.8, line_style))
-                painter.drawPolygon(QtGui.QPolygonF(points))
-                if stable_id not in labeled_rooms:
-                    labeled_rooms.add(stable_id)
-                    anchor = QtCore.QPointF(float(np.mean([p.x() for p in points])),
-                                            float(np.mean([p.y() for p in points])))
-                    badge = QtCore.QRectF(anchor.x() - 13, anchor.y() - 9, 26, 18)
-                    painter.setPen(QtGui.QPen(color, 1)); painter.setBrush(QtGui.QColor("#0c1421"))
-                    painter.drawRoundedRect(badge, 4, 4)
-                    painter.setPen(color); painter.drawText(badge, QtCore.Qt.AlignCenter, f"S{stable_label_ids[stable_id]}")
-        painter.setPen(QtGui.QPen(QtGui.QColor("#f4b942"), 2, QtCore.Qt.DotLine))
-        for portal in self._debug_portals if self.show_portal_candidates else ():
-            geometry = portal.geometry
-            try:
-                points_xy = np.asarray(geometry, dtype=float)
-                if points_xy.ndim == 2 and points_xy.shape[1] == 2 and len(points_xy) >= 2:
-                    points = [QtCore.QPointF(
-                        draw_rect.left() + ((float(x) - self._raster_source.origin_xy[0]) / self._raster_source.resolution_m) * sx,
-                        draw_rect.bottom() - ((float(y) - self._raster_source.origin_xy[1]) / self._raster_source.resolution_m) * sy,
-                    ) for x, y in points_xy]
-                    painter.drawLine(points[0], points[-1])
-                    midpoint = QtCore.QPointF((points[0].x() + points[-1].x()) / 2,
-                                              (points[0].y() + points[-1].y()) / 2)
-                    painter.drawText(midpoint + QtCore.QPointF(4, -4), "P · tentative")
-            except (TypeError, ValueError):
-                continue
         self._draw_rect = draw_rect
         painter.restore()
         self._draw_navigation(painter)
@@ -817,8 +739,6 @@ class DashboardWindow(QtWidgets.QMainWindow):
         legend = QtWidgets.QLabel(
             "<font color='#3a916f'>● Free</font>   <font color='#f55b4f'>● Obstacle</font>   "
             "<font color='#445265'>● Unknown</font>   <font color='#76c9f4'>┄ Latest DuDe</font>   "
-            "<font color='#49d18d'>● Confirmed</font>   <font color='#f4b942'>● Tentative</font>   "
-            "<font color='#ef6ab5'>● Disputed</font>   <font color='#f4b942'>··· Portal candidate</font>"
         )
         self.map_legend=legend
         legend.setStyleSheet("color:#3a916f; font-size:11px")
@@ -886,21 +806,6 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.hierarchy.setHeaderHidden(True)
         self.hierarchy.itemSelectionChanged.connect(self._tree_selection_changed)
         tabs.addTab(self.hierarchy, "Hierarchy")
-        room_debug_page = QtWidgets.QWidget()
-        room_debug_layout = QtWidgets.QVBoxLayout(room_debug_page)
-        room_debug_layout.setContentsMargins(8, 8, 8, 8)
-        room_debug_layout.addWidget(QtWidgets.QLabel("Stable room tracks and geometry-only portal candidates"))
-        self.room_debug_list = QtWidgets.QListWidget()
-        self.room_debug_list.setObjectName("roomDebugList")
-        self.room_debug_list.currentItemChanged.connect(self._room_debug_selection_changed)
-        self.room_debug_details = QtWidgets.QLabel("Room stability debug unavailable")
-        self.room_debug_details.setObjectName("roomDebugDetails")
-        self.room_debug_details.setWordWrap(True)
-        self.room_debug_details.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
-        self.room_debug_details.setTextFormat(QtCore.Qt.PlainText)
-        room_debug_layout.addWidget(self.room_debug_list, 2)
-        room_debug_layout.addWidget(self.room_debug_details, 1)
-        tabs.addTab(room_debug_page, "Room stability")
         controls = QtWidgets.QHBoxLayout()
         self.graph_controls = {}
         for label, tip, callback in (
@@ -915,12 +820,6 @@ class DashboardWindow(QtWidgets.QMainWindow):
             button.setText(label); button.setToolTip(tip)
             button.clicked.connect(callback)
             controls.addWidget(button); self.graph_controls[label] = button
-        self.portal_button = QtWidgets.QToolButton()
-        self.portal_button.setText("Portals (debug)")
-        self.portal_button.setCheckable(True)
-        self.portal_button.setToolTip("Show unverified geometry candidates; hidden by default")
-        self.portal_button.toggled.connect(self._toggle_portals)
-        controls.addWidget(self.portal_button)
         self.cloud_menu_button = QtWidgets.QToolButton()
         self.cloud_menu_button.setText("Cloud")
         self.cloud_menu_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
@@ -1062,7 +961,6 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.graph_view.set_envelope(envelope)
         self.spatial_view.set_envelope(envelope)
         self._render_hierarchy(envelope)
-        self._render_room_debug(envelope)
         if self._selected_object_id is None:
             first = next((node_id for node_id, node in envelope.hierarchy.nodes.items() if node.kind == "object"), None)
             if first is not None:
@@ -1103,9 +1001,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         if index==0:
             self.map_legend.setText(
                 "<font color='#3a916f'>● Free</font>   <font color='#f55b4f'>● Obstacle</font>   "
-                "<font color='#445265'>● Unknown</font>   <font color='#76c9f4'>┄ Latest DuDe</font>   "
-                "<font color='#49d18d'>● Confirmed</font>   <font color='#f4b942'>● Tentative</font>   "
-                "<font color='#ef6ab5'>● Disputed</font>   <font color='#f4b942'>··· Portal candidate</font>")
+                "<font color='#445265'>● Unknown</font>   <font color='#76c9f4'>┄ Latest DuDe</font>")
             self.map_trail_legend.show()
         else:
             self.map_legend.setText(
@@ -1255,65 +1151,6 @@ class DashboardWindow(QtWidgets.QMainWindow):
         if self._selected_object_id in items:
             self.hierarchy.setCurrentItem(items[self._selected_object_id])
         self.hierarchy.expandAll()
-
-    def _toggle_portals(self, enabled) -> None:
-        self.map_view.show_portal_candidates = bool(enabled)
-        self.spatial_view.show_portal_candidates = bool(enabled)
-        self.map_view.update(); self.spatial_view.update()
-        if self._envelope is not None:
-            self._render_room_debug(self._envelope)
-
-    def _render_room_debug(self, envelope: DisplayEnvelope) -> None:
-        items = room_debug_items(envelope)
-        self.room_debug_list.blockSignals(True)
-        self.room_debug_list.clear()
-        for debug_item in items:
-            if debug_item.kind == "portal" and not self.portal_button.isChecked():
-                continue
-            freshness = " · STALE" if debug_item.stale else ""
-            prefix = "Portal candidate" if debug_item.kind == "portal" else "Stable room"
-            title = f"{prefix} · {debug_item.item_id} · {debug_item.status}{freshness}"
-            item = QtWidgets.QListWidgetItem(title)
-            item.setData(QtCore.Qt.UserRole, debug_item.item_id)
-            item.setData(QtCore.Qt.UserRole + 1, debug_item.kind)
-            colors = {"tentative": "#f4b942", "confirmed": "#49d18d", "disputed": "#ef6ab5", "stale": "#9ca8b8"}
-            item.setForeground(QtGui.QBrush(QtGui.QColor(colors.get(debug_item.status.lower(), "#c5a0ff"))))
-            item.setToolTip(debug_item.detail)
-            self.room_debug_list.addItem(item)
-        selected = None
-        for index in range(self.room_debug_list.count()):
-            item = self.room_debug_list.item(index)
-            if item.data(QtCore.Qt.UserRole) == self.map_view._selected_debug_id:
-                selected = item
-                break
-        if selected is None and self.room_debug_list.count():
-            selected = self.room_debug_list.item(0)
-        self.room_debug_list.setCurrentItem(selected)
-        self.room_debug_list.blockSignals(False)
-        if selected is None:
-            self.map_view._selected_debug_id = None
-            self.room_debug_details.setText("No stable room or candidate portal debug data in this publication.")
-            if not items:
-                self.room_debug_list.addItem("Room stability debug unavailable")
-        else:
-            self._show_room_debug_item(selected.data(QtCore.Qt.UserRole))
-
-    def _room_debug_selection_changed(self, current, previous=None) -> None:
-        if current is None:
-            return
-        item_id = current.data(QtCore.Qt.UserRole)
-        if item_id is not None:
-            self._show_room_debug_item(str(item_id))
-
-    def _show_room_debug_item(self, item_id: str) -> None:
-        if self._envelope is None:
-            return
-        debug_item = next((item for item in room_debug_items(self._envelope) if item.item_id == item_id), None)
-        if debug_item is None:
-            return
-        self.room_debug_details.setText(debug_item.detail)
-        self.map_view._selected_debug_id = item_id if debug_item.kind == "room" else None
-        self.map_view.update()
 
     def select_object(self, object_id: str) -> str:
         """Select by canonical ID or alias and return the canonical ID."""

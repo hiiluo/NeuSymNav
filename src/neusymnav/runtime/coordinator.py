@@ -723,13 +723,13 @@ class Pipeline:
         if scope=='accumulated_measured_occupancy_v1':
             nodes=dict(result.nodes)
             for key,node in nodes.items():
-                if node.kind in {'floor','region'}:
+                if node.kind in {'floor','region','source_region'}:
                     nodes[key]=replace(node,attributes=dict(node.attributes,geometry_input_scope=scope,
                         source_map_shape=tuple(nav.states.shape),source_map_origin=nav.origin_xy,
                         source_map_resolution_m=nav.resolution_m,cell_evidence='historical_measured_classification'))
             edges=tuple(replace(edge,provenance=dict(edge.provenance,geometry_input_scope=scope,
                 cell_evidence='historical_measured_classification'))
-                if edge.kind in {'place_connected_to','in_region','region_contains_place','region_adjacent_to'}
+                if edge.kind in {'place_connected_to','in_region','in_source_region','region_contains_place','region_adjacent_to','source_region_adjacent_to'}
                 else edge for edge in result.edges)
             result=replace(result,nodes=nodes,edges=edges)
         result=replace(result,statuses=dict(result.statuses,places=self._place_status))
