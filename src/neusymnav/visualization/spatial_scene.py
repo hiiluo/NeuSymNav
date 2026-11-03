@@ -3,7 +3,7 @@ import math
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from .hierarchy_view import hierarchy_rows, hierarchy_links, room_debug_items
+from .hierarchy_view import hierarchy_rows, hierarchy_links
 
 
 class SpatialSceneWidget(QtWidgets.QWidget):
@@ -26,9 +26,6 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         self.yaw, self.pitch, self.zoom = .55, .95, 1.
         self.pan = np.zeros(2)
         self.nodes = {}; self.edges = (); self.polygons = (); self.source_polygons = ()
-        self.stable_polygons = ()
-        self.portal_candidates = ()
-        self.show_portal_candidates = False
         self.hidden_count = self.unassigned_count = 0
         self._episode = None
         self._domain = None
@@ -151,44 +148,6 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         edges = hierarchy_links(envelope, nodes)
         self.nodes, self.edges = nodes, tuple(edges)
         self.polygons, self.source_polygons = tuple(polygons), tuple(source_polygons)
-        floor_by_id = {str(node.attributes.get('floor_id', node.node_id)): node
-                       for node in envelope.hierarchy.nodes.values() if node.kind == 'floor'}
-        region_by_id = {node.node_id: node for node in envelope.hierarchy.nodes.values() if node.kind == 'region'}
-        default_floor = next(iter(floor_by_id.values()), None)
-        default_floor_z = float(default_floor.attributes.get('floor_z_m', 0.)) if default_floor is not None else 0.
-        stable_polygons = []
-        portal_candidates = []
-        for item in room_debug_items(envelope):
-            if item.kind == 'room':
-                region = next((region_by_id.get(region_id) for region_id in item.region_ids
-                               if region_by_id.get(region_id) is not None), None)
-                floor_id = None if region is None else region.attributes.get('floor_id')
-                floor_node = floor_by_id.get(str(floor_id)) if floor_id is not None else next(iter(floor_by_id.values()), None)
-                floor_z = float(floor_node.attributes.get('floor_z_m', 0.)) if floor_node is not None else 0.
-                status = 'stale' if item.stale else item.status
-                for geometry in item.geometries:
-                    try:
-                        ring = np.asarray(geometry, dtype=float)
-                    except (TypeError, ValueError):
-                        continue
-                    if ring.ndim != 2 or ring.shape[1] != 2 or len(ring) < 3 or not np.isfinite(ring).all():
-                        continue
-                    stable_polygons.append((item.item_id, status,
-                                            np.column_stack((ring, np.full(len(ring), floor_z + .015)))))
-            elif item.kind == 'portal' and item.geometry is not None:
-                try:
-                    endpoints = np.asarray(item.geometry, dtype=float)
-                except (TypeError, ValueError):
-                    continue
-                if endpoints.shape != (2, 2) or not np.isfinite(endpoints).all():
-                    continue
-                # P06 is single-floor. The portal publication currently has no
-                # floor field, so place its display-only geometry on the same
-                # pinned floor datum used by the room outlines.
-                portal_candidates.append((item.item_id, 'stale' if item.stale else 'tentative',
-                                          np.column_stack((endpoints, np.full(2, default_floor_z + .015)))))
-        self.stable_polygons = tuple(stable_polygons)
-        self.portal_candidates = tuple(portal_candidates)
         self.hidden_count, self.unassigned_count = hidden, unassigned
         # Fit again when geometry/layers change; user orbit/zoom remain intact.
         self._center = None
@@ -267,9 +226,6 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         if len(cloud_points): geometry.append(cloud_points)
         geometry.extend(self.polygons)
         geometry.extend(polygon for polygon, _stale in self.source_polygons)
-        geometry.extend(polygon for _room_id, _status, polygon in self.stable_polygons)
-        if self.show_portal_candidates:
-            geometry.extend(endpoints for _portal_id, _status, endpoints in self.portal_candidates)
         if self._center is None and geometry:
             points = np.concatenate(geometry)
             # Fit the observed scene, rather than a long region boundary or a
@@ -351,30 +307,6 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             painter.setPen(QtGui.QPen(color, 2, QtCore.Qt.DashLine if stale else QtCore.Qt.SolidLine))
             points = project(polygon)
             painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(*p) for p in np.vstack((points,points[0]))]))
-        status_colors = {'tentative': '#f4b942', 'confirmed': '#49d18d', 'disputed': '#ef6ab5',
-                         'stale': '#9ca8b8', 'unknown': '#c5a0ff'}
-        stable_label_ids = {room_id: index + 1 for index, room_id in enumerate(
-            sorted({room_id for room_id, _status, _polygon in self.stable_polygons}))}
-        labeled_rooms = set()
-        for room_id, status, polygon in self.stable_polygons:
-            color = QtGui.QColor(status_colors.get(status.lower(), '#c5a0ff'))
-            painter.setPen(QtGui.QPen(color, 2.6, QtCore.Qt.DashLine if status.lower() in {'tentative','stale'} else QtCore.Qt.SolidLine))
-            points = project(polygon)
-            painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(*p) for p in np.vstack((points,points[0]))]))
-            if room_id not in labeled_rooms:
-                labeled_rooms.add(room_id)
-                badge_center = np.mean(points, axis=0)
-                badge = QtCore.QRectF(float(badge_center[0]) - 15, float(badge_center[1]) - 9, 30, 18)
-                painter.setPen(QtGui.QPen(color, 1)); painter.setBrush(QtGui.QColor('#0c1421'))
-                painter.drawRoundedRect(badge, 4, 4)
-                painter.setPen(color); painter.drawText(badge, QtCore.Qt.AlignCenter, f'S{stable_label_ids[room_id]}')
-        for portal_index, (portal_id, status, endpoints) in enumerate(self.portal_candidates if self.show_portal_candidates else (), 1):
-            color = QtGui.QColor('#9ca8b8' if status == 'stale' else '#f4b942')
-            painter.setPen(QtGui.QPen(color, 2, QtCore.Qt.DotLine))
-            points = project(endpoints)
-            painter.drawLine(QtCore.QPointF(*points[0]), QtCore.QPointF(*points[-1]))
-            midpoint = (points[0] + points[-1]) / 2
-            painter.drawText(QtCore.QPointF(*midpoint), f'P{portal_index} · tentative')
         self._screen_nodes = {k:QtCore.QPointF(*project(n['position'])[0]) for k,n in self.nodes.items()}
         for source,target,kind in self.edges:
             adjacency = kind == 'region_adjacent_to'
@@ -445,11 +377,10 @@ class SpatialSceneWidget(QtWidgets.QWidget):
 
     @staticmethod
     def tool_instructions():
-        return ('Teal: Floor; blue: latest DuDe Room center; gold: Object. Stable Room outlines: green confirmed, '
-                'amber tentative, pink disputed. Dotted amber lines are tentative portal geometry candidates, '
-                'not detected doors or passage certificates. Objects and selected bounds retain measured XYZ in RGB-D. '
-                'Room/Floor Z is a hierarchy display layout, not physical height. Solid lines: assigned membership. '
-                'Cyan dashed lines: structural Room–Room connectivity, not a robot passage certificate. Unknown membership stays disconnected.')
+        return ('Teal: Floor; blue: Room; purple: Rebuild M5 region; gold: Object. '
+                'Objects and selected bounds retain measured XYZ in RGB-D. Room/Floor Z is a hierarchy display '
+                'layout, not physical height. Solid lines: assigned membership. Cyan dashed lines: structural region '
+                'connectivity, not a robot passage certificate. Unknown membership stays disconnected.')
 
     def mousePressEvent(self,event):
         self._drag=self._press=event.pos()

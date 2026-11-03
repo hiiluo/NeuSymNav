@@ -1,56 +1,20 @@
-"""Single-floor projection of immutable object/map/region publications.
+"""Single-floor projection of immutable object, map and M5 region publications.
 
-Composition pins the accepted source map independently of latest navigation.
-A region worker rejection retains geometry as stale and prevents membership.
+Rebuild profiles use accepted M5 polygons as their only room geometry source.
+Legacy profiles without the Rebuild room pipeline keep the generic region lane.
 """
 from __future__ import annotations
 import hashlib
-import json
 from ..contracts import (ObjectSnapshot,NavSnapshot,RegionSnapshot,RoomPipelinePublication,
                          HierarchySnapshot,HierarchyNode,HierarchyEdge,age_ns)
 from .membership import MembershipResolver,footprint_membership
 from .places import PlaceBuilder
 from ..regions.geometry import room_center
-from ..rooms.owner import DoorEvidence,RoomOwner
 
 class HierarchyComposer:
     def __init__(self,*,robot=None):
         self.membership=MembershipResolver();self.places=None if robot is None else PlaceBuilder(robot)
         self._revision=0;self._episode=None;self._last_revisions=None
-        self.rooms=RoomOwner();self._room_signature=None;self._room_publication=None
-
-    @staticmethod
-    def _door_evidence(objects,nav,regions):
-        """Turn committed, source-bound door object geometry into weak evidence."""
-        evidence=[]
-        for object_id,state in sorted(objects.objects.items()):
-            labels={str(value).strip().casefold() for value in (state.category,state.raw_label) if value}
-            if ('door' not in labels or not state.evidence_refs or state.footprint_xy is None
-                    or state.source.episode_id!=nav.episode_id or state.floor_id!=regions.floor_id
-                    or state.lifecycle in {'dormant','retired','merged'}
-                    or state.clock_domain!=nav.clock_domain
-                    or state.last_seen_ns>nav.capture_monotonic_ns):
-                continue
-            frame={'episode_id':state.source.episode_id,'sensor_id':state.source.sensor_id,
-                   'frame_index':state.source.frame_index}
-            refs=tuple(sorted(set(state.evidence_refs)))
-            identity=json.dumps([object_id,frame,refs],sort_keys=True,separators=(',',':'))
-            evidence_id='door-evidence:'+hashlib.sha256(identity.encode('utf-8')).hexdigest()
-            source_age_ns=None
-            if state.clock_domain==nav.clock_domain:
-                source_age_ns=nav.capture_monotonic_ns-state.last_seen_ns
-            provenance=json.dumps({
-                'object_id':object_id,'object_revision':state.revision,
-                'evidence_refs':list(refs),'source_frame':frame,
-                'source_last_seen_ns':state.last_seen_ns,
-                'source_clock_domain':state.clock_domain,
-                'age_at_room_map_capture_ns':source_age_ns,
-            },sort_keys=True,separators=(',',':'))
-            evidence.append(DoorEvidence(evidence_id,objects.episode_id,state.source,
-                tuple(tuple(float(v) for v in p) for p in state.footprint_xy),provenance))
-            if len(evidence)>=256:
-                break
-        return tuple(evidence)
 
     def observe_place(self,nav,robot_xy,*,pose_source=None,capture_monotonic_ns=None,clock_domain=None,exception_tag=None):
         if self.places is None:raise ValueError('place admission requires explicit robot geometry')
@@ -68,71 +32,41 @@ class HierarchyComposer:
             raise ValueError('hierarchy input revisions moved backward')
         if len(objects.objects)>1000 or len(regions.regions)>4096:
             raise ValueError('hierarchy object/region cap exceeded')
-        # Room evidence is updated only from the accepted, source-bound region
-        # input. Re-composing the same immutable sources (for example, to
-        # refresh latest-nav age) must not count as another observation.
-        room_signature=(objects.episode_id,objects.revision,nav.revision,regions.revision,
-                        regions.source_map_revision,regions.stale)
-        if room_signature!=self._room_signature:
-            door_evidence=self._door_evidence(objects,nav,regions)
-            self._room_publication=self.rooms.update(nav,regions,door_evidence=door_evidence)
-            self._room_signature=room_signature
-        room_publication=self._room_publication
-        rooms_by_region={}
-        if (room_publication is not None and not room_publication.stale
-                and room_publication.episode_id==nav.episode_id
-                and room_publication.source_map_revision==nav.revision
-                and not regions.stale):
-            for room in room_publication.rooms:
-                if room.status=='retired':
-                    continue
-                for region_id in room.region_ids:
-                    rooms_by_region.setdefault(region_id,[]).append(room)
+        # Presence selects the M5-only profile lane. A cross-episode publication
+        # must fail closed rather than falling back to a generic region snapshot.
+        m5_mode = room_pipeline is not None
         age=age_ns(nav.capture_monotonic_ns,nav.clock_domain,now_ns,clock_domain)
         building='building:'+nav.episode_id;floor='floor:'+regions.floor_id
         if set(regions.regions)&({building,floor}|set(objects.objects)):
             raise ValueError('hierarchy namespace collision')
         nodes={building:HierarchyNode(building,'building',{'scope':'single_floor','episode_id':nav.episode_id}),
-               floor:HierarchyNode(floor,'floor',{'floor_id':regions.floor_id,'floor_z_m':nav.floor_z_m,'floor_datum_source':nav.floor_datum_source,'calibration_hash':nav.calibration_hash,'room_debug':room_publication.to_debug() if room_publication is not None else {}})}
+               floor:HierarchyNode(floor,'floor',{'floor_id':regions.floor_id,'floor_z_m':nav.floor_z_m,'floor_datum_source':nav.floor_datum_source,'calibration_hash':nav.calibration_hash})}
         edges=[];statuses={}
         def edge(source,target,kind,**provenance):
             edges.append(HierarchyEdge(source,target,kind,'assigned',{'algorithm':'neusymnav_p06_v1',**provenance},objects.revision,nav.revision,regions.revision))
         edge(building,floor,'contains',scope='single_floor')
-        for key,r in sorted(regions.regions.items()):
-            room_candidates=rooms_by_region.get(key,[])
-            stable_room=room_candidates[0] if len(room_candidates)==1 else None
-            if len(room_candidates)>1:
-                room_status='ambiguous'
-                room_reason='multiple_active_rooms_claim_region'
-                room_candidate_ids=tuple(sorted({candidate.room_id for candidate in room_candidates})[:128])
-            elif stable_room is not None:
-                room_status=stable_room.status
-                room_reason=stable_room.reason
-                room_candidate_ids=(stable_room.room_id,)
-            else:
-                room_status='unavailable' if room_publication is None or room_publication.stale or regions.stale else 'unassigned'
-                room_reason='room_source_stale' if room_status=='unavailable' else 'no_stable_room_assignment'
-                room_candidate_ids=()
-            room_attributes={
-                'stable_room_id':stable_room.room_id if stable_room is not None else None,
-                'stable_room_status':room_status,
-                'stable_room_reason':room_reason,
-                'stable_room_candidates':room_candidate_ids,
-                'stable_room_support_count':stable_room.support_count if stable_room is not None else 0,
-                'stable_room_source_map_revision':room_publication.source_map_revision if room_publication is not None else -1,
-                'stable_room_stale':room_publication.stale if room_publication is not None else True,
-            }
-            nodes[key]=HierarchyNode(key,'region',{'floor_id':regions.floor_id,'polygon':r.polygon,'center_xy':room_center(r.polygon),'center_method':'area_centroid_or_interior_clearance_v1','predecessor_ids':r.predecessor_ids,'stale':regions.stale,'preprocessing_policy':'extended_unknown_boundary','geometry_only':True,'holes_supported':False,**room_attributes})
-            edge(floor,key,'contains',geometry_source_map_revision=regions.source_map_revision,stale=regions.stale)
-        for key,r in sorted(regions.regions.items()):
-            for target in sorted(r.adjacency):
-                if key<target:edge(key,target,'region_adjacent_to',motion_certificate=False,structural_only=True,stale=regions.stale)
-        memberships=self.membership.resolve(objects,regions)
-        for m in memberships:
-            obj=objects.objects[m.object_id]
-            nodes[m.object_id]=HierarchyNode(m.object_id,'object',{'floor_id':obj.floor_id,'category':obj.category,'raw_label':obj.raw_label,'centroid':obj.centroid,'bounds':obj.bounds,'lifecycle':obj.lifecycle,'evidence_refs':obj.evidence_refs,'membership_status':m.status,'membership_candidates':m.candidates,'membership_reason':m.reason,'aliases':tuple(sorted(alias for alias in objects.aliases if objects.resolve_id(alias)==m.object_id))})
-            statuses[m.object_id]=m.status
-            if m.region_id is not None:edge(objects.resolve_id(m.object_id),m.region_id,'in_region',policy='geometry_footprint_xy',reason=m.reason,candidates=m.candidates)
+        if not m5_mode:
+            for key,r in sorted(regions.regions.items()):
+                nodes[key]=HierarchyNode(key,'region',{'floor_id':regions.floor_id,'polygon':r.polygon,'center_xy':room_center(r.polygon),'center_method':'area_centroid_or_interior_clearance_v1','predecessor_ids':r.predecessor_ids,'stale':regions.stale,'preprocessing_policy':'extended_unknown_boundary','geometry_only':True,'holes_supported':False})
+                edge(floor,key,'contains',geometry_source_map_revision=regions.source_map_revision,stale=regions.stale)
+            for key,r in sorted(regions.regions.items()):
+                for target in sorted(r.adjacency):
+                    if key<target:edge(key,target,'region_adjacent_to',motion_certificate=False,structural_only=True,stale=regions.stale)
+            memberships=self.membership.resolve(objects,regions)
+            for m in memberships:
+                obj=objects.objects[m.object_id]
+                nodes[m.object_id]=HierarchyNode(m.object_id,'object',{'floor_id':obj.floor_id,'category':obj.category,'raw_label':obj.raw_label,'centroid':obj.centroid,'bounds':obj.bounds,'lifecycle':obj.lifecycle,'evidence_refs':obj.evidence_refs,'membership_status':m.status,'membership_candidates':m.candidates,'membership_reason':m.reason,'aliases':tuple(sorted(alias for alias in objects.aliases if objects.resolve_id(alias)==m.object_id))})
+                statuses[m.object_id]=m.status
+                if m.region_id is not None:edge(objects.resolve_id(m.object_id),m.region_id,'in_region',policy='geometry_footprint_xy',reason=m.reason,candidates=m.candidates)
+        else:
+            for object_id,obj in objects.objects.items():
+                nodes[object_id]=HierarchyNode(object_id,'object',{
+                    'floor_id':obj.floor_id,'category':obj.category,'raw_label':obj.raw_label,
+                    'centroid':obj.centroid,'bounds':obj.bounds,'lifecycle':obj.lifecycle,
+                    'evidence_refs':obj.evidence_refs,'membership_status':'unavailable',
+                    'membership_candidates':(),'membership_reason':'rebuild_m5_not_ready',
+                    'aliases':tuple(sorted(alias for alias in objects.aliases if objects.resolve_id(alias)==object_id)),
+                })
         source_region_nodes={}
         source_status='unavailable'
         if room_pipeline is not None and room_pipeline.episode_id==nav.episode_id:
@@ -197,8 +131,12 @@ class HierarchyComposer:
                             footprint=((low[0],low[1]),(high[0],low[1]),(high[0],high[1]),(low[0],high[1]))
                         membership=footprint_membership(footprint,source_regions.regions)
                     status,owner,candidates,reason=membership
+                    statuses[object_id]=status
                     prior=nodes[object_id]
                     nodes[object_id]=HierarchyNode(object_id,'object',dict(prior.attributes,
+                        membership_status=status,
+                        membership_candidates=tuple(candidates),
+                        membership_reason=reason,
                         rebuild_region_membership_status=status,
                         rebuild_region_membership_id=owner,
                         rebuild_region_membership_candidates=tuple(candidates),
@@ -225,13 +163,14 @@ class HierarchyComposer:
             for p in places.places:
                 nodes[p.place_id]=HierarchyNode(p.place_id,'place',{'xy':p.xy,'floor_id':regions.floor_id,'visited_count':p.visited_count,'footprint_validated':True,'map_revision':nav.revision,'robot_geometry_id':nav.robot_geometry_id})
                 edge(floor,p.place_id,'contains',observed_visit=True,footprint_validated=True)
-                if not regions.stale:
+                if not m5_mode and not regions.stale:
                     radius=self.places.robot.radius_m+self.places.robot.margin_m
                     x,y=p.xy
                     status,owner,candidates,reason=footprint_membership(((x-radius,y-radius),(x+radius,y-radius),(x+radius,y+radius),(x-radius,y+radius)),regions.regions)
                     if owner is not None:edge(owner,p.place_id,'region_contains_place',footprint_validated=True,policy='conservative_footprint_rectangle')
             for e in places.edges:edge(e.source_id,e.target_id,'place_connected_to',path_cells=e.path_cells,length_m=e.length_m,footprint_validated=True,robot_geometry_id=nav.robot_geometry_id,clearance_required_m=self.places.robot.height_m,radius_with_margin_m=self.places.robot.radius_m+self.places.robot.margin_m,motion_certificate=False)
-        statuses['regions']='unavailable' if regions.stale else 'assigned'
+        statuses['regions']=('superseded_by_rebuild_m5' if m5_mode else
+                             'unavailable' if regions.stale else 'assigned')
         publication=HierarchySnapshot(nav.episode_id,self._revision+1,objects.revision,nav.revision,regions.revision,nodes,tuple(edges),statuses,latest_nav_revision,age)
         self._revision+=1;self._episode=nav.episode_id;self._last_revisions=revisions
         return publication

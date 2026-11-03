@@ -217,6 +217,8 @@ def test_full_room_pipeline_config_is_explicit_and_validated(tmp_path, monkeypat
     resources, _issues = _assets(Configuration(config_path, loaded.data))
     assert resources["room_pipeline_pins"]["source_sha256"] == source_sha
     assert resources["room_m23"].is_file() and resources["room_m4"].is_file()
+    assert "region" not in resources
+    assert not any("workers.region" in issue for issue in _issues)
     base["workers"]["room_pipeline"]["backprojection_stride"] = 0
     config_path.write_text(json.dumps(base))
     with pytest.raises(ValueError, match="positive finite integer"):

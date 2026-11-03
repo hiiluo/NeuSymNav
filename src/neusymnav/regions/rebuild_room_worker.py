@@ -149,6 +149,28 @@ def _validated_m5_result(outcome):
         return False, None, f"invalid_m5_geometry:{exc}"
 
 
+class _PersistentMappingRecords(list):
+    """Keep Rebuild's first-vs-later M3 mode state after consuming each record.
+
+    The pinned Rebuild mapping stage chooses ``full_refresh`` when its records
+    list is falsey and ``partial_update`` otherwise. NeuSymNav consumes each
+    detailed update record immediately to keep memory bounded, so ordinary
+    ``list.pop`` would accidentally reset that mode decision every frame.
+    Preserve only the one-bit 'has integrated' state while keeping list length
+    bounded by the current record.
+    """
+    def __init__(self):
+        super().__init__()
+        self._has_integrated = False
+
+    def append(self, item):
+        self._has_integrated = True
+        super().append(item)
+
+    def __bool__(self):
+        return self._has_integrated or len(self)>0
+
+
 class RebuildEpisode:
     """Own M2/M3 and M4/M5 source stages for exactly one ordered episode."""
 
@@ -184,6 +206,9 @@ class RebuildEpisode:
             timeout_s=float(config["m23_timeout_s"]),
             default_max_range_m=float(config["max_range_m"]),
         )
+        # Rebuild selects M3 projection mode from records truthiness. We remove
+        # each detailed record below, but must retain its bounded mode state.
+        self.mapping._native.records = _PersistentMappingRecords()
         try:
             dude = native_mod.DuDeWorkerClient(
                 m4, native_mod.DuDeConfig(
