@@ -76,7 +76,8 @@ class FrontierExtractor:
     def extract(self, snapshot: GridSnapshot, robot_xy: tuple[float, float], *,
                 allow_validated_start_anchor: bool = False,
                 excluded_viewpoints: tuple[tuple[float, float], ...] = (),
-                excluded_viewpoint_radius_m: float = 0.0) -> FrontierSet:
+                excluded_viewpoint_radius_m: float = 0.0,
+                excluded_frontier_ids: frozenset[str] = frozenset()) -> FrontierSet:
         """Sample diverse views after excluding already observed world positions.
 
         Exclusions apply to the full reachable pool on every extraction, so a
@@ -136,9 +137,26 @@ class FrontierExtractor:
             if not viewpoint_pool:
                 continue
             canonical_viewpoint = viewpoint_pool[0]
+            world_x = snapshot.origin_x_m + (centroid[1] + 0.5) * snapshot.resolution_m
+            world_y = snapshot.origin_y_m + (centroid[0] + 0.5) * snapshot.resolution_m
+            signature = (round(world_x / 0.25), round(world_y / 0.25),
+                         round(len(cells) * snapshot.resolution_m / 0.20))
+            stable_id = hashlib.sha1(f"{signature[0]}:{signature[1]}:{signature[2]}".encode()).hexdigest()[:12]
+
+            def viewpoint_id(viewpoint):
+                frontier_id = f"frontier-{stable_id}"
+                if viewpoint != canonical_viewpoint:
+                    point_xy = snapshot.cell_to_world(*viewpoint)
+                    qx, qy = (math.floor(value / snapshot.resolution_m + 1e-6)
+                              for value in point_xy)
+                    frontier_id += f"-view-{qx}-{qy}"
+                return frontier_id
+
             viewpoints: list[tuple[int, int]] = []
             for viewpoint in viewpoint_pool:
                 point_xy = snapshot.cell_to_world(*viewpoint)
+                if viewpoint_id(viewpoint) in excluded_frontier_ids:
+                    continue
                 if (excluded_viewpoint_radius_m > 0
                         and any(math.dist(point_xy, point) < excluded_viewpoint_radius_m
                                 for point in excluded_viewpoints)):
@@ -152,23 +170,11 @@ class FrontierExtractor:
             if not viewpoints:
                 continue
             components_with_viewpoint += 1
-            world_x = snapshot.origin_x_m + (centroid[1] + 0.5) * snapshot.resolution_m
-            world_y = snapshot.origin_y_m + (centroid[0] + 0.5) * snapshot.resolution_m
-            signature = (round(world_x / 0.25), round(world_y / 0.25),
-                         round(len(cells) * snapshot.resolution_m / 0.20))
-            stable_id = hashlib.sha1(f"{signature[0]}:{signature[1]}:{signature[2]}".encode()).hexdigest()[:12]
             boundary_cells = tuple(sorted(cells))
             views = []
             for viewpoint in viewpoints:
                 point_xy = snapshot.cell_to_world(*viewpoint)
-                frontier_id = f"frontier-{stable_id}"
-                if viewpoint != canonical_viewpoint:
-                    # World bins survive integral rolling-origin shifts. Never
-                    # give an alternate the canonical ID: visited-ID memory for
-                    # that primary must not discard the whole component.
-                    qx, qy = (math.floor(value / snapshot.resolution_m + 1e-6)
-                              for value in point_xy)
-                    frontier_id += f"-view-{qx}-{qy}"
+                frontier_id = viewpoint_id(viewpoint)
                 views.append(Frontier(
                     frontier_id=frontier_id,
                     map_revision=snapshot.revision,

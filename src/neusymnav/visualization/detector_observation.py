@@ -3,6 +3,7 @@
 Runs on the graph publication lane. No inference, sensor call, or control wait.
 """
 import hashlib
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 
@@ -33,7 +34,7 @@ class CommittedObservationReader:
         if processed_source is None:return None
         database=self.root.parent/'objects.sqlite3'
         if not database.exists():return None
-        with sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True,timeout=.05) as conn:
+        with closing(sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True,timeout=.05)) as conn, conn:
             row=conn.execute('SELECT source_asset,batch_asset FROM batches ORDER BY rowid DESC LIMIT 1').fetchone()
         if row is None:return None
         if row==self._refs:

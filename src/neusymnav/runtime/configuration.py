@@ -14,7 +14,7 @@ import yaml
 MAX_CONFIG_BYTES=256*1024
 SHA=re.compile(r'^[0-9a-f]{64}$')
 TOP={'schema_version','mode','profile','episode','floor','workers','sensor_config','detector',
-     'fixture','appearance_mode','worker','provenance','navigation','budgets','ui','replay','measurements','keyframe_sampling','runtime','long_demo','association'}
+     'fixture','appearance_mode','worker','provenance','navigation','budgets','ui','replay','measurements','keyframe_sampling','runtime','long_demo','association','admission','active_perception'}
 
 
 class _Loader(yaml.SafeLoader):
@@ -71,6 +71,20 @@ def load_config(path):
     _mapping(value,'configuration',TOP,{'schema_version','mode','profile','episode','floor'})
     if type(value['schema_version']) is not int or value['schema_version']!=1:raise ValueError('schema_version must be integer 1')
     if value['mode'] not in {'live','fixture_cpu_no_models'}:raise ValueError('mode must be live or fixture_cpu_no_models')
+    if 'admission' in value:
+        admission=_mapping(value['admission'],'admission',{'mode'},{'mode'})
+        if type(admission['mode']) is not str or admission['mode'] not in {'off','shadow','enforce'}:raise ValueError('invalid admission.mode')
+    if 'active_perception' in value:
+        active=_mapping(value['active_perception'],'active_perception',{'mode','strategy'},{'mode'})
+        if active['mode'] not in ('off','shadow','active') or active.get('strategy','candidate') not in ('candidate','scheduled'):
+            raise ValueError('invalid active perception mode/strategy')
+        if active['mode']!='off':
+            sensor=value.get('sensor_config',{})
+            if value['mode']!='live' or sensor.get('motion_adapter')!='planar_fixed_y_v1':
+                raise ValueError('active perception requires live planar fixed-height profile')
+            initial=sensor.get('initial_position')
+            if not isinstance(initial,(tuple,list)) or len(initial)!=3 or any(type(x) not in (int,float) or not math.isfinite(x) for x in initial):
+                raise ValueError('active perception requires finite initial body height')
     sampling=value.get('keyframe_sampling','novelty')
     if type(sampling) is not str or sampling not in {'novelty','capacity_deferred'}:raise ValueError('invalid keyframe_sampling')
     if sampling=='capacity_deferred' and value['mode']!='live':raise ValueError('capacity_deferred sampling requires live mode')
@@ -241,7 +255,16 @@ def _validate_nested(value):
         if 'smoke_exit_ms' in ui and ui['smoke_exit_ms'] is not None:_positive(ui['smoke_exit_ms'],'ui.smoke_exit_ms',integer=True,maximum=300000)
     if 'replay' in value and type(value['replay'].get('allow_incomplete',False)) is not bool:raise ValueError('replay.allow_incomplete must be boolean')
     if 'sensor_config' in value:
-        sensor=value['sensor_config'];_mapping(sensor,'sensor_config',{'scene','scene_dataset','initial_position','initial_rotation_xyzw','gpu_device_id','floor_datum','primary','navigation','seed','motion_adapter'})
+        sensor=value['sensor_config'];_mapping(sensor,'sensor_config',{'scene','scene_dataset','initial_position','initial_rotation_xyzw','gpu_device_id','floor_datum','primary','navigation','seed','motion_adapter','navmesh_precision'})
+        if 'navmesh_precision' in sensor:
+            precision=sensor['navmesh_precision']
+            if (not isinstance(precision,dict) or set(precision)!={'schema_version','cell_height_m'} or
+                    type(precision['schema_version']) is not int or precision['schema_version']!=1 or
+                    type(precision['cell_height_m']) not in (int,float) or precision['cell_height_m']!=.01):
+                raise ValueError('unsupported sensor_config.navmesh_precision')
+            navigation=value.get('navigation',{})
+            if not isinstance(navigation.get('robot'),dict):
+                raise ValueError('sensor_config.navmesh_precision requires navigation robot geometry')
         adapter=sensor.get('motion_adapter','strict_3d')
         if type(adapter) is not str or adapter not in {'strict_3d','planar_fixed_y_v1'}:raise ValueError('unsupported sensor_config.motion_adapter')
         if 'seed' in sensor and (type(sensor['seed']) is not int or not 0<=sensor['seed']<=2**32-1):raise ValueError('sensor_config.seed must be a uint32 integer')

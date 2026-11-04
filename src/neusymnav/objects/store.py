@@ -275,6 +275,19 @@ class ObjectOwner:
                     camera_position=list(item.camera_position),object_revision=next_snapshot.revision,
                     crop_bbox_xyxy=refs['crop_bbox_xyxy'],observation_asset=observation_ref,
                     association_digest=trial._digest(adapted[i]))
+                # Persist source-derived admission measurements in the same
+                # transaction as the accepted event, never from the fused cloud.
+                mask = ds[item.detection_id].mask
+                denominator = int(np.count_nonzero(mask))
+                valid = int(np.count_nonzero(mask & source.valid_depth &
+                    (source.depth_m >= .15) & (source.depth_m < 5.)))
+                voxel_keys = np.floor(item.points_world / .03).astype(np.int64)
+                data['admission_evidence'] = dict(
+                    version='source-mask-world-voxel-lower-bound:v1',
+                    mask_pixels=denominator, valid_depth_pixels=valid,
+                    voxel_count=int(len(np.unique(voxel_keys, axis=0))),
+                    centroid=np.median(item.points_world, axis=0).tolist(),
+                    feature_space='none' if item.appearance is None else item.appearance.space_id)
                 views.append((event_ids[i],assigned.object_ids[i],refs,data))
             record=dict(common,completion=batch.completion,cap_reached=batch.cap_reached,
                 detections=detection_assets,projected_event_ids=list(event_ids))

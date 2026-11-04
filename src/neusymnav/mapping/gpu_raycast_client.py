@@ -20,6 +20,10 @@ LIMITS=dict(max_rays=100000,max_grid_cells=1000000,max_height_bins=256,
 MASKS=('planar_free','planar_hit','floor_hit','height_free','height_hit')
 
 
+class CompletedRequestDeadline(TimeoutError):
+    """A fully validated and drained response arrived too late to publish."""
+
+
 def _canonical(value):
     return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
 
@@ -88,11 +92,17 @@ class GpuRaycastClient:
         with self._state_lock:
             if self._closed:raise RuntimeError('GPU raycaster closed')
         if not self._wire.lock.acquire(blocking=False):raise RuntimeError('GPU request already in flight')
-        failed=False
+        failed=False;completed_deadline=False
+        started=time.monotonic();stage_started=started;stage='admission';stage_ms={};worker_timings=None
+        def advance(next_stage):
+            nonlocal stage,stage_started
+            now=time.monotonic();stage_ms[stage]=(now-stage_started)*1000
+            stage,stage_started=next_stage,now
         try:
             with self._state_lock:
                 if self._closed:raise RuntimeError('GPU raycaster closed before request admission')
             deadline=time.monotonic()+self.timeout_s
+            advance('request_prepare')
             if type(workers) is not int or not 1<=workers<=4:raise ValueError('invalid workers')
             e=np.ascontiguousarray(endpoints_world,dtype='<f8');camera=np.asarray(camera_origin_world,dtype=np.float64)
             geometry={k:float(v) for k,v in geometry.items()}
@@ -103,9 +113,13 @@ class GpuRaycastClient:
             g=dict(geometry,camera_origin_world=camera.tolist());identifier=str(uuid.uuid4())
             request=dict(protocol=PROTOCOL,id=identifier,n=len(e),geometry=g,
                 request_sha256=hashlib.sha256(_canonical(dict(n=len(e),geometry=g))+b'\0'+payload).hexdigest())
+            advance('request_write')
             self._write_request(payload,deadline)
+            advance('send')
             self._wire.send(request,deadline,limit=LIMITS['max_json_bytes'])
+            advance('receive')
             response=self._wire.receive(deadline)
+            advance('response_metadata')
             expected={'protocol','id','status','request_sha256','response_sha256','min_row','min_col',
                       'rows','cols','height_bins','response_bytes','timings_ms'}
             if (response.get('status')=='error'):raise RuntimeError('GPU raycasting failed: '+str(response.get('error','unknown'))[:256])
@@ -119,8 +133,11 @@ class GpuRaycastClient:
             if (not isinstance(timings,dict) or set(timings)!={'validation','kernel','total'}
                     or not all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in timings.values())):
                 raise ValueError('GPU timing metadata invalid')
+            worker_timings=dict(timings)
             size=layout[-1]
+            advance('response_read')
             data=self._read_response(size)
+            advance('response_validation')
             if len(data)!=size or hashlib.sha256(data).hexdigest()!=response['response_sha256']:
                 raise ValueError('GPU binary response checksum mismatch')
             raw=np.frombuffer(data,np.uint8)
@@ -128,17 +145,31 @@ class GpuRaycastClient:
             # comparison enforces the exact {0,1} domain without np.isin's
             # integer lookup/index temporaries on every dense vote buffer.
             if np.any(raw>1):raise ValueError('GPU masks must contain only bool values')
+            advance('mask_decode')
             min_row,min_col,rows,cols,bins,_=layout;at=0;arrays=[]
             for shape in [(rows,cols)]*3+[(rows,cols,bins)]*2:
                 count=math.prod(shape);arrays.append(raw[at:at+count].astype(bool).reshape(shape));at+=count
             arrays[0]&=~arrays[1];arrays[3]&=~arrays[4]
-            if time.monotonic()>=deadline:raise TimeoutError('GPU whole-operation deadline exceeded')
+            advance('final_deadline')
+            if time.monotonic()>=deadline:
+                completed_deadline=True
+                raise CompletedRequestDeadline('GPU whole-operation deadline exceeded')
             self.calls+=1
             self.runtime_metadata['requests_completed']=self.calls
             self.runtime_metadata['last_timings_ms']=dict(timings)
             return RaycastVotes(min_row,min_col,*arrays)
-        except BaseException:
-            failed=True;raise
+        except BaseException as exc:
+            completed_deadline=completed_deadline and type(exc) is CompletedRequestDeadline
+            failed=not completed_deadline
+            now=time.monotonic();stage_ms[stage]=(now-stage_started)*1000
+            self.runtime_metadata['last_failure']=dict(error_type=type(exc).__name__[:80],
+                stage=stage,elapsed_ms=(now-started)*1000,stage_ms=stage_ms,recoverable=completed_deadline)
+            if worker_timings is not None:self.runtime_metadata['last_failure']['worker_timings_ms']=worker_timings
+            if completed_deadline:
+                self.runtime_metadata['completed_deadline_misses']=self.runtime_metadata.get('completed_deadline_misses',0)+1
+            elif isinstance(exc,CompletedRequestDeadline):
+                raise TimeoutError('GPU request failed before completed response') from exc
+            raise
         finally:
             self._wire.lock.release()
             if failed:self.close()

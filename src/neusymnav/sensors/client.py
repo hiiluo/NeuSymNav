@@ -22,7 +22,7 @@ from dataclasses import asdict
 import numpy as np
 
 from neusymnav.contracts import FrameKey, Observation, MotionCommand
-from .habitat_worker import MAX_WIRE_BYTES, _ARRAY_NAMES, _checksum, _canonical, host_clock_domain
+from .habitat_worker import MAX_WIRE_BYTES, _ARRAY_NAMES, _checksum, _canonical, host_clock_domain, _validate_navmesh_precision_config
 
 
 _METADATA = {'episode_id', 'sensor_id', 'frame_index', 'capture_monotonic_ns', 'clock_domain',
@@ -110,6 +110,29 @@ def _validate_geometry_ack(requested, actual):
     return dict(actual)
 
 
+def _validate_navmesh_precision_ack(requested, actual, initial_position):
+    if requested is None:
+        if actual is not None:
+            raise ValueError('unsolicited navmesh precision ACK')
+        return None
+    if (not isinstance(actual, dict)
+            or set(actual) != {'schema_version', 'cell_height_m', 'initial_position_xyz'}
+            or type(actual['schema_version']) is not int or actual['schema_version'] != 1
+            or type(actual['cell_height_m']) not in (int, float)
+            or not math.isfinite(actual['cell_height_m'])
+            or not math.isclose(actual['cell_height_m'], requested['cell_height_m'], rel_tol=0, abs_tol=1e-6)):
+        raise ValueError('native navmesh precision ACK absent or mismatched')
+    position = actual['initial_position_xyz']
+    if (not isinstance(position, list) or len(position) != 3
+            or not isinstance(initial_position, (list, tuple)) or len(initial_position) != 3
+            or any(type(a) not in (int, float) or type(b) not in (int, float)
+                   or not math.isfinite(a) or not math.isfinite(b)
+                   or not math.isclose(a, b, rel_tol=0, abs_tol=1e-6)
+                   for a, b in zip(position, initial_position))):
+        raise ValueError('native navmesh precision ACK initial position mismatch')
+    return dict(actual)
+
+
 class HabitatPoseSource:
     """Real worker launch with independently configured ``python`` and scene.
 
@@ -139,6 +162,7 @@ class HabitatPoseSource:
         encoded_config = _canonical(launch_config)
         if len(encoded_config) > 256 * 1024:
             raise ValueError('sensor launch config exceeds 256 KiB')
+        precision_requested = _validate_navmesh_precision_config(launch_config)
         seed_requested = 'seed' in launch_config
         if seed_requested and (type(launch_config['seed']) is not int or not 0 <= launch_config['seed'] <= 2**32 - 1):
             raise ValueError('sensor seed must be a uint32 integer')
@@ -180,6 +204,8 @@ class HabitatPoseSource:
                 raise RuntimeError('sensor worker unavailable: ' + str(ready.get('error', ready)))
             geometry = _validate_geometry_ack(launch_config.get('agent_geometry'),ready.get('agent_geometry'))
             if geometry is not None:self._runtime_metadata['agent_geometry']=geometry
+            precision = _validate_navmesh_precision_ack(precision_requested, ready.get('navmesh_precision'),
+                                                        launch_config.get('initial_position'))
             execution = ready.get('execution')
             if seed_requested:
                 fields = {'schema_version','episode_id','clock_domain','seed','seed_method',
@@ -200,6 +226,8 @@ class HabitatPoseSource:
             # Receipt is only one part of startup. Config/clock/seed proof may
             # involve I/O too; never publish applied proof after this deadline.
             _check_deadline(ready_deadline)
+            if precision is not None:
+                self._runtime_metadata['navmesh_precision'] = precision
             if seed_requested:
                 self._runtime_metadata.update(execution=dict(execution), seed_status='applied')
                 self._episode = execution['episode_id']; self._domain = execution['clock_domain']

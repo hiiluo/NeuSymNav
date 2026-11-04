@@ -33,7 +33,7 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
         target = snapshot.nodes.get(edge.target_id)
         if source is None or target is None:
             continue
-        if edge.kind == "contains" and source.kind == "floor" and target.kind == "region":
+        if edge.kind == "contains" and source.kind == "floor" and target.kind in {"region", "room"}:
             child, owner = target.node_id, source.node_id
         elif edge.kind == "contains_source_region" and source.kind == "floor" and target.kind == "source_region":
             child, owner = target.node_id, source.node_id
@@ -54,10 +54,10 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
 
     rows: list[HierarchyRow] = []
     for node_id, node in snapshot.nodes.items():
-        if node.kind not in {"floor", "region", "source_region", "object"}:
+        if node.kind not in {"floor", "region", "room", "object"}:
             continue
         attrs = node.attributes
-        stale = node.kind in {"region", "source_region"} and bool(attrs.get("stale", False))
+        stale = node.kind in {"region", "room"} and bool(attrs.get("stale", False))
         lifecycle = attrs.get("lifecycle") if node.kind == "object" else None
         membership = attrs.get("membership_status") if node.kind == "object" else None
         verification, verification_reason, _record = (

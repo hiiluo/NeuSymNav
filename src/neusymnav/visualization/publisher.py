@@ -237,9 +237,35 @@ class DisplaySources:
     navigation: NavigationOverlay | None = None
     live_nav: NavSnapshot | None = None
     overview: MapOverview | None = None
-    room_pipeline: RoomPipelinePublication | None = None
+    admission: object | None = None
+    admission_status: Mapping[str, object] | None = None
+    active_perception: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
+        from ..contracts.admission import AdmissionSnapshot
+        if self.active_perception is not None:
+            status=self.active_perception
+            if (not isinstance(status,Mapping) or set(status)!={'mode','object_revision','stale','target','state','reason','remaining_time_ns'}
+                or status['mode'] not in ('shadow','active')
+                or type(status['object_revision']) is not int or status['object_revision']<0
+                or type(status['remaining_time_ns']) is not int or status['remaining_time_ns']<0
+                or type(status['stale']) is not bool
+                or any(not isinstance(status[k],str) or len(status[k])>256 for k in ('state','reason'))
+                or (status['target'] is not None and (not isinstance(status['target'],str) or len(status['target'])>256))):
+                raise ValueError('invalid active perception display status')
+            if self.objects is None or self.objects.revision!=status['object_revision']:
+                raise ValueError('active perception display object revision mismatch')
+            object.__setattr__(self,'active_perception',MappingProxyType(dict(status)))
+        if self.admission_status is not None:
+            status=self.admission_status
+            if (not isinstance(status, Mapping) or set(status)!={'mode','status','reason','stale'} or
+                    status['mode'] not in {'off','shadow','enforce'} or status['status'] not in {'off','available','unavailable'} or
+                    (status['reason'] is not None and (not isinstance(status['reason'],str) or len(status['reason'])>256)) or
+                    (status['stale'] is not None and type(status['stale']) is not bool)):
+                raise ValueError('invalid admission display status')
+            object.__setattr__(self,'admission_status',MappingProxyType(dict(status)))
+        if self.admission is not None and (not isinstance(self.admission, AdmissionSnapshot) or len(self.admission.decisions)>1000):
+            raise ValueError('bounded typed admission snapshot required')
         if self.overview is not None and not isinstance(self.overview, MapOverview):
             raise ValueError('typed accumulated map overview required')
         if self.room_pipeline is not None and not isinstance(self.room_pipeline, RoomPipelinePublication):
@@ -548,6 +574,8 @@ class DisplayPublisher:
             sample = sources.robot.samples[-1]
             if nav is None or (sample.source, sample.capture_monotonic_ns, sample.clock_domain) != (nav.source, nav.capture_monotonic_ns, nav.clock_domain):
                 raise ValueError('robot display trail must match displayed map source/time/clock')
+        if sources.admission is not None and (sources.admission.episode_id != snapshot.episode_id or sources.admission.object_revision != snapshot.object_revision):
+            raise ValueError('admission snapshot episode/revision mismatch')
         if sources.objects is not None:
             if sources.objects.episode_id != snapshot.episode_id or sources.objects.revision != snapshot.object_revision:
                 raise ValueError("display ObjectSnapshot must match the hierarchy's pinned episode/object revision")

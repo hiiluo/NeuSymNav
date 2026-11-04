@@ -434,3 +434,32 @@ Qtchild được phóng thêm1.5× so với scale hệ thống hiện có (`QT_S
 được nhân trong môi trường child). Chữ,nút,ảnh và nội dung vẽ cùng được scale;
 không chỉ tăng kích thước cửa sổ ưu tiên. Qt vẫn giới hạn cửa sổ theo diện tích
 màn hình khả dụng. Restartdemo để nhận zoom mới;host/control không đổi scale.
+
+### Object admission (experimental, default off)
+
+Top-level configuration accepts `"admission": {"mode": "off"}` with modes
+`off`, `shadow`, `enforce`. Copy an existing calibrated GPU JSON profile into
+`configs/p10/` and set this field; retain all worker/model/scene hashes. Run with
+`NEUSYMNAV_DEMO_CONFIG=/absolute/path/to/copied-profile.json bash tools/run_gpu_demo.sh 120`.
+`shadow` measures decisions without filtering. `enforce` publishes only admitted
+objects, keeping candidates in owner memory for association. Unknown evidence
+retains the last coherent graph as stale; check `object_admission` in runtime
+summary and the candidate table. Floor/room/object hierarchy export uses the same
+admitted subset as UI. Use a fresh episode/output; legacy evidence may lack
+required provenance. See `docs/results/object-graph-admission-2026-11-01.md` for
+measured limitations; this profile is not promoted by default.
+
+### Active object perception experiment
+
+Default: `active_perception.mode: off` (unchanged frontier baseline). For
+development, `configs/p10/active-perception-memory-00861.json` is the shadow
+profile. The `reobserve` and `scheduled` profiles are experimental candidates
+for the reviewed native campaign; no held-out quality gate has passed.
+All three use the same base detector, CG+Visual, fixed-height body and
+camera configuration as the 00861 baseline. Use `preflight --config` before
+any native launch; no assets are installed by the extension.
+
+The object panel shows reobserve target, reason and remaining budget; status
+for another object revision is displayed as historical. Request traces are
+exported in runtime metrics. Turning the feature off requires no ledger
+migration. See [implementation results](results/active-object-perception-2026-11-03.md).

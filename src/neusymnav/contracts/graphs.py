@@ -262,7 +262,7 @@ class HierarchyNode(Contract):
 
     def __post_init__(self):
         text(self.node_id, 'node_id')
-        choice(self.kind, {'building', 'floor', 'region', 'source_region', 'place', 'object'}, 'kind')
+        choice(self.kind, {'building', 'floor', 'region', 'room', 'place', 'object'}, 'kind')
         if not isinstance(self.attributes, Mapping):
             raise ValueError('attributes must be mapping')
         object.__setattr__(self, 'attributes', freeze(self.attributes))

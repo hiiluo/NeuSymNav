@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from collections import deque
 from dataclasses import fields,replace
 import hashlib
+from contextlib import closing
 import io
 import json
 import os
@@ -58,9 +59,9 @@ def _decode_value(value,depth=0):
     if set(value)=={'dto','fields'}:
         cls=_DTO.get(value['dto'])
         if cls is dto.DisplaySources and isinstance(value['fields'],dict):
-            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview'}
+            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview','admission','admission_status','active_perception'}
             if required <= incoming <= {f.name for f in fields(cls)}:
-                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,**value['fields']})
+                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,'admission':None,'admission_status':None,'active_perception':None,**value['fields']})
         if cls is None or not isinstance(value['fields'],dict) or set(value['fields'])!={f.name for f in fields(cls)}:
             raise ValueError('unknown UI DTO/schema fields')
         return cls(**{k:_decode_value(v,depth+1) for k,v in value['fields'].items()})
@@ -239,6 +240,7 @@ class UiProcess:
         self._robot_trail=RobotTrailBuffer()
         from neusymnav.visualization.detector_observation import CommittedObservationReader
         self._observation_reader=None if self.assets_root is None else CommittedObservationReader(self.assets_root,clock_domain=clock_domain)
+        self._admission_display_status=None
         self._rgb=None;self._stop=threading.Event();self._lock=threading.Lock();self.status=dict(failed=None,dropped_publications=0,coalesced_publications=0)
         self._publication_wake=threading.Event();self._pending_bundle=None;self._display_bundle=None;self._display_live_nav=None
         command=[str(python),str(script),'--root',str(self.root),'--clock-domain',clock_domain]
@@ -276,6 +278,10 @@ class UiProcess:
         except Exception as exc:
             self.status['robot_overlay_error']=f'{type(exc).__name__}: {exc}'[:256]
 
+    def set_admission_status(self,status):
+        with self._lock:self._admission_display_status=dict(status)
+        self._publication_wake.set()
+
     def set_rgb(self,observation):
         # Assign immutable source pointer only. Pixels are copied on UI lane.
         with self._lock:self._rgb=observation
@@ -285,7 +291,7 @@ class UiProcess:
         if self.assets_root is None or sources.verification is None or sources.objects is None:return best
         database=self.assets_root.parent/'objects.sqlite3'
         if not database.exists():return best
-        with sqlite3.connect('file:'+str(database)+'?mode=ro',uri=True,timeout=.05) as connection:
+        with closing(sqlite3.connect('file:'+str(database)+'?mode=ro',uri=True,timeout=.05)) as connection, connection:
             for object_id,record in sources.verification.objects.items():
                 for proof in record.evidence:
                     if len(best)>=3:return best
@@ -381,7 +387,7 @@ class UiProcess:
                 else:
                     if sources.nav is not None:self.publisher._validate_map_geometry(sources.nav,live_nav)
                     ages['live_map']=age_ns(live_nav.capture_monotonic_ns,live_nav.clock_domain,now,self.domain)
-            with self._lock:obs=self._rgb
+            with self._lock:obs=self._rgb;admission_status=self._admission_display_status
             if obs is not None:
                 rgb=dto.DisplayImage('rgb',obs.key,obs.capture_monotonic_ns,obs.clock_domain,obs.rgb)
                 ages['rgb']=max(0,time.monotonic_ns()-obs.capture_monotonic_ns)
@@ -408,7 +414,7 @@ class UiProcess:
                     overview=None
                 else:
                     ages['overview']=age_ns(overview.source_nav.capture_monotonic_ns,overview.source_nav.clock_domain,now,self.domain)
-            sources=replace(sources,live_nav=live_nav,overview=overview,best_views=tuple(self._images(sources)),robot=self._robot_trail.for_nav(displayed_nav),observation=observation,navigation=navigation)
+            sources=replace(sources,admission_status=admission_status,live_nav=live_nav,overview=overview,best_views=tuple(self._images(sources)),robot=self._robot_trail.for_nav(displayed_nav),observation=observation,navigation=navigation)
             metrics.update(sources=sources,source_age_ns=ages)
             self.publisher.publish(snapshot,metrics)
             payload=encode_publication(self.publisher.read_latest())

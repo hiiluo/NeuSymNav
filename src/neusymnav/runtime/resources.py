@@ -84,6 +84,8 @@ class _ProviderDiagnostics:
                             scope_changes=0, scope_truncations=0, query_errors=0,
                             deadline_exhaustions=0, attempt_limit_exhaustions=0)
         self._saturated = False
+        self._last_failure = None
+        self._last_failed_sample = None
 
     def add(self, **increments):
         with self._lock:
@@ -95,7 +97,20 @@ class _ProviderDiagnostics:
 
     def snapshot(self):
         with self._lock:
-            return dict(schema_version=1, **self._counts, counter_saturated=self._saturated)
+            failure = None if self._last_failure is None else dict(self._last_failure)
+            sample = None if self._last_failed_sample is None else dict(self._last_failed_sample)
+            return dict(schema_version=1, **self._counts, counter_saturated=self._saturated,
+                        last_failure=failure, last_failed_sample=sample)
+
+    def failure(self, stage, pid, error, sample_failed=False):
+        # A single bounded observation is sufficient to identify the failing
+        # operation while avoiding an unbounded log on persistent failures.
+        with self._lock:
+            self._last_failure = dict(stage=stage, pid=pid,
+                                      exception=type(error).__name__[:64],
+                                      reason=str(error)[:160])
+            if sample_failed:
+                self._last_failed_sample = dict(self._last_failure)
 
 
 class ProcTreeProvider:
@@ -230,8 +245,6 @@ class ProcTreeProvider:
             if leader:
                 if state[0]!='Z' or rss is not None:
                     raise ValueError('thread RSS fallback requires mm-less zombie leader')
-            elif state[0] not in ('Z', 'X') and rss is None:
-                raise ValueError('live thread RSS unavailable')
             return int(count[0]), state[0], rss
 
         count, _, _ = metadata(leader_status, pid, leader=True)
@@ -269,17 +282,37 @@ class ProcTreeProvider:
 
         before = tasks()
         selected_rss = None
+        missing_thread = None
         for tid in sorted(before):
             if tid==pid:
                 continue
-            # Read every task's bounded metadata so an ambiguous task cannot be
-            # silently skipped to find a convenient supported thread instead.
-            threads, state, value = metadata(read(self.proc_root/str(pid)/'task'/str(tid)/'status'), tid)
+            # Validate every task, even after finding an RSS value. A task may
+            # have already detached its mm during exit while another retains
+            # the shared address space; absent RSS is not itself a zero value.
+            thread_status = read(self.proc_root/str(pid)/'task'/str(tid)/'status')
+            threads, state, value = metadata(thread_status, tid)
             if threads!=count:
                 raise ScopeIdentityError('thread RSS count changed')
-            if state not in ('Z', 'X') and selected_rss is None:
-                selected_rss = value
+            if state not in ('Z', 'X'):
+                if value is not None and selected_rss is None:
+                    selected_rss = value
+                elif value is None and missing_thread is None:
+                    missing_thread = tid, state, threads, thread_status
         if selected_rss is None:
+            if missing_thread is not None:
+                tid, state, threads, thread_status = missing_thread
+                def comm(status):
+                    values = [line.partition(':')[2].strip() for line in status.splitlines()
+                              if line.startswith('Name:')]
+                    if len(values) != 1:
+                        return '?'
+                    return ''.join(c if 33 <= ord(c) <= 126 and c not in '=,' else '?'
+                                   for c in values[0][:16]) or '?'
+                raise ValueError(
+                    f'live thread RSS unavailable tid={tid} state={state} '
+                    f'threads={threads} leader=Z start={leader_identity[1]} '
+                    f'tid_start={before[tid][1]} comm={comm(thread_status)} '
+                    f'leader_comm={comm(leader_status)}')
             raise ValueError('no verified live thread RSS')
         final_count, _, _ = metadata(read(self.proc_root/str(pid)/'status'), pid, leader=True)
         if final_count!=count or tasks()!=before or self._stat(pid)!=leader_identity:
@@ -305,40 +338,52 @@ class ProcTreeProvider:
                 time.sleep(min(self.retry_wait_s,max(0.,(deadline_ns-time.monotonic_ns())/1e9)))
             if time.monotonic_ns() >= deadline_ns:
                 self._diagnostics.add(deadline_exhaustions=1)
+                self._diagnostics.failure('retry_wait', None,
+                                          ScopeDeadlineError('process scope deadline'), True)
                 return ResourceReading(time.monotonic_ns(), None, 0, scope_truncated=True)
             self._diagnostics.add(attempts=1, retries=int(attempt > 0))
             now = time.monotonic_ns()
             selected = {}
+            stage, pid = 'census_before', None
             try:
                 selected = self._census(deadline_ns)
                 rss = 0
                 for pid, identity in selected.items():
+                    stage = 'identity_before'
                     check_deadline(deadline_ns)
                     if self._stat(pid) != identity:
                         raise ScopeIdentityError('identity changed before RSS read')
+                    stage = 'rss'
                     rss += self._rss(pid)
                     if rss > MAX_COUNTER:
                         raise ValueError('RSS counter overflow')
+                    stage = 'identity_after'
                     if self._stat(pid) != identity:
                         raise ScopeIdentityError('identity changed after RSS read')
+                stage, pid = 'census_after', None
                 if self._census(deadline_ns) != selected:
                     self._diagnostics.add(scope_changes=1)
                     raise ScopeIdentityError('process closure changed during RSS trial')
                 check_deadline(deadline_ns)
                 return ResourceReading(now, rss, len(selected))
-            except ScopeDeadlineError:
+            except ScopeDeadlineError as error:
+                self._diagnostics.failure(stage, pid, error, True)
                 self._diagnostics.add(failed_attempts=1, deadline_exhaustions=1)
                 return ResourceReading(now, None, len(selected), scope_truncated=True)
-            except ScopeLimitError:
+            except ScopeLimitError as error:
+                self._diagnostics.failure(stage, pid, error, attempt+1 == self.max_attempts)
                 self._diagnostics.add(failed_attempts=1, scope_truncations=1)
                 result = ResourceReading(now, None, len(selected), scope_truncated=True)
-            except ScopeIdentityError:
+            except ScopeIdentityError as error:
+                self._diagnostics.failure(stage, pid, error, attempt+1 == self.max_attempts)
                 self._diagnostics.add(failed_attempts=1, identity_changes=1)
                 result = ResourceReading(now, None, len(selected), identity_changes=1)
-            except FileNotFoundError:
+            except FileNotFoundError as error:
+                self._diagnostics.failure(stage, pid, error, attempt+1 == self.max_attempts)
                 self._diagnostics.add(failed_attempts=1, missing_processes=1)
                 result = ResourceReading(now, None, len(selected), missing_processes=1)
-            except (OSError, ValueError):
+            except (OSError, ValueError) as error:
+                self._diagnostics.failure(stage, pid, error, attempt+1 == self.max_attempts)
                 self._diagnostics.add(failed_attempts=1, read_errors=1)
                 result = ResourceReading(now, None, len(selected), read_errors=1)
         self._diagnostics.add(attempt_limit_exhaustions=1)

@@ -5,6 +5,7 @@ Only the Qt child creates AsyncCloudReader; disk/projection work runs off its
 GUI thread. No new sensor, model, graph writer or IPC payload is introduced.
 """
 from collections import OrderedDict
+from contextlib import closing
 from dataclasses import dataclass
 import hashlib
 import json
@@ -76,7 +77,7 @@ class CommittedCloudReader:
         database = self.root.parent / 'objects.sqlite3'
         if not database.is_file() or database.is_symlink():
             return self._snapshot
-        with sqlite3.connect(database.resolve().as_uri()+'?mode=ro', uri=True, timeout=.05) as conn:
+        with closing(sqlite3.connect(database.resolve().as_uri()+'?mode=ro', uri=True, timeout=.05)) as conn, conn:
             config = conn.execute("SELECT value FROM metadata WHERE key='config' AND length(value)<=8192").fetchone()
             if config is None:
                 raise ValueError('missing cloud ledger provenance')

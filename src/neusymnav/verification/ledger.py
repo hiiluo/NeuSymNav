@@ -225,7 +225,8 @@ class VerificationOwner:
             reason = 'historical_or_expired'
         self._db.execute('INSERT INTO negatives VALUES (?,?,?,?,?)',
             (record['event_id'],snapshot.aliases.get(record['object_id'],record['object_id']),
-             int(reason is None),'accepted_current' if reason is None else reason,canonical(dict(record,consumer_epoch=self._negative_epoch))))
+             int(reason is None),'accepted_current' if reason is None else reason,canonical(dict(record,consumer_epoch=self._negative_epoch,
+                consumption_mode='historical' if replay else 'live'))))
 
     def _consume(self, snapshot, event_ids, *, replay):
         self._db.execute('BEGIN IMMEDIATE')

@@ -481,6 +481,20 @@ def _agent_geometry(value):
     return dict(value)
 
 
+def _validate_navmesh_precision_config(config):
+    """Closed opt-in schema; absence leaves the native settings untouched."""
+    if 'navmesh_precision' not in config:
+        return None
+    value = config['navmesh_precision']
+    if (not isinstance(value, dict) or set(value) != {'schema_version', 'cell_height_m'}
+            or type(value['schema_version']) is not int or value['schema_version'] != 1
+            or type(value['cell_height_m']) not in (int, float)
+            or not math.isfinite(value['cell_height_m']) or value['cell_height_m'] != .01
+            or config.get('agent_geometry') is None):
+        raise ValueError('invalid navmesh precision configuration')
+    return value
+
+
 class HabitatCapture:
     """Real Habitat-Sim adapter, constructed only in the native interpreter.
 
@@ -492,6 +506,8 @@ class HabitatCapture:
         self.config = config
         self.execution_ack = None
         self.geometry_ack = None
+        self.navmesh_precision_ack = None
+        precision = _validate_navmesh_precision_config(config)
         geometry = _agent_geometry(config.get('agent_geometry'))
         if 'seed' in config and (type(config['seed']) is not int or not 0 <= config['seed'] <= 2**32 - 1):
             raise ValueError('sensor seed must be a uint32 integer')
@@ -555,9 +571,15 @@ class HabitatCapture:
                     settings.set_defaults()
                 settings.agent_radius = geometry['radius_m']
                 settings.agent_height = geometry['height_m']
+                if precision is not None:
+                    settings.cell_height = precision['cell_height_m']
                 if not self.sim.recompute_navmesh(self.sim.pathfinder, settings):
                     raise RuntimeError('native navmesh recomputation failed for agent geometry')
                 actual = self.sim.pathfinder.nav_mesh_settings
+                if precision is not None and (type(actual.cell_height) not in (int, float)
+                        or not math.isfinite(actual.cell_height)
+                        or not math.isclose(actual.cell_height, precision['cell_height_m'], rel_tol=0, abs_tol=1e-6)):
+                    raise RuntimeError('native navmesh precision readback mismatch')
                 agent = self.sim.get_agent(0).agent_config
                 values = dict(radius_m=float(agent.radius), height_m=float(agent.height),
                               navmesh_radius_m=float(actual.agent_radius), navmesh_height_m=float(actual.agent_height))
@@ -583,6 +605,12 @@ class HabitatCapture:
             self._navigation_state = None
             self._last_map_revision = -1
             self._set_pose(config['initial_position'], config['initial_rotation_xyzw'])
+            if precision is not None:
+                actual_position = np.asarray(self.agent.get_state().position, dtype=np.float64)
+                if actual_position.shape != (3,) or not np.isfinite(actual_position).all():
+                    raise RuntimeError('native navmesh precision initial position unavailable')
+                self.navmesh_precision_ack = dict(schema_version=1, cell_height_m=float(actual.cell_height),
+                                                  initial_position_xyz=actual_position.tolist())
             self._yaw_math = _qualified_native_yaw(habitat_sim)
             self._planar_math = _qualified_native_planar(habitat_sim) if self._motion_adapter == 'planar_fixed_y_v1' else None
             self._planar_initial_valid = (self._planar_math is not None and
@@ -972,7 +1000,8 @@ def main(argv=None):
         output.write(json.dumps(dict(ready=True, wire_version=WIRE_VERSION,
                                     pose_source='simulator_ground_truth',
                                     execution=capture.execution_ack,
-                                    agent_geometry=capture.geometry_ack)) + '\n')
+                                    agent_geometry=capture.geometry_ack,
+                                    navmesh_precision=capture.navmesh_precision_ack)) + '\n')
         while True:
             line = sys.stdin.buffer.readline(64 * 1024 + 1)
             if not line:

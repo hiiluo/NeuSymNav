@@ -878,6 +878,24 @@ class DashboardWindow(QtWidgets.QMainWindow):
         detail_scroll.setMaximumHeight(190)
         detail_scroll.setWidget(self.object_details)
         evidence_layout.addWidget(detail_scroll)
+        admission_toggle = QtWidgets.QToolButton()
+        admission_toggle.setText("Admission diagnostics")
+        admission_toggle.setCheckable(True)
+        evidence_layout.addWidget(admission_toggle)
+        self.admission_status_label = QtWidgets.QLabel('Admission: off')
+        self.admission_status_label.setTextFormat(QtCore.Qt.PlainText)
+        evidence_layout.addWidget(self.admission_status_label)
+        self.active_status_label=QtWidgets.QLabel()
+        self.active_status_label.setTextFormat(QtCore.Qt.PlainText)
+        self.active_status_label.setWordWrap(True)
+        self.active_status_label.hide()
+        evidence_layout.addWidget(self.active_status_label)
+        self.admission_table = QtWidgets.QTableWidget(0, 5)
+        self.admission_table.setHorizontalHeaderLabels(["Object ID", "State", "Reasons", "Independent views", "Depth support"])
+        self.admission_table.setMaximumHeight(150)
+        self.admission_table.setVisible(False)
+        admission_toggle.toggled.connect(self.admission_table.setVisible)
+        evidence_layout.addWidget(self.admission_table)
         self.sensor_row.setSizes([1100, 1000])
         self.workspace_split.setSizes([430, 650])
         self.workspace_split.setChildrenCollapsible(False)
@@ -937,7 +955,34 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self._refresh_telemetry()
         self._refresh_command_status()
 
+    def _render_admission(self, admission) -> None:
+        decisions = () if admission is None else tuple(d for _, d in sorted(admission.decisions.items()) if d.state != 'admitted' or d.availability != 'available')
+        self.admission_table.setRowCount(len(decisions))
+        for row, decision in enumerate(decisions):
+            quality = decision.quality
+            values = (decision.object_id, decision.state if decision.availability == 'available' else decision.state + ' (unavailable)',
+                      ', '.join(decision.reason_codes), str(quality.get('independent_views', 'unavailable')),
+                      str(quality.get('depth_fraction_min') if quality.get('depth_fraction_min') is not None else 'unavailable'))
+            for column, value in enumerate(values):
+                self.admission_table.setItem(row, column, QtWidgets.QTableWidgetItem(value))
+
     def _render_envelope(self, envelope: DisplayEnvelope) -> None:
+        self._render_admission(envelope.sources.admission)
+        aop=envelope.sources.active_perception
+        self.active_status_label.setVisible(aop is not None)
+        if aop is not None:
+            target=aop['target'] or '—'
+            freshness='historical' if aop['stale'] else 'current'
+            self.active_status_label.setText(
+                f"Reobserve {aop['mode']} · {aop['state']} · {target} · {aop['reason']} · "
+                f"{aop['remaining_time_ns']/1e9:.1f}s budget · {freshness}")
+        admission_status=envelope.sources.admission_status
+        if admission_status is None:
+            self.admission_status_label.setText('Admission: off')
+        else:
+            suffix=' · STALE' if admission_status['stale'] else ''
+            reason=admission_status['reason'] or ''
+            self.admission_status_label.setText(f"Admission {admission_status['mode']}: {admission_status['status']}{suffix} {reason}".strip())
         self.map_view.set_snapshot(getattr(envelope.sources, "live_nav", None) or envelope.sources.nav, envelope)
         self.room_map_view.set_publication(envelope.sources.room_pipeline)
         self.room_map_revision_combo.setEnabled(

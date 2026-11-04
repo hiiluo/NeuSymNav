@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import json
 import hashlib
 import importlib.metadata
+from contextlib import closing
 import sys
 import uuid
 import math
@@ -433,8 +434,11 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
         encoder_factory=encoder,region_factory=region,mapper=mapper,navigator=navigator,guard=guard,
         keyframe_policy=_RecordedPolicy() if recorded is not None else None,now_ns=now_ns,
         actual_profile=profile,publisher=publisher,measurements=measurements,
-        **({'keyframe_sampling':sampling} if sampling!='novelty' else {}),
-        room_pipeline_factory=room_pipeline,**budgets)
+        admission_mode=d.get('admission',{}).get('mode','off'),
+        active_perception=d.get('active_perception'),
+        active_body_z_m=d.get('sensor_config',{}).get('initial_position',[0.,0.,0.])[1]
+            if d.get('active_perception',{}).get('mode','off')!='off' else None,
+        **({'keyframe_sampling':sampling} if sampling!='novelty' else {}),**budgets)
     pipeline._launcher_worker_metadata=worker_metadata
     if raycast_backend is not None:
         try:
@@ -452,6 +456,21 @@ def _root(out,*,resume):
     root.mkdir(parents=True,exist_ok=True)
     if not resume and any(root.iterdir()):raise ValueError('live episode requires a new empty run directory')
     return root
+
+
+def _admission_export_projection(objects, hierarchy, events):
+    """Project the durable owner snapshot to the exact published graph IDs."""
+    if objects is None or hierarchy is None:
+        return None, []
+    ids={key for key,node in hierarchy.nodes.items() if node.kind=='object'}
+    if not ids <= objects.objects.keys():
+        raise ValueError('published object missing from durable owner snapshot')
+    projected=replace(objects,objects={key:value for key,value in objects.objects.items() if key in ids},
+        aliases={key:value for key,value in objects.aliases.items() if objects.resolve_id(key) in ids})
+    def included(event):
+        try:return objects.resolve_id(event['object_id']) in ids
+        except (KeyError,ValueError):return False
+    return projected,[event for event in events if included(event)]
 
 
 def _export(root,pipeline,report,metadata):
@@ -474,7 +493,7 @@ def _export(root,pipeline,report,metadata):
     checkpoint=root/'objects'/'objects.sqlite3';objects=None;events=[];events_total=None
     # Only after the owner has quiesced. Never open a second owner connection.
     if report['clean_shutdown'] and checkpoint.exists():
-        with sqlite3.connect('file:'+str(checkpoint)+'?mode=ro',uri=True) as connection:
+        with closing(sqlite3.connect('file:'+str(checkpoint)+'?mode=ro',uri=True)) as connection, connection:
             row=connection.execute("SELECT value FROM metadata WHERE key='checkpoint'").fetchone()
             if row:objects=loads(json.loads(row[0])['snapshot'])
             events_total=connection.execute('SELECT count(*) FROM events').fetchone()[0]
@@ -500,6 +519,21 @@ def _export(root,pipeline,report,metadata):
         or nav.clock_domain!=pipeline.clock_domain):
         snapshot=nav=None
         export_issue='final hierarchy/map/object bundle revisions or clock mismatch'
+    if getattr(pipeline,'_admission_mode','off')=='enforce':
+        objects,events=_admission_export_projection(objects,snapshot,events)
+        # Count and page only public canonical IDs and their historical aliases;
+        # the unfiltered durable ledger remains the owner memory.
+        events_total=None
+        if objects is not None and report['clean_shutdown'] and checkpoint.exists():
+            ids=tuple(sorted(set(objects.objects) | set(objects.aliases)))
+            if not ids:
+                events_total=0;events=[]
+            else:
+                placeholders=','.join('?' for _ in ids)
+                with closing(sqlite3.connect('file:'+str(checkpoint)+'?mode=ro',uri=True)) as connection, connection:
+                    events_total=connection.execute('SELECT count(*) FROM events WHERE object_id IN ('+placeholders+')',ids).fetchone()[0]
+                    events=[dict(event_id=a,object_id=b,source=json.loads(c).get('source')) for a,b,c in
+                        connection.execute('SELECT event_id,object_id,data FROM events WHERE object_id IN ('+placeholders+') ORDER BY event_id LIMIT 4096',ids)]
     payloads={}
     invocations=getattr(pipeline,'_control_invocations',None)
     if invocations is not None:
@@ -508,7 +542,9 @@ def _export(root,pipeline,report,metadata):
         metadata=dict(metadata,control_invocations_artifact=dict(path='control-invocations.json',
             sha256=hashlib.sha256(payloads['control-invocations.json']).hexdigest(),complete=trace['complete']))
         if not trace['complete'] and metadata['outcome']=='completed':metadata=dict(metadata,outcome='incomplete')
-    if snapshot is not None:payloads['hierarchy.json']=dumps(snapshot).encode()
+    if snapshot is not None:
+        from ..hierarchy.composer import public_hierarchy
+        payloads['hierarchy.json']=dumps(public_hierarchy(snapshot)).encode()
     if nav is not None:payloads['nav.json']=dumps(nav).encode()
     if objects is not None:payloads['objects.json']=dumps(objects).encode()
     if room_pipeline is not None:payloads['room-pipeline.json']=dumps(room_pipeline).encode()
