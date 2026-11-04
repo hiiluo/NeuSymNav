@@ -7,6 +7,7 @@ from .graphs import (CommitResult, GridState, HierarchyComposer, HierarchyEdge, 
     HierarchySnapshot, NavMapper, NavSnapshot, ObjectOwner, ObjectSnapshot, ObjectState,
     Region, RegionBackend, RegionGrid, RegionSnapshot, VerificationOwner)
 from .navigation import MotionCommand, MotionGuard, NavigationDecision, Navigator
+from .room_pipeline import RoomMapSnapshot, RoomPipelinePublication
 from .serialization import dumps, from_dict, loads, to_dict
 
 from .admission import AdmissionDecision, AdmissionSnapshot

@@ -39,6 +39,9 @@ def wheel(widget,delta,mods=QtCore.Qt.NoModifier):
 
 def test_visible_splitters_resize_graph_height_and_evidence_width(window):
     app,w,_=window
+    # Leave enough room above both panes' minimum sizes so the vertical
+    # splitter has an actual movable range in headless CI displays.
+    w.resize(1500,1700);app.processEvents()
     before=w.workspace_split.sizes()
     handle=w.workspace_split.handle(1);p=handle.rect().center()
     drag(handle,p,p-QtCore.QPoint(0,110))

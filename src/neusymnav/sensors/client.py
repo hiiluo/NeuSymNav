@@ -177,7 +177,11 @@ class HabitatPoseSource:
             seed_status='not_requested', actual_resolution_hw={})
         from ..perception.detector_client import _BoundedProcess
         self.timeout_s = timeout_s
-        self._wire = _BoundedProcess(command, timeout_s=timeout_s, response_limit=MAX_WIRE_BYTES, lines=True)
+        # The simulator owns its graphics stack. Native room workers may add
+        # bundled GLX/GLdispatch libraries to the host's LD_LIBRARY_PATH;
+        # inheriting that overlay can silently replace Mesa's sensor render path.
+        self._wire = _BoundedProcess(command, timeout_s=timeout_s, response_limit=MAX_WIRE_BYTES,
+                                     lines=True, unset_environment=('LD_LIBRARY_PATH',))
         self._lock = self._wire.lock
         self._closed = False
         self._last = {}

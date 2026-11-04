@@ -25,7 +25,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         self._filtered_arrays = None
         self.yaw, self.pitch, self.zoom = .55, .95, 1.
         self.pan = np.zeros(2)
-        self.nodes = {}; self.edges = (); self.polygons = ()
+        self.nodes = {}; self.edges = (); self.polygons = (); self.source_polygons = ()
         self.hidden_count = self.unassigned_count = 0
         self._episode = None
         self._domain = None
@@ -55,7 +55,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         from ..regions.geometry import room_center, valid_ring
         envelope = self.envelope
         rows = hierarchy_rows(envelope)
-        nodes = {}; polygons = []; floor_geometry = {}; hidden = unassigned = 0
+        nodes = {}; polygons = []; source_polygons = []; floor_geometry = {}; hidden = unassigned = 0
         # Geometry anchors are rebuilt for every publication, independent of
         # persistent IDs. Display heights never mutate measured source geometry.
         for row in rows:
@@ -71,7 +71,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
                 if row.status != 'assigned':
                     unassigned += 1
                 label = str(attrs.get('category') or attrs.get('raw_label') or 'object')[:24] + ' · ' + row.node_id[:6]
-            elif row.kind == 'room':
+            elif row.kind in {'room', 'source_region'}:
                 try:
                     polygon = np.asarray(attrs.get('polygon', ()), dtype=float)
                 except (ValueError, TypeError):
@@ -95,13 +95,18 @@ class SpatialSceneWidget(QtWidgets.QWidget):
                 floor_node = envelope.hierarchy.nodes.get(row.parent_id)
                 floor_z = float(floor_node.attributes.get('floor_z_m', 0.)) if floor_node is not None else 0.
                 position = np.r_[xy, floor_z]
-                polygons.append(np.column_stack((polygon, np.full(len(polygon), floor_z))))
+                display_polygon = np.column_stack((polygon, np.full(len(polygon), floor_z)))
+                if row.kind == 'source_region':
+                    source_polygons.append((display_polygon, row.stale))
+                else:
+                    polygons.append(display_polygon)
                 relative = polygon-polygon[0]
                 nxt = np.roll(relative, -1, axis=0)
                 area = abs(float(np.sum(relative[:,0]*nxt[:,1]-nxt[:,0]*relative[:,1])))/2
-                if area > 0 and row.parent_id is not None:
+                if row.kind == 'room' and area > 0 and row.parent_id is not None:
                     floor_geometry.setdefault(row.parent_id, []).append((xy, area))
-                label = 'Room · ' + row.node_id[-8:] + (' · STALE' if row.stale else '')
+                label_prefix = 'Rebuild M5 · ' if row.kind == 'source_region' else 'Room · '
+                label = label_prefix + row.node_id[-8:] + (' · STALE' if row.stale else '')
             else:
                 # Floor XY is filled from its own source-assigned rooms below.
                 position = np.array([0., 0., float(attrs.get('floor_z_m', 0.))])
@@ -136,12 +141,13 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             measured_top = max(measured_tops, default=float(positions[:,2].max()))
             gap = max(.5, float(np.ptp(positions[:,:2], axis=0).max())*.12)
             base = max(measured_top, float(positions[:,2].max()))+gap
-            heights = {'room': base, 'floor': base+gap}
+            heights = {'room': base, 'source_region': base+gap*.5, 'floor': base+gap}
             for node in nodes.values():
                 if node['row'].kind in heights:
                     node['position'][2] = heights[node['row'].kind]
         edges = hierarchy_links(envelope, nodes)
-        self.nodes, self.edges, self.polygons = nodes, tuple(edges), tuple(polygons)
+        self.nodes, self.edges = nodes, tuple(edges)
+        self.polygons, self.source_polygons = tuple(polygons), tuple(source_polygons)
         self.hidden_count, self.unassigned_count = hidden, unassigned
         # Fit again when geometry/layers change; user orbit/zoom remain intact.
         self._center = None
@@ -219,6 +225,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         cloud_points,_ = self.visible_cloud()
         if len(cloud_points): geometry.append(cloud_points)
         geometry.extend(self.polygons)
+        geometry.extend(polygon for polygon, _stale in self.source_polygons)
         if self._center is None and geometry:
             points = np.concatenate(geometry)
             # Fit the observed scene, rather than a long region boundary or a
@@ -295,6 +302,11 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             painter.setPen(QtGui.QPen(QtGui.QColor('#3c7397'),1,QtCore.Qt.DashLine))
             points = project(polygon)
             painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(*p) for p in np.vstack((points,points[0]))]))
+        for polygon, stale in self.source_polygons:
+            color = QtGui.QColor('#9ca8b8' if stale else '#c084fc')
+            painter.setPen(QtGui.QPen(color, 2, QtCore.Qt.DashLine if stale else QtCore.Qt.SolidLine))
+            points = project(polygon)
+            painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(*p) for p in np.vstack((points,points[0]))]))
         self._screen_nodes = {k:QtCore.QPointF(*project(n['position'])[0]) for k,n in self.nodes.items()}
         for source,target,kind in self.edges:
             adjacency = kind == 'region_adjacent_to'
@@ -305,15 +317,17 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             painter.drawLine(self._screen_nodes[source],self._screen_nodes[target])
         label_rects=[]
         painter.setFont(QtGui.QFont('DejaVu Sans',9))
-        ordered = sorted(self.nodes, key=lambda k:({'floor':0,'room':1,'object':2}[self.nodes[k]['row'].kind], k != self.selected,k))
+        rank = {'floor':0, 'room':1, 'source_region':2, 'object':3}
+        ordered = sorted(self.nodes, key=lambda k:(rank.get(self.nodes[k]['row'].kind, 9), k != self.selected,k))
         for key in ordered:
             node=self.nodes[key];row=node['row'];pos=self._screen_nodes[key]
-            color = '#69baff' if row.kind == 'room' else '#60beb1' if row.kind == 'floor' else '#efb451'
+            color = ('#69baff' if row.kind == 'room' else '#c084fc' if row.kind == 'source_region'
+                     else '#60beb1' if row.kind == 'floor' else '#efb451')
             if node['attrs'].get('lifecycle') == 'retired': color='#768294'
             pen=QtGui.QPen(QtGui.QColor('#ffffff' if key==self.selected else '#152437'),2 if key==self.selected else 1)
             if row.kind=='object' and row.status!='assigned': pen.setStyle(QtCore.Qt.DashLine)
             painter.setPen(pen);painter.setBrush(QtGui.QColor(color))
-            radius=7 if row.kind in {'room', 'floor'} or key==self.selected else 5
+            radius=7 if row.kind in {'room', 'source_region', 'floor'} or key==self.selected else 5
             painter.drawEllipse(pos,radius,radius)
             if key==self.selected:
                 bounds=np.asarray(node['attrs'].get('bounds',()),dtype=float)
@@ -363,7 +377,10 @@ class SpatialSceneWidget(QtWidgets.QWidget):
 
     @staticmethod
     def tool_instructions():
-        return 'Teal: Floor; blue: Room geometry center; gold: Object. Objects and selected bounds retain measured XYZ in RGB-D. Room/Floor Z is a hierarchy display layout, not physical height. Solid lines: assigned membership. Cyan dashed lines: structural Room–Room connectivity, not a robot passage certificate. Unknown membership stays disconnected.'
+        return ('Teal: Floor; blue: Room; purple: Rebuild M5 region; gold: Object. '
+                'Objects and selected bounds retain measured XYZ in RGB-D. Room/Floor Z is a hierarchy display '
+                'layout, not physical height. Solid lines: assigned membership. Cyan dashed lines: structural region '
+                'connectivity, not a robot passage certificate. Unknown membership stays disconnected.')
 
     def mousePressEvent(self,event):
         self._drag=self._press=event.pos()

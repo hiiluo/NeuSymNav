@@ -224,8 +224,11 @@ def _assets(config):
     if d['mode']=='fixture_cpu_no_models':
         check('detections',lambda:config.asset(d.get('fixture',{}).get('detections'),'fixture.detections'))
     else:
-        for name in ('sensor','detector','region'):
+        for name in ('sensor','detector'):
             check(name,lambda name=name:config.worker(name))
+        room_config=d.get('workers',{}).get('room_pipeline')
+        if room_config is None:
+            check('region',lambda:config.worker('region'))
         sensor=d.get('sensor_config',{})
         check('scene',lambda:config.asset(sensor.get('scene'),'sensor_config.scene'))
         if not sensor.get('navigation'):issues.append('sensor_config.navigation requires a calibrated independent depth sensor')
@@ -236,6 +239,26 @@ def _assets(config):
         if d.get('navigation',{}).get('mapper',{}).get('raycast_backend','cpu')=='triton_cuda':
             check('raycast',lambda:config.worker('raycast'))
         if sensor.get('scene_dataset') is not None:check('scene_dataset',lambda:config.asset(sensor['scene_dataset'],'sensor_config.scene_dataset'))
+    room_config=d.get('workers',{}).get('room_pipeline')
+    if room_config is not None:
+        from ..regions.rebuild_room_worker import (
+            EXPECTED_M23_SHA256,EXPECTED_M4_SHA256,EXPECTED_SOURCE_TREE_SHA256,
+            _source_tree_sha256,
+        )
+        check('room_m23',lambda:config.asset(room_config.get('m23_binary'),'workers.room_pipeline.m23_binary',executable=True))
+        check('room_m4',lambda:config.asset(room_config.get('m4_binary'),'workers.room_pipeline.m4_binary',executable=True))
+        def check_room_pins():
+            if 'room_m23' in resolved and file_sha256(resolved['room_m23'])!=EXPECTED_M23_SHA256:
+                raise ValueError('workers.room_pipeline M2/M3 binary differs from the pinned source profile')
+            if 'room_m4' in resolved and file_sha256(resolved['room_m4'])!=EXPECTED_M4_SHA256:
+                raise ValueError('workers.room_pipeline M4 binary differs from the pinned source profile')
+            source_root=Path(room_config['source_root'])
+            actual=_source_tree_sha256(source_root)
+            if actual!=EXPECTED_SOURCE_TREE_SHA256:
+                raise ValueError('workers.room_pipeline Rebuild Python closure differs from the pinned source profile')
+            return dict(source_root=str(source_root),source_sha256=actual,
+                        m23_sha256=EXPECTED_M23_SHA256,m4_sha256=EXPECTED_M4_SHA256)
+        check('room_pipeline_pins',check_room_pins)
     if d.get('measurements',{}).get('enabled') and 'gpu_executable' in d['measurements']:
         check('measurement_gpu',lambda:config.asset(d['measurements']['gpu_executable'],'measurements.gpu_executable',executable=True))
     if d.get('appearance_mode','off') in {'openclip','openai_clip'}:
@@ -337,7 +360,8 @@ def _pipeline(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,me
 
 def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=None,measurements=None,raycast_backend=None):
     d=config.data;e=d['episode'];mapper=_mapper(config,root,raycast_backend=raycast_backend)
-    encoder=None;region=None;navigator=None;guard=None;worker_metadata={}
+    encoder=None;region=None;room_pipeline=None;navigator=None;guard=None;worker_metadata={}
+    room_config=d.get('workers',{}).get('room_pipeline')
     if recorded is None:
         from ..perception.detector_client import DetectorClient,validate_recipe
         from ..contracts import Taxonomy
@@ -348,8 +372,16 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
         detector_python,detector_script=assets['detector'];detector_worker=d['workers']['detector']
         detector=lambda:_DetectorMetadata(DetectorClient(python=detector_python,worker_script=detector_script,recipe=recipe,
             timeout_s=detector_worker.get('timeout_s',2.),startup_timeout_s=detector_worker.get('startup_timeout_s',30.)),worker_metadata)
-        from ..regions.backend import RegionBackend
-        region=lambda:RegionBackend(assets['region'],floor_id=e['floor_id'])
+        region_config=d.get('workers',{}).get('region',{})
+        if room_config is None:
+            if region_config.get('backend','dude')=='rebuild_m4_m5':
+                from ..regions.rebuild_backend import RebuildRegionBackend
+                region=lambda:RebuildRegionBackend(assets['region'],floor_id=e['floor_id'],
+                    source_root=region_config['source_root'],
+                    timeout_s=region_config.get('timeout_s',30.))
+            else:
+                from ..regions.backend import RegionBackend
+                region=lambda:RegionBackend(assets['region'],floor_id=e['floor_id'],reset_on_geometry_change=True)
         if not domain.startswith('replay:'):
             from ..navigation.controller import Navigator
             from ..navigation.safety import MotionGuard
@@ -365,7 +397,25 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
                 max_request_bytes=worker.get('max_request_bytes',32*1024**2),
                 _worker_command=[str(appearance_python),str(appearance_script),'--worker']),worker_metadata)
     else:detector=lambda:recorded;vocabulary=recorded.vocabulary_id
+    if room_config is not None:
+        from ..regions.rebuild_rgbd_input import RebuildRGBDConfig
+        from ..regions.rebuild_room_session import RebuildRoomSession
+        room_config=dict(room_config)
+        room_profile=RebuildRGBDConfig(**{key:room_config[key] for key in (
+            'resolution_m','backprojection_stride','min_depth_m','max_depth_m','max_range_m')
+            if key in room_config})
+        room_pipeline=lambda:RebuildRoomSession(
+            source_root=room_config['source_root'],m23_binary=assets['room_m23'],
+            m4_binary=assets['room_m4'],episode_id=e['id'],floor_id=e['floor_id'],
+            config=room_profile,ipc_timeout_s=room_config.get('ipc_timeout_s',60.),
+            m23_timeout_s=room_config.get('m23_timeout_s',15.),
+            m4_timeout_s=room_config.get('m4_timeout_s',30.),
+            run_dir=root/'room-pipeline'/'session')
     profile=d['profile']+(':'+d['mode'] if recorded is not None else ':yoloe:appearance-'+d.get('appearance_mode','off'))
+    if d.get('workers',{}).get('region',{}).get('backend','dude')=='rebuild_m4_m5':
+        profile+=':rooms-rebuild_m4_m5'
+    if d.get('workers',{}).get('room_pipeline') is not None:
+        profile+=':rooms-rebuild_rgbd_m1_m5'
     sampling=d.get('keyframe_sampling','novelty')
     if (recorded is not None or domain.startswith('replay:')) and sampling!='novelty':raise ValueError('recorded replay requires exact semantic input, not live capacity sampling')
     if sampling!='novelty':profile+=':sampling-'+sampling
@@ -384,6 +434,7 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
         encoder_factory=encoder,region_factory=region,mapper=mapper,navigator=navigator,guard=guard,
         keyframe_policy=_RecordedPolicy() if recorded is not None else None,now_ns=now_ns,
         actual_profile=profile,publisher=publisher,measurements=measurements,
+        room_pipeline_factory=room_pipeline,
         admission_mode=d.get('admission',{}).get('mode','off'),
         active_perception=d.get('active_perception'),
         active_body_z_m=d.get('sensor_config',{}).get('initial_position',[0.,0.,0.])[1]
@@ -425,6 +476,8 @@ def _admission_export_projection(objects, hierarchy, events):
 
 def _export(root,pipeline,report,metadata):
     restored=False;export_issue=None
+    room_bundle=getattr(pipeline,'room_pipeline_snapshot',None)
+    room_pipeline=room_bundle() if callable(room_bundle) else None
     bundle=getattr(pipeline,'snapshot_bundle',None)
     if callable(bundle):
         snapshot,nav=bundle()
@@ -492,9 +545,11 @@ def _export(root,pipeline,report,metadata):
         if not trace['complete'] and metadata['outcome']=='completed':metadata=dict(metadata,outcome='incomplete')
     if snapshot is not None:
         from ..hierarchy.composer import public_hierarchy
-        payloads['hierarchy.json']=dumps(public_hierarchy(snapshot)).encode()
+        exported_hierarchy=snapshot if room_pipeline is not None else public_hierarchy(snapshot)
+        payloads['hierarchy.json']=dumps(exported_hierarchy).encode()
     if nav is not None:payloads['nav.json']=dumps(nav).encode()
     if objects is not None:payloads['objects.json']=dumps(objects).encode()
+    if room_pipeline is not None:payloads['room-pipeline.json']=dumps(room_pipeline).encode()
     if snapshot is None or nav is None:
         export_issue=export_issue or 'coherent hierarchy/map unavailable; replay accepted evidence to rebuild'
         if metadata['outcome']=='completed':metadata['outcome']='incomplete'
@@ -515,6 +570,11 @@ def _export(root,pipeline,report,metadata):
         events_total=events_total,events_complete=events_total is not None and len(events)==events_total,
         events_scope='summary_first4096_by_event_id; canonical ledger retains full history',
         hierarchy_available=snapshot is not None,hierarchy_restored=restored,export_issue=export_issue,
+        room_pipeline_available=room_pipeline is not None,
+        room_pipeline_revisions=None if room_pipeline is None else dict(
+            domain=room_pipeline.map_domain_id,latest_m3=room_pipeline.latest_map.revision,
+            accepted_m3=room_pipeline.accepted_map_revision,m5=room_pipeline.m5_revision,
+            regions_stale=room_pipeline.regions_stale,replay_required=room_pipeline.replay_required),
         source_revisions=None if snapshot is None else dict(object=snapshot.object_revision,map=snapshot.map_revision,
             region=snapshot.region_revision,latest_nav=snapshot.latest_nav_revision),
         limitations=['CPU fixture evidence is not native runtime validation'] if metadata['mode']=='fixture_cpu_no_models' else ['native pipeline acceptance requires P10 measurements'])

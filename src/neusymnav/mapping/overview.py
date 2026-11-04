@@ -1,4 +1,8 @@
-"""Bounded, immutable display-only history of measured occupancy."""
+"""Bounded immutable measured tiles; coarsened overviews are display-only.
+
+The room lane consumes the exact raw tile history through room_map, not the
+coarsened raster returned by build_overview. Control retains its local map.
+"""
 from dataclasses import dataclass
 import math
 from types import MappingProxyType

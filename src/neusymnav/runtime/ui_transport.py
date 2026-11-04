@@ -59,9 +59,9 @@ def _decode_value(value,depth=0):
     if set(value)=={'dto','fields'}:
         cls=_DTO.get(value['dto'])
         if cls is dto.DisplaySources and isinstance(value['fields'],dict):
-            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview','admission','admission_status','active_perception'}
+            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview','room_pipeline','admission','admission_status','active_perception'}
             if required <= incoming <= {f.name for f in fields(cls)}:
-                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,'admission':None,'admission_status':None,'active_perception':None,**value['fields']})
+                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,'room_pipeline':None,'admission':None,'admission_status':None,'active_perception':None,**value['fields']})
         if cls is None or not isinstance(value['fields'],dict) or set(value['fields'])!={f.name for f in fields(cls)}:
             raise ValueError('unknown UI DTO/schema fields')
         return cls(**{k:_decode_value(v,depth+1) for k,v in value['fields'].items()})

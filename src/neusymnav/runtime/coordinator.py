@@ -11,6 +11,7 @@ from contextlib import contextmanager, nullcontext
 import inspect
 import json
 import math
+from collections import deque
 from collections.abc import Mapping
 from pathlib import Path
 from threading import Event,RLock
@@ -27,6 +28,8 @@ from .scheduler import Entry,KeyframeScheduler,KeyframePolicy,payload_bound
 from .workers import Journal,atomic_write,background,remaining,valid_timeout
 from .health import Health
 from .quota import RunQuota
+
+ROOM_PIPELINE_DISK_RESERVATION_BYTES = 2 * 1024**3 + 128 * 1024**2
 
 
 def _stationary_partial_yaw_refusal(actuator, result, command, source, xy, yaw):
@@ -81,7 +84,7 @@ class Pipeline:
                  floor_id,actual_profile='geometry-only',
                  byte_cap=32*1024**2,raw_cap=2*1024**3,total_cap=8*1024**3,
                  startup_timeout_s=5.,publisher=None,measurements=None,keyframe_sampling='novelty',admission_mode='off',
-                 active_perception=None,active_body_z_m=None):
+                 active_perception=None,active_body_z_m=None,room_pipeline_factory=None):
         self._active=None
         self._active_memory=None
         self._active_input=None
@@ -113,6 +116,7 @@ class Pipeline:
         self.floor_id=floor_id;self.now_ns=now_ns;self.publisher=publisher;self.measurements=measurements
         self.owner_factory=owner_factory;self.detector_factory=detector_factory;self.verifier_factory=verifier_factory
         self.encoder_factory=encoder_factory;self.region_factory=region_factory
+        self.room_pipeline_factory=room_pipeline_factory
         self.mapper=mapper;self.navigator=navigator;self.guard=guard
         core=getattr(mapper,'_core',None)
         if core is not None:self._require_run_path(core._tile_archive.directory,'NavMapper tile_archive_dir')
@@ -134,6 +138,13 @@ class Pipeline:
         self._place_counts=dict(offered=0,pose_replaced=0,pair_replaced=0,consumed=0,stale=0,unmatched=0)
         self._place_status='unavailable_no_measured_pose'
         self._accepted_nav=None;self._regions=None;self._objects=None;self._hierarchy=None;self._hierarchy_nav=None;self._publication_revisions=None
+        self._region_diagnostics={};self._accepted_region_scope='local_snapshot'
+        self._room_queue=deque();self._room_queue_bytes=0;self._room_inflight_bytes=0
+        self._room_publication=None;self._room_session=None;self._room_failure=None
+        self._room_journal=deque(maxlen=8192)
+        self._room_journal_dropped=0
+        self._room_counts=dict(offered=0,queued=0,session_admitted=0,rejected=0,processed=0,queue_dropped=0)
+        self._room_wake=Event()
         self._prior_incomplete=False;self._fast=None;self._processed=None;self._captured=None;self._last_index=-1;self._last_stamp=-1
         self._counts=dict(submitted=0,offered=0,durable_accepted=0,committed=0,missing=0,recovered=0,detector_calls=0)
         self._journal_counts=dict(accepted=0,committed=0,pending=0);self._cleanup_pending={};self._worker_done={}
@@ -149,6 +160,7 @@ class Pipeline:
             self._threads['recorder']=background('recorder',self._recorder_run)
             if mapper is not None:self._threads['navigation']=background('navigation',self._navigation_run)
             if region_factory is not None:self._threads['region']=background('region',self._region_run)
+            if room_pipeline_factory is not None:self._threads['room_pipeline']=background('room-pipeline',self._room_pipeline_run)
         else:self._recorder_done.set()
 
     def _require_run_path(self,path,label):
@@ -193,6 +205,8 @@ class Pipeline:
                     self._nav_pose_input=proof[1];self._pose_offer=None
                 self._nav_wake.set()
             if obs.modality!='rgbd':return
+            if self.room_pipeline_factory is not None:
+                self._offer_room_input_locked(obs)
             self._last_index=obs.key.frame_index;self._last_stamp=obs.capture_monotonic_ns
             if self._semantic_sampling['seen']==(1<<63)-1:
                 # Stop before incrementing any population: independent counter
@@ -394,7 +408,7 @@ class Pipeline:
             self._worker_done['recorder']=True;self._recorder_done.set();self._wake.set()
 
     def _cleanup(self,name,resource):
-        if resource is None or not hasattr(resource,'close'):return
+        if resource is None or not hasattr(resource,'close'):return True
         try:
             method=resource.close
             if 'timeout_s' in inspect.signature(method).parameters:
@@ -402,13 +416,17 @@ class Pipeline:
             else:report=method()
             if isinstance(report,dict) and report.get('clean_shutdown') is False:
                 self._cleanup_pending[name]=report
+                return False
             elif bool(getattr(resource,'is_alive',False)):
                 self._cleanup_pending[name]='worker remains alive'
+                return False
             else:self._cleanup_pending.pop(name,None)
+            return True
         except BaseException as exc:
             # In particular AppearanceShutdownPending may mean Popen is still
             # creating a process even if its current is_alive property is false.
             self._cleanup_pending[name]=f'{type(exc).__name__}: {exc}'
+            return False
 
     def _graph_run(self):
         journal=owner=detector=encoder=verifier=None
@@ -629,6 +647,11 @@ class Pipeline:
                     if provider is not None:overview = provider()
                 except Exception:
                     pass  # Optional display data must never fail control.
+                room_provider=getattr(self.mapper,'room_input_tiles',None)
+                room_tiles=None
+                if callable(room_provider):
+                    try:room_tiles=room_provider()
+                    except Exception:pass  # Region lane reports unavailable; control proceeds.
                 with self._lock:
                     self._latest_nav=nav
                     self._latest_overview_tiles=overview
@@ -636,28 +659,145 @@ class Pipeline:
                         if self._place_input is not None:self._place_counts['pair_replaced']+=1
                         self._place_input=(nav,proof)
                     else:self._place_counts['unmatched']+=1
-                    if self.region_factory is not None:self._region_input=nav;self._region_wake.set()
+                    if self.region_factory is not None:
+                        self._region_input=(nav,room_tiles) if callable(room_provider) else nav
+                        self._region_wake.set()
                 self._wake.set()
         except BaseException as exc:self._fail('navigation',exc)
         finally:
             self._cleanup('mapper',self.mapper);self._worker_done['navigation']=True;self._wake.set()
+
+    @staticmethod
+    def _room_payload_budget(obs):
+        raw=0
+        for name in ('rgb','depth_m','valid_depth','K','T_world_camera'):
+            value=getattr(obs,name,None)
+            if hasattr(value,'nbytes'):raw+=int(value.nbytes)
+        return 2*((raw*4)//3+8192)+raw
+
+    def _record_room_event(self,event):
+        if len(self._room_journal)==self._room_journal.maxlen:
+            self._room_journal_dropped+=1
+        self._room_journal.append(event)
+
+    def _offer_room_input_locked(self,obs):
+        self._room_counts['offered']+=1
+        budget=self._room_payload_budget(obs)
+        if self._room_failure is not None:
+            self._room_counts['rejected']+=1
+            self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=False,reason='room_worker_failed'))
+            return
+        if len(self._room_queue)>=2 or self._room_queue_bytes+self._room_inflight_bytes+budget>32*1024**2:
+            self._room_counts['rejected']+=1;self._room_counts['queue_dropped']+=1
+            self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=False,reason='room_queue_full',estimated_bytes=budget))
+            return
+        self._room_queue.append((obs,budget));self._room_queue_bytes+=budget
+        self._room_counts['queued']+=1
+        self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=True,reason='room_queue_admitted',estimated_bytes=budget))
+        self._room_wake.set()
+
+    def _mark_room_publication_stale(self,error):
+        previous=self._room_publication
+        if previous is None:return
+        regions=previous.regions
+        if regions is not None and not regions.stale:
+            regions=replace(regions,stale=True)
+        self._room_publication=replace(previous,regions=regions,regions_stale=True,
+            replay_required=True,failure_reason=str(error))
+
+    def _room_pipeline_run(self):
+        session=None;quota_reserved=False
+        try:
+            session=self.room_pipeline_factory()
+            self.quota.reserve('room-pipeline-recording',ROOM_PIPELINE_DISK_RESERVATION_BYTES,
+                               covered_path=session.run_dir)
+            quota_reserved=True
+            with self._lock:self._room_session=session
+            while True:
+                with self._lock:
+                    if self._room_queue:
+                        obs,budget=self._room_queue.popleft();self._room_queue_bytes-=budget
+                        self._room_inflight_bytes=budget
+                    else:
+                        obs=None;budget=0
+                    closing=self._closing
+                if obs is None:
+                    if closing:break
+                    self._room_wake.wait(.05);self._room_wake.clear();continue
+                admission=session.submit(obs)
+                with self._lock:
+                    self._record_room_event(dict(frame_index=obs.key.frame_index,
+                        accepted=bool(admission.accepted),reason=str(admission.reason),
+                        admission_id=admission.admission_id))
+                    if admission.accepted:self._room_counts['session_admitted']+=1
+                    else:self._room_counts['rejected']+=1
+                if admission.accepted:
+                    while not session.wait_idle(.05):
+                        if session.health.get('failed'):
+                            break
+                    publication=session.snapshot()
+                    health=session.health
+                    with self._lock:
+                        if publication is not None:self._room_publication=publication
+                        if health.get('failed'):
+                            self._room_failure=health.get('failure_reason') or 'room worker failed'
+                            self._mark_room_publication_stale(self._room_failure)
+                        elif publication is not None:
+                            self._room_counts['processed']+=1
+                with self._lock:
+                    self._room_inflight_bytes=0
+                    if self._room_failure is not None:
+                        while self._room_queue:
+                            queued,_=self._room_queue.popleft()
+                            self._record_room_event(dict(frame_index=queued.key.frame_index,
+                                accepted=False,reason='room_worker_failed'))
+                            self._room_counts['rejected']+=1
+                        self._room_queue_bytes=0
+                self._wake.set()
+        except BaseException as exc:
+            with self._lock:
+                self._room_failure=f'{type(exc).__name__}: {exc}'
+                self._mark_room_publication_stale(self._room_failure)
+                self._room_counts['rejected']+=len(self._room_queue)
+                self._room_queue.clear();self._room_queue_bytes=0;self._room_inflight_bytes=0
+                self._record_room_event(dict(accepted=False,reason='room_worker_failed',error=self._room_failure))
+        finally:
+            clean=True if session is None else self._cleanup('room_pipeline',session)
+            if quota_reserved and clean:self.quota.release('room-pipeline-recording')
+            with self._lock:self._room_session=None
+            self._worker_done['room_pipeline']=True;self._wake.set()
 
     def _region_run(self):
         backend=None
         try:
             backend=self.region_factory()
             while True:
-                with self._lock:nav=self._region_input;self._region_input=None
-                if nav is None:
+                with self._lock:pending=self._region_input;self._region_input=None
+                if pending is None:
                     if (self._closing and (self.mapper is None or self._worker_done.get('navigation',False))) or self.health.snapshot()['failed']:break
                     self._region_wake.wait(.02);self._region_wake.clear();continue
-                regions=backend.update(nav)
+                scope='local_snapshot';unavailable=None
+                if isinstance(pending,tuple):
+                    local,tiles=pending;scope='accumulated_measured_occupancy_v1'
+                    try:
+                        from ..mapping.room_map import RoomMapEvidence,build_room_map
+                        nav=build_room_map(RoomMapEvidence(tiles,self.mapper.robot),local)
+                    except (ValueError,MemoryError,OverflowError) as exc:
+                        nav=local;unavailable='room_input_unavailable:'+str(exc)
+                else:nav=pending
+                regions=backend.mark_unavailable(nav,unavailable) if unavailable else backend.update(nav)
+                diagnostic=getattr(backend,'diagnostics',None)
+                stats=diagnostic() if callable(diagnostic) else {}
+                stats=dict(stats,input_scope=scope,retained_input_complete=unavailable is None)
                 if self.measurements is not None:self.measurements.region(nav,regions)
                 with self._lock:
-                    if regions.source_map_revision==nav.revision:self._accepted_nav=nav
+                    if regions.source_map_revision==nav.revision:
+                        self._accepted_nav=nav
+                        self._accepted_region_scope=scope if unavailable is None else 'room_input_unavailable'
                     elif self._accepted_nav is None or regions.source_map_revision!=self._accepted_nav.revision:
                         raise ValueError('region response has no matching retained source map')
                     self._regions=regions
+                    self._region_diagnostics=stats
                 self._wake.set()
         except BaseException as exc:self._fail('region',exc)
         finally:
@@ -668,6 +808,8 @@ class Pipeline:
         # graph work and cannot hold submit/control hostage.
         with self._lock:
             objects=self._objects;latest=self._latest_nav;regions=self._regions;nav=self._accepted_nav
+            room_publication=self._room_publication
+            scope=getattr(self,'_accepted_region_scope','local_snapshot')
             captured=self._captured;processed=self._processed;verification=self._verification
             object_capture=getattr(self,'_last_processed_capture',None);depth=self._latest_depth
             active_status=getattr(self,'_active_status',None)
@@ -729,7 +871,20 @@ class Pipeline:
             return
         if not hasattr(self,'_composer'):self._composer=HierarchyComposer(robot=getattr(self.mapper,'robot',None))
         result=self._composer.compose(public_objects,nav,regions,latest_nav_revision=latest.revision,
-                                      now_ns=self.now_ns(),clock_domain=self.clock_domain)
+                                      now_ns=self.now_ns(),clock_domain=self.clock_domain,
+                                      room_pipeline=room_publication)
+        if scope=='accumulated_measured_occupancy_v1':
+            nodes=dict(result.nodes)
+            for key,node in nodes.items():
+                if node.kind in {'floor','region','source_region'}:
+                    nodes[key]=replace(node,attributes=dict(node.attributes,geometry_input_scope=scope,
+                        source_map_shape=tuple(nav.states.shape),source_map_origin=nav.origin_xy,
+                        source_map_resolution_m=nav.resolution_m,cell_evidence='historical_measured_classification'))
+            edges=tuple(replace(edge,provenance=dict(edge.provenance,geometry_input_scope=scope,
+                cell_evidence='historical_measured_classification'))
+                if edge.kind in {'place_connected_to','in_region','in_source_region','region_contains_place','region_adjacent_to','source_region_adjacent_to'}
+                else edge for edge in result.edges)
+            result=replace(result,nodes=nodes,edges=edges)
         result=replace(result,statuses=dict(result.statuses,places=self._place_status))
         with self._lock:
             if self.health.snapshot()['failed']:return
@@ -752,7 +907,10 @@ class Pipeline:
             ages=dict(depth=None if depth is None else age_ns(depth.capture_monotonic_ns,depth.clock_domain,now,self.clock_domain),
                 map=age_ns(nav.capture_monotonic_ns,nav.clock_domain,now,self.clock_domain),
                 objects=None if object_capture is None else age_ns(object_capture,self.clock_domain,now,self.clock_domain),
-                verification=None)
+                verification=None,
+                room_map=None if room_publication is None else age_ns(
+                    room_publication.latest_map.capture_monotonic_ns,
+                    room_publication.latest_map.clock_domain,now,self.clock_domain))
             if verification is not None:
                 evidence_ages=[age_ns(view.capture_monotonic_ns,view.clock_domain,now,self.clock_domain)
                     for state in verification.objects.values() for view in state.best_views]
@@ -761,7 +919,7 @@ class Pipeline:
                 published_frame_id=objects.source,source_age_ns=ages,dropped_count=missing,
                 replaced_count=self.scheduler.counts['replaced'],actual_profile=self.health.profile,
                 sources=DisplaySources(nav=nav,objects=public_objects,verification=display_verification,admission=admission,
-                    active_perception=_active_display(active_status,objects))))
+                    active_perception=_active_display(active_status,objects),room_pipeline=room_publication)))
 
     @staticmethod
     def _display_verification(verification):
@@ -797,6 +955,10 @@ class Pipeline:
         never own this canonical pair or determine final export coherence.
         """
         with self._lock:return self._hierarchy,self._hierarchy_nav
+
+    def room_pipeline_snapshot(self):
+        """Return the independent Rebuild M3/M5 publication, if configured."""
+        with self._lock:return self._room_publication
 
     def fast_semantics(self):
         with self._lock:
@@ -876,7 +1038,18 @@ class Pipeline:
                             regions_enabled=self.region_factory is not None,
                             keyframe_policy=type(self.policy).__name__,
                             min_translation_m=getattr(self.policy,'distance',None),min_yaw_rad=getattr(self.policy,'angle',None)),
-                        source_age_ns=self._source_ages_locked(),
+                        source_age_ns=self._source_ages_locked(),regions=dict(getattr(self,'_region_diagnostics',{})),
+                        room_pipeline=dict(enabled=self.room_pipeline_factory is not None,
+                            failed=self._room_failure,counts=dict(self._room_counts),
+                            queued_frames=len(self._room_queue),queued_estimated_bytes=self._room_queue_bytes,
+                            inflight_estimated_bytes=self._room_inflight_bytes,
+                            queue_byte_cap=32*1024**2,
+                            publication=None if self._room_publication is None else dict(
+                                map_revision=self._room_publication.latest_map.revision,
+                                accepted_map_revision=self._room_publication.accepted_map_revision,
+                                regions_stale=self._room_publication.regions_stale,
+                                replay_required=self._room_publication.replay_required),
+                            journal=list(self._room_journal),journal_dropped=self._room_journal_dropped),
                         journal=dict(self._journal_counts),ready=self._ready.is_set() and not self.health.snapshot()['failed'],paused=self._paused,
                         stop_requested=self._stop_requested,cleanup_pending=dict(self._cleanup_pending),
                         places=dict(self._place_counts,status=self._place_status,pose_pending=self._pose_offer is not None,pair_pending=self._place_input is not None))
@@ -1060,8 +1233,8 @@ class Pipeline:
         # navigation thread (and its finally block) from ever starting.
         if 'navigation' not in self._threads and self.mapper is not None:
             self._cleanup('mapper',self.mapper)
-        self._wake.set();self._nav_wake.set();self._region_wake.set()
-        for name in ('recorder','navigation','region','graph'):
+        self._wake.set();self._nav_wake.set();self._region_wake.set();self._room_wake.set()
+        for name in ('recorder','navigation','region','room_pipeline','graph'):
             thread=self._threads.get(name)
             if thread is not None:thread.join(remaining(deadline))
         alive=[name for name,thread in self._threads.items() if thread.is_alive()]
@@ -1071,8 +1244,9 @@ class Pipeline:
         active=getattr(self,'_active',None)
         if active is not None and not active.close(remaining(deadline)):
             pending_workers.append('reobserve_proposal')
-        clean=not pending_workers and not pending and not failed
+        clean=not pending_workers and not pending and not failed and self._room_failure is None
         report=dict(drained=self._counts['committed'],pending=pending,failed=failed,
+                    room_pipeline_failed=self._room_failure,
                     semantic_sampling=self.semantic_sampling_snapshot(),
                     replay_required=bool(pending or failed or pending_workers),clean_shutdown=clean,
                     workers_pending=pending_workers,cleanup_pending=dict(self._cleanup_pending),

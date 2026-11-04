@@ -262,7 +262,7 @@ class HierarchyNode(Contract):
 
     def __post_init__(self):
         text(self.node_id, 'node_id')
-        choice(self.kind, {'building', 'floor', 'region', 'room', 'place', 'object'}, 'kind')
+        choice(self.kind, {'building', 'floor', 'region', 'room', 'source_region', 'place', 'object'}, 'kind')
         if not isinstance(self.attributes, Mapping):
             raise ValueError('attributes must be mapping')
         object.__setattr__(self, 'attributes', freeze(self.attributes))
@@ -278,6 +278,7 @@ class HierarchyEdge(Contract):
     object_revision: int
     source_map_revision: int
     region_revision: int
+    source_domain_id: str | None = None
 
     def __post_init__(self):
         text(self.source_id, 'source_id')
@@ -291,6 +292,8 @@ class HierarchyEdge(Contract):
         object.__setattr__(self, 'provenance', freeze(self.provenance))
         for name in ('object_revision', 'source_map_revision', 'region_revision'):
             integer(getattr(self, name), name)
+        if self.source_domain_id is not None:
+            text(self.source_domain_id, 'source_domain_id')
 
 
 @dataclass(frozen=True)
@@ -320,8 +323,13 @@ class HierarchySnapshot(Contract):
         for edge in edges:
             if edge.source_id not in nodes or edge.target_id not in nodes:
                 raise ValueError('dangling hierarchy endpoint')
-            if (edge.object_revision, edge.source_map_revision, edge.region_revision) != (self.object_revision, self.map_revision, self.region_revision):
+            if edge.object_revision != self.object_revision:
                 raise ValueError('hierarchy edge revision mismatch')
+            if edge.source_domain_id is None:
+                if (edge.source_map_revision, edge.region_revision) != (self.map_revision, self.region_revision):
+                    raise ValueError('hierarchy edge revision mismatch')
+            elif edge.provenance.get('map_domain_id') != edge.source_domain_id:
+                raise ValueError('hierarchy edge source domain/provenance mismatch')
             key = (edge.source_id, edge.target_id, edge.kind)
             if key in keys:
                 raise ValueError('duplicate hierarchy edge')
