@@ -32,7 +32,17 @@ def test_rejects_corrupt_or_incoherent_runtime_exports(tmp_path,kind):
     name='nav.json' if kind in {'clock','revision','hash'} else 'hierarchy.json' if kind=='dangling' else 'summary.json'
     path=root/name;payload=json.loads(path.read_text())
     if kind in {'clock','revision'}:payload['payload']['fields']['clock_domain' if kind=='clock' else 'revision']='wrong' if kind=='clock' else 2
-    elif kind=='dangling':payload['payload']['fields']['edges']['tuple'][0]['fields']['target_id']='missing'
+    elif kind=='dangling':
+        # Public floor-only fixtures legitimately have no edges. Inject a typed
+        # edge with a missing endpoint to exercise hierarchy validation.
+        from neusymnav.contracts import HierarchyEdge
+        from neusymnav.contracts.serialization import dumps, loads
+        hierarchy=loads(path.read_text())
+        floor=next(k for k,n in hierarchy.nodes.items() if n.kind=='floor')
+        edge=HierarchyEdge(floor,'missing','contains','assigned',{'test':'corrupt'},
+            hierarchy.object_revision,hierarchy.map_revision,hierarchy.region_revision)
+        payload['payload']['fields']['edges']['tuple'].append(json.loads(dumps(edge))['payload'])
+
     elif kind=='duplicate_event':payload['events'].append(payload['events'][0])
     else:payload['extra']='corrupt'
     path.write_text(json.dumps(payload))

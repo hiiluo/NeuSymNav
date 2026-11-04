@@ -166,7 +166,8 @@ class FrontierPolicy:
             self._failed_viewpoints = [(point, until)
                                        for point, until in self._failed_viewpoints
                                        if snapshot.revision <= until]
-            failed_viewpoints = tuple(point for point, _until in self._failed_viewpoints)
+            failed_viewpoint_records = tuple(self._failed_viewpoints)
+            failed_viewpoints = tuple(point for point, _until in failed_viewpoint_records)
             failed_until_revision = dict(self._failed_until_revision)
         blocked_edges = self.blocked_edges(snapshot.revision)
         if (self.config.commit_goal_until_reached and self._goal is not None
@@ -180,12 +181,34 @@ class FrontierPolicy:
         spatially_suppressed = 0
         failed_spatially_suppressed = 0
         eligible: list[Frontier] = []
+        candidate_diagnostics = []
+        diagnostic_rows = {}
         for frontier in frontiers.frontiers:
+            row = None
+            if len(candidate_diagnostics) < 32:
+                try:
+                    viewpoint_xy = list(snapshot.cell_to_world(*frontier.viewpoint_cell))
+                except IndexError:
+                    viewpoint_xy = None
+                row = {"frontier_id": frontier.frontier_id,
+                       "viewpoint_xy": viewpoint_xy,
+                       "eligibility": None, "cooldown_until_revision": None,
+                       "cooldown_viewpoint_xy": None, "path_reason": None}
+                candidate_diagnostics.append(row)
+                diagnostic_rows[id(frontier)] = row
             blocked_until = failed_until_revision.get(frontier.frontier_id, -1)
             if (frontier.map_revision != snapshot.revision or frontier.frontier_id in self._visited_ids
                     or snapshot.revision <= blocked_until):
                 if snapshot.revision <= blocked_until:
                     collision_suppressed = True
+                if row is not None:
+                    if frontier.map_revision != snapshot.revision:
+                        row["eligibility"] = "stale_revision"
+                    elif frontier.frontier_id in self._visited_ids:
+                        row["eligibility"] = "visited_id"
+                    else:
+                        row["eligibility"] = "failed_id_cooldown"
+                        row["cooldown_until_revision"] = blocked_until
                 continue
             viewpoint_xy = snapshot.cell_to_world(*frontier.viewpoint_cell)
             if (self.config.failed_viewpoint_radius_m > 0
@@ -194,10 +217,18 @@ class FrontierPolicy:
                             for point in failed_viewpoints)):
                 failed_spatially_suppressed += 1
                 collision_suppressed = True
+                if row is not None:
+                    point, until = max((record for record in failed_viewpoint_records
+                                        if math.dist(viewpoint_xy, record[0]) <= self.config.failed_viewpoint_radius_m),
+                                       key=lambda record: record[1])
+                    row.update(eligibility="failed_viewpoint_cooldown",
+                               cooldown_until_revision=until, cooldown_viewpoint_xy=list(point))
                 continue
             if (self.config.visited_viewpoint_radius_m > 0
                     and self._near_visited_viewpoint(viewpoint_xy)):
                 spatially_suppressed += 1
+                if row is not None:
+                    row["eligibility"] = "visited_viewpoint"
                 continue
             eligible.append(frontier)
         batch_planner = getattr(self.planner, "plan_many", None)
@@ -228,6 +259,10 @@ class FrontierPolicy:
                         allow_validated_start_anchor=allow_validated_start_anchor,
                         blocked_edges=blocked_edges,
                     ))
+            row = diagnostic_rows.get(id(frontier))
+            if row is not None:
+                row["eligibility"] = "reachable" if path.success else "path_rejected"
+                row["path_reason"] = path.reason or None
             if path.success:
                 reachable.append((path.cost_m, frontier, path))
             else:
@@ -329,6 +364,9 @@ class FrontierPolicy:
                 "failed_spatially_suppressed_candidate_count": failed_spatially_suppressed,
                 "failed_viewpoint_radius_m": self.config.failed_viewpoint_radius_m,
                 "path_failure_count": len(path_failures),
+                "candidate_diagnostics": candidate_diagnostics,
+                "candidate_diagnostics_total": len(frontiers.frontiers),
+                "candidate_diagnostics_truncated": len(frontiers.frontiers) > len(candidate_diagnostics),
                 "current_goal_id": None if current_goal is None else current_goal[1].frontier_id,
                 "current_goal_xy": None if current_goal is None else list(
                     snapshot.cell_to_world(*current_goal[1].viewpoint_cell)),
@@ -522,6 +560,18 @@ class FrontierPolicy:
         self._goal_path = None
         self._goal_world_xy = None
         self._selected_at = None
+
+    def failed_frontier_ids(self, map_revision: int) -> frozenset[str]:
+        """IDs suppressed by their own cooldown, which may outlive spatial memory."""
+        with self._failure_lock:
+            return frozenset(key for key, until in self._failed_until_revision.items()
+                             if map_revision <= until)
+
+    def failed_viewpoints(self, map_revision: int) -> tuple[tuple[float, float], ...]:
+        """Active temporary exclusions, independent of permanent visited memory."""
+        with self._failure_lock:
+            return tuple(point for point, until in self._failed_viewpoints
+                         if map_revision <= until)
 
     def visited_viewpoints(self) -> tuple[tuple[float, float], ...]:
         """Immutable world-space exclusions for the next frontier extraction.

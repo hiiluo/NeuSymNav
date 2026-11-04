@@ -1,5 +1,6 @@
 """Read one selected object's committed crop in the UI process, never control."""
 import hashlib
+from contextlib import closing
 import io
 import json
 from pathlib import Path
@@ -47,7 +48,7 @@ class SelectedBestViewReader:
             if key==self._key:return self._image
             database=self.root.parent/'objects.sqlite3'
             if not database.exists():return None
-            with sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True,timeout=.05) as conn:
+            with closing(sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True,timeout=.05)) as conn, conn:
                 for proof in record.evidence:
                     if (proof.clock_domain!=self.domain or proof.source.episode_id!=objects.episode_id
                             or proof.evidence_ref not in objects.objects[canonical].evidence_refs):continue

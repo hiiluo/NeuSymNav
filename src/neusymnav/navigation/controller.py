@@ -17,6 +17,7 @@ class Navigator:
         self.planner=Planner(robot)
         self.extractor=FrontierExtractor(agent_radius_m=robot.radius_m,inflation_margin_m=robot.margin_m)
         self._new_policy();self._episode_id=None;self._grid_geometry=None;self._last_ns=None
+        self.last_policy_status=None
 
     def _new_policy(self):
         self._goal_failure_watch=None
@@ -27,6 +28,7 @@ class Navigator:
     def step(self, nav, robot_xy, yaw_rad, now_ns) -> NavigationDecision:
         self.last_frontiers=None
         self.last_committed_goal=None
+        self.last_policy_status=None
         def stop(reason):
             self.controller.reset()
             return NavigationDecision(None,(),0.,0.,nav.revision,reason)
@@ -43,10 +45,30 @@ class Navigator:
             self.policy._failed_edges_until_revision.clear();self.controller.reset()
             self._grid_geometry=geometry
         grid=adapt(nav,self.robot.height_m,self.robot.geometry_id)
-        frontiers=self.extractor.extract(grid,robot_xy,excluded_viewpoints=self.policy.visited_viewpoints(),
-            excluded_viewpoint_radius_m=self.policy.config.visited_viewpoint_radius_m)
+        # The production policy uses equal radii for permanent and temporary
+        # exclusions. Feed both to extraction so a component can offer another
+        # viewpoint while the failed one remains on cooldown.
+        import math
+        visited=self.policy.visited_viewpoints()
+        failed=self.policy.failed_viewpoints(nav.revision)
+        radius=self.policy.config.visited_viewpoint_radius_m
+        if failed and self.policy.config.failed_viewpoint_radius_m == radius and radius > 0:
+            exclusions=visited+failed
+            # Extractor excludes < radius; policy excludes failed points <= radius.
+            radius=math.nextafter(radius, math.inf)
+        else:
+            exclusions=visited
+        frontiers=self.extractor.extract(grid,robot_xy,excluded_viewpoints=exclusions,
+            excluded_viewpoint_radius_m=radius,
+            excluded_frontier_ids=self.policy.failed_frontier_ids(nav.revision))
         self.last_frontiers=frontiers
         choice=self.policy.select(snapshot=grid,frontiers=frontiers,robot_xy=robot_xy,now_monotonic_s=now_ns/1e9)
+        self.last_policy_status={"episode_id":nav.episode_id,"map_revision":nav.revision,
+            "source":{"episode_id":nav.source.episode_id,"sensor_id":nav.source.sensor_id,
+                      "frame_index":nav.source.frame_index},
+            "capture_monotonic_ns":nav.capture_monotonic_ns,
+            "clock_domain":nav.clock_domain,"robot_xy":list(robot_xy),
+            "decision_reason":choice.reason,"goal_diagnostics":choice.goal_diagnostics}
         if self.policy._goal is not None and self.policy._goal_world_xy is not None:
             self.last_committed_goal=(self.policy._goal.frontier_id,self.policy._goal_world_xy)
         if choice.path is None:return stop(choice.reason)
@@ -61,6 +83,48 @@ class Navigator:
             path=path[:-1]+(self.policy._goal_world_xy,)
         return NavigationDecision(choice.frontier.frontier_id,path,command.linear_mps,command.yaw_rate_radps,
             nav.revision,command.reason)
+
+    def track_viewpoint(self, nav, robot_xy, yaw_rad, now_ns, goal_id, goal_xy, goal_yaw):
+        """Track an external intent using this navigator's single controller.
+
+        The frontier policy is suspended, not replaced or marked visited.
+        All decisions still pass through the same MotionGuard.
+        """
+        import math
+        self.last_frontiers=None
+        self.last_policy_status=None
+        self.last_committed_goal=(goal_id,goal_xy)
+        def stop(reason):
+            self.controller.reset()
+            return NavigationDecision(goal_id,(),0.,0.,nav.revision,reason)
+        try: age=age_ns(nav.capture_monotonic_ns,nav.clock_domain,now_ns,self.clock_domain)
+        except ValueError:return stop('nav_clock_invalid')
+        if age>self.max_nav_age_ns:return stop('nav_stale')
+        if self._episode_id!=nav.episode_id:
+            self._new_policy();self._episode_id=nav.episode_id;self._last_ns=None
+        geometry=(nav.origin_xy,nav.resolution_m,nav.states.shape)
+        if geometry!=self._grid_geometry:
+            self.policy._failed_edges_until_revision.clear()
+            self.controller.reset();self._grid_geometry=geometry
+        grid=adapt(nav,self.robot.height_m,self.robot.geometry_id)
+        cell=grid.world_to_cell(*goal_xy)
+        if cell is None:return stop('reobserve_outside_map')
+        path=self.planner.core.plan(grid,robot_xy,cell,blocked_edges=self.policy.blocked_edges(nav.revision))
+        if not path.success:return stop('reobserve_unreachable')
+        if math.dist(robot_xy,goal_xy)<=.05:
+            error=math.remainder(goal_yaw-yaw_rad,2*math.pi)
+            if abs(error)<=math.radians(6):return stop('reobserve_capture_ready')
+            self.controller.reset()
+            return NavigationDecision(goal_id,(),0.,max(-.5,min(.5,error)),nav.revision,'reobserve_align')
+        dt=.1 if self._last_ns is None else max(0.,(now_ns-self._last_ns)/1e9)
+        self._last_ns=now_ns
+        cmd=self.controller.tick(robot_xy=robot_xy,yaw_rad=yaw_rad,now_monotonic_s=now_ns/1e9,dt_s=dt,
+            depth_host_monotonic_s=nav.capture_monotonic_ns/1e9,depth_front_min_m=None,depth_coverage_ok=True,
+            snapshot=grid,path=path,frame_id=str(nav.source),goal_world_xy=goal_xy,
+            blocked_edges=self.policy.blocked_edges(nav.revision))
+        world=tuple(grid.cell_to_world(*c) for c in path.cells)
+        return NavigationDecision(goal_id,world[:-1]+(goal_xy,),cmd.linear_mps,cmd.yaw_rate_radps,
+                                  nav.revision,cmd.reason)
 
     def report_goal_failure(self, goal_id, map_revision, *, goal_world_xy):
         self.policy.report_goal_failure(goal_id,map_revision,goal_world_xy=goal_world_xy)
@@ -82,7 +146,7 @@ class Navigator:
         target=self.policy._goal_world_xy
         goal=self.policy._goal
         eligible=(reason in {'bootstrap_blocked','footprint_not_observed',
-                    'path_segment_blocked','collision_blocked','committed_goal_waiting_after_collision',
+                    'path_segment_blocked','collision_blocked','yaw_preflight_no_progress','committed_goal_waiting_after_collision',
                     'committed_goal_outside_map'} or reason.startswith('committed_goal_blocked:'))
         try:fresh=age_ns(nav.capture_monotonic_ns,nav.clock_domain,now_ns,self.clock_domain)<=self.max_nav_age_ns
         except ValueError:fresh=False

@@ -6,7 +6,8 @@ is a persistence ACK. All source assets retain original identity and clock.
 """
 from __future__ import annotations
 from dataclasses import replace
-from contextlib import contextmanager
+from copy import deepcopy
+from contextlib import contextmanager, nullcontext
 import inspect
 import json
 import math
@@ -14,16 +15,53 @@ from collections.abc import Mapping
 from pathlib import Path
 from threading import Event,RLock
 import time
+import numpy as np
 from ..contracts import Observation,RegionSnapshot,MotionCommand,age_ns
 from ..contracts.observations import validate_detection_batch,validate_appearance_batch
 from ..contracts.serialization import dumps
-from ..hierarchy.composer import HierarchyComposer
+from ..hierarchy.composer import HierarchyComposer,publication_objects
 from ..perception.projector import Projector
 from ..perception.appearance_client import attach_features
+from ..mapping.gpu_raycast_client import CompletedRequestDeadline
 from .scheduler import Entry,KeyframeScheduler,KeyframePolicy,payload_bound
 from .workers import Journal,atomic_write,background,remaining,valid_timeout
 from .health import Health
 from .quota import RunQuota
+
+
+def _stationary_partial_yaw_refusal(actuator, result, command, source, xy, yaw):
+    """Accept only source-bound measured zero translation, never a collision claim."""
+    if (not isinstance(result,dict) or result.get('executed') is not True or
+            result.get('reason')!='yaw_preflight_unavailable' or command.linear_mps<=0 or
+            command.yaw_radps==0):
+        return False
+    try:
+        from .actuation_measurements import validate_actuation_proof
+        checked=validate_actuation_proof(actuator.last_actuation_proof,command,source)
+        proof=checked['proof'];actions=proof['actions']
+        if (proof['reason']!=result['reason'] or len(actions)!=1 or
+                actions[0]['action']!='move_forward' or actions[0]['amount']<=0 or
+                result.get('actions')!=[dict(action=actions[0]['action'],amount=actions[0]['amount'])] or
+                type(result.get('displacement_m')) not in (int,float) or
+                not math.isfinite(result['displacement_m']) or
+                abs(result['displacement_m']-checked['body_translation_m'])>1e-7):
+            return False
+        # The measurement validator uses 1e-7m/rad for source/action continuity.
+        return (checked['body_translation_m']<=1e-7 and
+                math.dist(actions[0]['body_before_xy'],xy)<=1e-7 and
+                abs(math.remainder(actions[0]['yaw_before_rad']-yaw,2*math.pi))<=1e-7)
+    except Exception:
+        return False
+
+
+def _active_display(status, objects):
+    if status is None:return None
+    active=status.get('active') or {}
+    fresh=status.get('object_revision')==objects.revision
+    return dict(mode=status['mode'], object_revision=objects.revision, stale=not fresh,
+                target=(active.get('object_id') or status.get('shadow_target')) if fresh else None,
+                state=active.get('state','idle') if fresh else 'historical',
+                reason=status['reason'], remaining_time_ns=status['remaining_time_ns'])
 
 
 class Pipeline:
@@ -42,7 +80,29 @@ class Pipeline:
                  now_ns=time.monotonic_ns,keyframe_policy=None,projector=None,
                  floor_id,actual_profile='geometry-only',
                  byte_cap=32*1024**2,raw_cap=2*1024**3,total_cap=8*1024**3,
-                 startup_timeout_s=5.,publisher=None,measurements=None,keyframe_sampling='novelty'):
+                 startup_timeout_s=5.,publisher=None,measurements=None,keyframe_sampling='novelty',admission_mode='off',
+                 active_perception=None,active_body_z_m=None):
+        self._active=None
+        self._active_memory=None
+        self._active_input=None
+        self._active_capture_expected=None
+        self._active_capture_result=None
+        self._active_status=None
+        self._active_body_z_m=active_body_z_m
+        self._active_camera_fault=False
+        active_options=active_perception or {}
+        if active_options.get('mode','off')!='off':
+            from .active_perception import ActivePerception
+            from ..verification.view_memory import ViewMemory
+            if active_body_z_m is None or navigator is None:
+                raise ValueError('active perception requires fixed-height live navigation')
+            self._active=ActivePerception(episode_id,clock_domain,active_options['mode'],
+                                          strategy=active_options.get('strategy','candidate'))
+            self._active_memory=ViewMemory(episode_id)
+        if type(admission_mode) is not str or admission_mode not in {'off','shadow','enforce'}:
+            raise ValueError('invalid object admission mode')
+        self._admission_mode=admission_mode;self._admission_snapshot=None
+        self._admission_status=dict(mode=admission_mode,status='off' if admission_mode=='off' else 'unavailable',reason='not_evaluated')
         if type(keyframe_sampling) is not str or keyframe_sampling not in {'novelty','capacity_deferred'}:
             raise ValueError('keyframe_sampling must be novelty or capacity_deferred')
         if not all(isinstance(v,str) and v for v in (episode_id,primary_sensor_id,clock_domain,floor_id,actual_profile)):
@@ -80,6 +140,7 @@ class Pipeline:
         self._config=dict(schema_version=1,episode_id=episode_id,primary_sensor_id=primary_sensor_id,
                           clock_domain=clock_domain,floor_id=floor_id,actual_profile=actual_profile)
         if keyframe_sampling!='novelty':self._config['keyframe_sampling']=keyframe_sampling
+        if admission_mode!='off':self._config['object_admission_mode']=admission_mode
         self._threads={}
         self._threads['graph']=background('graph',self._graph_run)
         if not self._ready.wait(startup_timeout_s):
@@ -141,11 +202,15 @@ class Pipeline:
                 self._fail('semantic_sampling',OverflowError('semantic sampling counter exhausted'))
                 return
             self._semantic_sampling['seen']+=1
+            active=getattr(self,'_active',None)
+            tagged=active is not None and active.capture_source==obs.key
             if self._keyframe_sampling=='capacity_deferred' and self.scheduler.semantic_busy():
                 self._semantic_sampling['deferred_capacity']+=1
+                if tagged:active.capture_source=None;active.reason='capture_deferred_capacity'
                 return
             self._semantic_sampling['policy_evaluated']+=1
             selected,reason,novelty=self.policy.propose(obs)
+            if tagged:selected,reason=True,'active_reobserve'
             if not selected:
                 self._semantic_sampling['policy_unselected']+=1
                 return
@@ -155,9 +220,12 @@ class Pipeline:
             entry=Entry(obs,payload_bound(obs),novelty,reason)
             accepted,replaced,_=self.scheduler.offer(entry)
             if not accepted:
+                if tagged:active.capture_source=None;active.reason='capture_rejected'
                 self._counts['missing']+=1;self.health.increment('rejected')
                 if self.measurements is not None:self.measurements.admission(obs,'rejected')
                 return
+            if active is not None and any(v.observation.key==active.capture_source for v in replaced):
+                active.capture_source=None;active.reason='capture_replaced'
             self._counts['missing']+=len(replaced)
             if self.measurements is not None:
                 for victim in replaced:self.measurements.admission(victim.observation,'replaced')
@@ -177,7 +245,8 @@ class Pipeline:
             raise ValueError('sensor pair requires primary RGB-D then navigation depth')
         if primary.key.sensor_id!=self.primary_sensor_id or navigation.key.sensor_id==self.primary_sensor_id:
             raise ValueError('sensor pair requires configured primary and distinct navigation sensor')
-        with self._lock:
+        control=self._control_lock if getattr(self,'_active',None) is not None else nullcontext()
+        with control,self._lock:
             for obs in (primary,navigation):
                 if obs.key.episode_id!=self.episode_id or obs.clock_domain!=self.clock_domain:
                     raise ValueError('sensor pair episode/clock mismatch')
@@ -192,6 +261,19 @@ class Pipeline:
                 raise ValueError('navigation source replay or sensor change')
             self._validated_robot_pose(navigation,pose)
             self._validate_pose_order(navigation)
+            active=getattr(self,'_active',None)
+            if active is not None and not self._active_camera_fault:
+                from ..navigation.viewpoints import CameraModel
+                model=CameraModel.from_observation(primary,pose['robot_xy'],pose['yaw_rad'],self._active_body_z_m)
+                if active.camera is None:active.camera=model
+                elif (model.image_shape_hw!=active.camera.image_shape_hw
+                      or not np.allclose(model.K,active.camera.K,rtol=0,atol=1e-8)
+                      or not np.allclose(model.T_body_camera,active.camera.T_body_camera,rtol=0,atol=1e-5)):
+                    active.interrupt(self.now_ns(),'camera_mount_changed')
+                    active.camera=None;active.planner=None;self._active_camera_fault=True
+                if active.camera is not None and active.tag_capture(primary,pose['robot_xy'],pose['yaw_rad']):
+                    self._active_capture_expected=primary.key
+                    self._active_capture_result=None
             self.submit(primary)
             self.submit_robot_pose(navigation,pose)
             self.submit(navigation)
@@ -345,6 +427,15 @@ class Pipeline:
                 owner_config=json.loads(owner.ledger.get('config'))
                 for identity in ('episode_id','primary_sensor_id','clock_domain','floor_id'):
                     if owner_config[identity]!=self._config[identity]:raise ValueError('owner '+identity+' mismatch')
+            # Snapshot the durable admission watermark before replay or any new
+            # commits; opening on first publication mislabels live negatives as a crash gap.
+            self._admission_journal=None
+            if self._admission_mode!='off':
+                try:
+                    from ..objects.admission import AdmissionJournal, AdmissionPolicy
+                    self._admission_journal=AdmissionJournal(owner,AdmissionPolicy())
+                except Exception as exc:
+                    self._admission_startup_error=str(exc)
             detector=self.detector_factory()
             encoder=None if self.encoder_factory is None else self.encoder_factory()
             if self.verifier_factory is not None:
@@ -367,6 +458,7 @@ class Pipeline:
             self.quota.release('startup')
             self.scheduler.watermark=max(journal.watermark(),getattr(owner,'dispatch_watermark',-1))
             self._last_index=self.scheduler.watermark
+            self._admission_owner=owner
             self._objects=owner.snapshot()
             self._verification=None if verifier is None or not hasattr(verifier,'snapshot') else verifier.snapshot()
             # Drain persisted accepted refs BEFORE enabling new admission.
@@ -473,7 +565,25 @@ class Pipeline:
             journal.done(obs.key.frame_index)
         finally:self.quota.release(key)
         verification=None if verifier is None or not hasattr(verifier,'snapshot') else verifier.snapshot()
+        active_input=None
+        memory=getattr(self,'_active_memory',None)
+        if memory is not None:
+            from .active_perception import EvidenceInput
+            from ..verification.view_memory import read_committed_views
+            try:
+                memory.remap(commit.snapshot.aliases)
+                for view in read_committed_views(owner,commit):memory.offer(view)
+                fresh_source=(obs.key if measurement_origin=='live' and start_fresh
+                    and age_ns(obs.capture_monotonic_ns,obs.clock_domain,self.now_ns(),self.clock_domain)<=750_000_000 else None)
+                active_input=EvidenceInput(memory.snapshot(commit.snapshot.revision),commit.snapshot,verification,fresh_source)
+            except (ValueError,OSError,TypeError,KeyError):
+                self.health.increment('active_view_memory_unavailable')
         with self._lock:
+            if memory is not None:
+                self._active_input=active_input
+                if self._active_capture_expected==obs.key:
+                    self._active_capture_result=(obs.key,active_input is not None and active_input.committed_source==obs.key)
+                    self._active_capture_expected=None
             self._objects=commit.snapshot;self._verification=verification;self._processed=obs.key;self._last_processed_capture=obs.capture_monotonic_ns;self._counts['committed']+=1
             now=self.now_ns()
             if start_fresh and age_ns(obs.capture_monotonic_ns,obs.clock_domain,now,self.clock_domain)<=750_000_000:
@@ -502,7 +612,15 @@ class Pipeline:
                 core=getattr(self.mapper,'_core',None)
                 budget=(2*(core.MAX_PLANAR_MEMORY_BYTES+core.MAX_HEIGHT_MEMORY_BYTES)+1024*1024) if core is not None and not getattr(self,'_archive_write_reserved',False) else 0
                 if budget:self.quota.reserve('navigation-archive',budget)
-                try:nav=self.mapper.update(obs)
+                try:
+                    nav=self.mapper.update(obs)
+                except CompletedRequestDeadline:
+                    # No map state or frame watermark was committed. Keep the
+                    # previous source unchanged: control remains source-pending
+                    # until a genuinely new observation maps successfully.
+                    self.health.increment('mapping_deadline_missed')
+                    self._wake.set()
+                    continue
                 finally:
                     if budget:self.quota.release('navigation-archive')
                 overview = None
@@ -552,6 +670,7 @@ class Pipeline:
             objects=self._objects;latest=self._latest_nav;regions=self._regions;nav=self._accepted_nav
             captured=self._captured;processed=self._processed;verification=self._verification
             object_capture=getattr(self,'_last_processed_capture',None);depth=self._latest_depth
+            active_status=getattr(self,'_active_status',None)
         if objects is None or latest is None:return
         if regions is None and self.region_factory is not None:return
         if regions is None:
@@ -573,8 +692,43 @@ class Pipeline:
                 try:verifier.expire()
                 finally:self.quota.release('verification-expiry')
             if hasattr(verifier,'snapshot'):verification=verifier.snapshot()
+        mode=getattr(self,'_admission_mode','off')
+        admission=None
+        if mode!='off':
+            try:
+                journal=getattr(self,'_admission_journal',None)
+                if journal is None or verifier is None:
+                    raise ValueError(getattr(self,'_admission_startup_error','committed evidence provider unavailable'))
+                admission=journal.evaluate(verifier)
+                # Do not treat unavailable data as a negative vote or an empty graph.
+                if (admission.episode_id!=objects.episode_id or admission.object_revision!=objects.revision or
+                        admission.evidence_revision!=objects.revision or
+                        set(admission.decisions)!=set(objects.objects) or
+                        any(d.availability!='available' for d in admission.decisions.values())):
+                    raise ValueError('admission evidence unavailable or revision mismatch')
+                with self._lock:
+                    self._admission_snapshot=admission
+                    self._admission_status=dict(mode=mode,status='available',reason=None,
+                        object_revision=admission.object_revision,evidence_revision=admission.evidence_revision,
+                        policy_version=admission.policy_version,policy_hash=admission.policy_hash,
+                        counts={state:sum(d.state==state for d in admission.decisions.values())
+                                for state in ('candidate','admitted','review_required')},
+                        decisions={key:dict(state=d.state,availability=d.availability,reason_codes=list(d.reason_codes),
+                                            evidence_refs=list(d.evidence_refs),quality=dict(d.quality))
+                                   for key,d in admission.decisions.items()})
+            except Exception as exc:
+                with self._lock:self._admission_status=dict(mode=mode,status='unavailable',reason=str(exc)[:256],
+                    stale=getattr(self,'_hierarchy',None) is not None)
+                self._notify_admission_display()
+                if mode=='enforce':return
+        if mode!='off':self._notify_admission_display()
+        try:
+            public_objects=publication_objects(objects,admission,mode)
+        except ValueError as exc:
+            with self._lock:self._admission_status=dict(mode=mode,status='unavailable',reason=str(exc),stale=getattr(self,'_hierarchy',None) is not None)
+            return
         if not hasattr(self,'_composer'):self._composer=HierarchyComposer(robot=getattr(self.mapper,'robot',None))
-        result=self._composer.compose(objects,nav,regions,latest_nav_revision=latest.revision,
+        result=self._composer.compose(public_objects,nav,regions,latest_nav_revision=latest.revision,
                                       now_ns=self.now_ns(),clock_domain=self.clock_domain)
         result=replace(result,statuses=dict(result.statuses,places=self._place_status))
         with self._lock:
@@ -590,6 +744,8 @@ class Pipeline:
         if self.publisher is not None:
             from ..visualization.publisher import DisplaySources
             display_verification=self._display_verification(verification)
+            if mode=='enforce' and display_verification is not None:
+                display_verification=replace(display_verification,objects={k:v for k,v in display_verification.objects.items() if k in public_objects.objects})
             # Publication ages refer to the exact pinned bundle, even when a
             # newer navigation result arrived while composition was running.
             now=self.now_ns()
@@ -604,7 +760,8 @@ class Pipeline:
             self.publisher.publish(result,dict(captured_frame_id=captured,processed_frame_id=processed,
                 published_frame_id=objects.source,source_age_ns=ages,dropped_count=missing,
                 replaced_count=self.scheduler.counts['replaced'],actual_profile=self.health.profile,
-                sources=DisplaySources(nav=nav,objects=objects,verification=display_verification)))
+                sources=DisplaySources(nav=nav,objects=public_objects,verification=display_verification,admission=admission,
+                    active_perception=_active_display(active_status,objects))))
 
     @staticmethod
     def _display_verification(verification):
@@ -619,6 +776,16 @@ class Pipeline:
                 v.clock_domain,v.event_id) for v in state.best_views)
             objects[key]=DisplayVerificationRecord(verification.episode_id,key,state.object_revision,status,evidence)
         return DisplayVerificationSnapshot(verification.episode_id,verification.object_revision,objects)
+
+    def _notify_admission_display(self):
+        notify=getattr(self.publisher,'set_admission_status',None)
+        if callable(notify):
+            status=self.object_admission_status()
+            try:notify({key:status.get(key) for key in ('mode','status','reason','stale')})
+            except Exception:pass  # Display diagnostics never control the graph lane.
+
+    def object_admission_status(self):
+        with self._lock:return deepcopy(getattr(self,'_admission_status',dict(mode='off',status='off')))
 
     def snapshot(self):
         with self._lock:return self._hierarchy
@@ -644,14 +811,21 @@ class Pipeline:
             plan=getattr(self,'_navigation_display',None)
             counts=dict(getattr(self,'_navigation_reason_counts',{}))
             last_failure=getattr(self,'_last_goal_failure',None)
-        if plan is None:return dict(reason='navigation_unavailable',reason_counts=counts)
+            policy=deepcopy(getattr(self.navigator,'last_policy_status',None))
+        if plan is None:return dict(reason='navigation_unavailable',reason_counts=counts,policy=policy)
         nav,frontiers,decision,reason,computed,rejected,held_goal=plan
         goal=held_goal or ((decision.goal_id,decision.path[-1]) if not rejected and decision.goal_id and decision.path else None)
         return dict(map_revision=nav.revision,computed_monotonic_ns=computed,
             reason=reason,decision_reason=decision.reason,reason_counts=counts,last_goal_failure=last_failure,
             goal_id=None if goal is None else goal[0],goal_xy=None if goal is None else goal[1],
             route_available=bool(decision.path) and not rejected,
-            frontier_count=0 if frontiers is None else len(frontiers.frontiers))
+            frontier_count=0 if frontiers is None else len(frontiers.frontiers),policy=policy)
+
+    def latest_control_status(self):
+        """Last completed control result, with its own capture provenance."""
+        with self._lock:
+            value=getattr(self,'_latest_control_status',None)
+            return None if value is None else dict(value)
 
     def navigation_display(self):
         """UI-lane projection of the last actual plan; never a control input."""
@@ -695,7 +869,7 @@ class Pipeline:
 
     def telemetry(self):
         with self._lock:
-            report=dict(**self._counts,semantic_sampling=self.semantic_sampling_snapshot(),configuration=dict(self._config,
+            report=dict(**self._counts,object_admission=self.object_admission_status(),semantic_sampling=self.semantic_sampling_snapshot(),configuration=dict(self._config,
                             depth_max_age_ns=300_000_000,semantic_max_age_ns=750_000_000,
                             inference_start_max_age_ns=250_000_000,publication_interval_ns=100_000_000,
                             appearance_enabled=self.encoder_factory is not None,verification_enabled=self.verifier_factory is not None,
@@ -708,7 +882,8 @@ class Pipeline:
                         places=dict(self._place_counts,status=self._place_status,pose_pending=self._pose_offer is not None,pair_pending=self._place_input is not None))
         # In particular quota.lock can cover a filesystem scan. Never acquire
         # it while holding the lock needed by source admission and control.
-        return dict(report,scheduler=self.scheduler.snapshot(),health=self.health.snapshot(),quota=self.quota.snapshot(),navigation=self.navigation_status())
+        if getattr(self,'_active',None) is not None:report['active_perception']=self._active_status
+        return dict(report,scheduler=self.scheduler.snapshot(),health=self.health.snapshot(),quota=self.quota.snapshot(),navigation=self.navigation_status(),latest_control=self.latest_control_status())
 
     def control_step(self,actuator,*,robot_xy=None,yaw_rad=None):
         with self._control_lock:
@@ -716,7 +891,27 @@ class Pipeline:
                 self._paused=True;self._stop_requested=True
             self._step_command=None;self._step_decision=None;self._step_source=None
             self._step_navigation_observed=False
+            self._step_reobserve=False
             result=self._control_step(actuator,robot_xy=robot_xy,yaw_rad=yaw_rad)
+            if not isinstance(result,dict):
+                result=dict(executed=False,reason='control_rejected',error='invalid actuator result')
+            active=getattr(self,'_active',None)
+            if active is not None:
+                if result.get('reason') in {'runtime_paused','runtime_stopped','navigation_unavailable',
+                                            'navigation_source_pending','control_rejected'}:
+                    active.interrupt(self.now_ns(),result['reason'])
+                with self._lock:self._active_status=active.status()
+            source=self._step_source
+            reason=result.get('reason')
+            if not isinstance(reason,str) or not reason:reason='executed' if result.get('executed') else 'unknown'
+            observation=dict(reason=reason[:256],
+                executed=result.get('executed') is True,observed_monotonic_ns=self.now_ns(),
+                episode_id=None if source is None else source.key.episode_id,
+                sensor_id=None if source is None else source.key.sensor_id,
+                frame_index=None if source is None else source.key.frame_index,
+                capture_monotonic_ns=None if source is None else source.capture_monotonic_ns,
+                clock_domain=None if source is None else source.clock_domain)
+            with self._lock:self._latest_control_status=observation
             if not self._step_navigation_observed:
                 reset=getattr(self.navigator,'reset_goal_failure_watch',None)
                 if callable(reset):reset()
@@ -761,7 +956,17 @@ class Pipeline:
                 if self._paused or self._closing or self.health.snapshot()['failed']:
                     command=MotionCommand(latest.key,nav.revision,now,now,self.clock_domain,0.,0.,'runtime_stopped',latest.capture_monotonic_ns)
                 else:
-                    decision=self.navigator.step(nav,xy,yaw,self.now_ns())
+                    active=getattr(self,'_active',None)
+                    if active is not None:
+                        with self._lock:
+                            evidence=self._active_input;admission=self._admission_snapshot
+                            capture_result=getattr(self,"_active_capture_result",None);self._active_capture_result=None
+                        decision=active.step(self.navigator,nav,xy,yaw,self.now_ns(),evidence,admission,capture_result)
+                        self._step_reobserve=decision is not None
+                    if decision is None:decision=self.navigator.step(nav,xy,yaw,self.now_ns())
+                    if self._step_reobserve and active.scheduler.remaining_time_ns(self.now_ns())<100_000_000:
+                        active.interrupt(self.now_ns(),'time_budget')
+                        decision=replace(decision,desired_linear_mps=0.,desired_yaw_radps=0.,reason='reobserve_budget_stop')
                     self._step_decision=decision
                     command=self.guard.filter(decision,latest,self.now_ns())
                 if age_ns(latest.capture_monotonic_ns,latest.clock_domain,self.now_ns(),self.clock_domain)>300_000_000:
@@ -771,7 +976,7 @@ class Pipeline:
                 # exact target. Otherwise a held goal can be requested forever
                 # while the guard correctly keeps both motion components zero.
                 report_failure=getattr(self.navigator,'report_goal_failure',None)
-                if (decision is not None and decision.goal_id and decision.path
+                if (not self._step_reobserve and decision is not None and decision.goal_id and decision.path
                         and (decision.desired_linear_mps or decision.desired_yaw_radps)
                         and decision.map_revision==nav.revision==command.map_revision
                         and command.clock_domain==self.clock_domain==latest.clock_domain==nav.clock_domain
@@ -781,6 +986,12 @@ class Pipeline:
                         and command.reason in {'bootstrap_blocked','footprint_not_observed','path_segment_blocked'}
                         and callable(report_failure)):
                     report_failure(decision.goal_id,nav.revision,goal_world_xy=decision.path[-1])
+                if self._step_reobserve and (command.linear_mps or command.yaw_radps):
+                    checked_ns=self.now_ns()
+                    horizon=max(0,command.deadline_monotonic_ns-checked_ns)
+                    if self._active.scheduler.remaining_time_ns(checked_ns)<horizon:
+                        self._active.interrupt(checked_ns,'time_budget')
+                        command=replace(command,linear_mps=0.,yaw_radps=0.,reason='reobserve_budget_stop')
                 self._step_command=command
                 result=actuator.execute(command)
                 self._last_command=command
@@ -791,12 +1002,18 @@ class Pipeline:
                               or command.linear_mps==command.yaw_radps==0.)
                     display_reason=(result.get('reason') or command.reason) if rejected and isinstance(result,dict) else command.reason
                     if display_reason=='expired_or_zero':display_reason=command.reason
+                    stationary=_stationary_partial_yaw_refusal(actuator,result,command,latest,xy,yaw)
+                    watch_reason='yaw_preflight_no_progress' if stationary else display_reason
                     observe_result=getattr(self.navigator,'observe_navigation_result',None)
-                    failure=(observe_result(nav,xy,self.now_ns(),display_reason,rejected)
-                             if callable(observe_result) else None)
-                    self._step_navigation_observed=callable(observe_result)
+                    if self._step_reobserve:
+                        self._active.outcome(decision,watch_reason,rejected or stationary,self.now_ns())
+                        failure=None
+                    else:
+                        failure=(observe_result(nav,xy,self.now_ns(),watch_reason,rejected or stationary)
+                                 if callable(observe_result) else None)
+                        self._step_navigation_observed=callable(observe_result)
                     if failure is not None:
-                        display_reason='goal_failed_no_progress:'+display_reason
+                        display_reason='goal_failed_no_progress:'+watch_reason
                         with self._lock:self._last_goal_failure=failure
                     with self._lock:
                         counts=getattr(self,'_navigation_reason_counts',None)
@@ -832,7 +1049,13 @@ class Pipeline:
         timeout_s=valid_timeout(timeout_s);deadline=time.monotonic()+timeout_s
         control_acquired=self._control_lock.acquire(timeout=remaining(deadline))
         with self._lock:self._closing=True;self._paused=True;self._deadline=deadline;self.scheduler.closed=True
-        if control_acquired:self._control_lock.release()
+        if control_acquired:
+            try:
+                active=getattr(self,'_active',None)
+                if active is not None:
+                    active.interrupt(self.now_ns(),'runtime_stopped')
+                    with self._lock:self._active_status=active.status()
+            finally:self._control_lock.release()
         # Eager resources remain owned even if graph startup prevented the
         # navigation thread (and its finally block) from ever starting.
         if 'navigation' not in self._threads and self.mapper is not None:
@@ -845,6 +1068,9 @@ class Pipeline:
         schedule=self.scheduler.snapshot();health=self.health.snapshot()
         pending=max(self._journal_counts['pending'],schedule['pending']+schedule['inflight'])
         failed=dict(health['failed']);pending_workers=alive+list(self._cleanup_pending)+([] if control_acquired else ['control'])
+        active=getattr(self,'_active',None)
+        if active is not None and not active.close(remaining(deadline)):
+            pending_workers.append('reobserve_proposal')
         clean=not pending_workers and not pending and not failed
         report=dict(drained=self._counts['committed'],pending=pending,failed=failed,
                     semantic_sampling=self.semantic_sampling_snapshot(),

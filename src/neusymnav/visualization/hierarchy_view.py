@@ -33,9 +33,9 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
         target = snapshot.nodes.get(edge.target_id)
         if source is None or target is None:
             continue
-        if edge.kind == "contains" and source.kind == "floor" and target.kind == "region":
+        if edge.kind == "contains" and source.kind == "floor" and target.kind in {"region", "room"}:
             child, owner = target.node_id, source.node_id
-        elif (edge.kind == "in_region" and source.kind == "object" and target.kind == "region"
+        elif (edge.kind == "in_region" and source.kind == "object" and target.kind in {"region", "room"}
               and not target.attributes.get("stale", False)
               and source.attributes.get("membership_status", snapshot.statuses.get(source.node_id)) == "assigned"):
             child, owner = source.node_id, target.node_id
@@ -46,10 +46,10 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
 
     rows: list[HierarchyRow] = []
     for node_id, node in snapshot.nodes.items():
-        if node.kind not in {"floor", "region", "object"}:
+        if node.kind not in {"floor", "region", "room", "object"}:
             continue
         attrs = node.attributes
-        stale = node.kind == "region" and bool(attrs.get("stale", False))
+        stale = node.kind in {"region", "room"} and bool(attrs.get("stale", False))
         lifecycle = attrs.get("lifecycle") if node.kind == "object" else None
         membership = attrs.get("membership_status") if node.kind == "object" else None
         verification, verification_reason, _record = (
@@ -66,7 +66,7 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
             if lifecycle is not None:
                 label += f" · {lifecycle}"
             label += f" · verification {verification}"
-        elif node.kind == "region":
+        elif node.kind in {"region", "room"}:
             status = "stale" if stale else str(snapshot.statuses.get("regions", "assigned"))
             label = f"Room {node_id[-8:]} · geometry"
             if stale:
@@ -74,7 +74,7 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
             aliases = ()
         elif node.kind == "floor":
             status, label, aliases = "assigned", f"Floor {attrs.get('floor_id', node_id)}", ()
-        rows.append(HierarchyRow(node_id, "room" if node.kind == "region" else node.kind, label,
+        rows.append(HierarchyRow(node_id, "room" if node.kind in {"region", "room"} else node.kind, label,
                                  None if node.kind == "floor" else parent.get(node_id), status,
                                  None if lifecycle is None else str(lifecycle), verification,
                                  verification_reason, stale, aliases))

@@ -4,11 +4,52 @@ Composition pins the accepted source map independently of latest navigation.
 A region worker rejection retains geometry as stale and prevents membership.
 """
 from __future__ import annotations
+from dataclasses import replace
 from ..contracts import (ObjectSnapshot,NavSnapshot,RegionSnapshot,HierarchySnapshot,
                          HierarchyNode,HierarchyEdge,age_ns)
 from .membership import MembershipResolver,footprint_membership
 from .places import PlaceBuilder
 from ..regions.geometry import room_center
+
+def publication_objects(objects, admission, mode):
+    """Pin one coherent admitted subset without altering canonical owner memory."""
+    if mode not in {'off', 'shadow', 'enforce'}:
+        raise ValueError('invalid object admission mode')
+    if mode != 'enforce':
+        return objects
+    from ..contracts.admission import AdmissionSnapshot
+    if (not isinstance(admission, AdmissionSnapshot) or
+            admission.episode_id != objects.episode_id or
+            admission.object_revision != objects.revision or
+            set(admission.decisions) != set(objects.objects) or
+            any(d.availability != 'available' for d in admission.decisions.values())):
+        raise ValueError('admission snapshot unavailable or incoherent')
+    ids = {key for key, decision in admission.decisions.items() if decision.state == 'admitted'}
+    return replace(objects, objects={key: value for key, value in objects.objects.items() if key in ids},
+                   aliases={key: target for key, target in objects.aliases.items()
+                            if objects.resolve_id(key) in ids})
+
+
+def public_hierarchy(snapshot: HierarchySnapshot) -> HierarchySnapshot:
+    """Project internal region geometry to the public floor/room/object graph."""
+    if not isinstance(snapshot, HierarchySnapshot):
+        raise ValueError('typed hierarchy required')
+    nodes = {key: replace(node, kind='room') if node.kind == 'region' else node
+             for key, node in snapshot.nodes.items() if node.kind in {'floor', 'region', 'room', 'object'}}
+    def allowed(edge):
+        if edge.source_id not in nodes or edge.target_id not in nodes or edge.status != 'assigned':
+            return False
+        source, target = nodes[edge.source_id].kind, nodes[edge.target_id].kind
+        return ((edge.kind == 'contains' and (source, target) == ('floor', 'room')) or
+                (edge.kind == 'in_region' and (source, target) == ('object', 'room')) or
+                (edge.kind == 'region_adjacent_to' and (source, target) == ('room', 'room')
+                 and not edge.provenance.get('stale', False)
+                 and not nodes[edge.source_id].attributes.get('stale', False)
+                 and not nodes[edge.target_id].attributes.get('stale', False)))
+    statuses = {key: value for key, value in snapshot.statuses.items()
+                if key in nodes or key == 'regions'}
+    return replace(snapshot, nodes=nodes, edges=tuple(e for e in snapshot.edges if allowed(e)), statuses=statuses)
+
 
 class HierarchyComposer:
     def __init__(self,*,robot=None):

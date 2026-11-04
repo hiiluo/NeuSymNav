@@ -20,7 +20,7 @@
       },
       "script": {
         "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/sensors/habitat_worker.py",
-        "sha256": "e2d825a0fb4d363c6f1a6c842ee44facf139178001b9c121fc9f981a9acc8a68"
+        "sha256": "3fb445f6421fbc863d049ab6612f5b1a72a81ade0d47a05a14444fe542fff88a"
       },
       "timeout_s": 10.0
     },

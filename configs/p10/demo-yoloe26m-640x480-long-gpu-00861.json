@@ -20,7 +20,7 @@
       },
       "script": {
         "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/sensors/habitat_worker.py",
-        "sha256": "56f556187ba83d973ef0482bf4a21ed7abc8b4c4eb78d44843308206971e045d"
+        "sha256": "3fb445f6421fbc863d049ab6612f5b1a72a81ade0d47a05a14444fe542fff88a"
       },
       "timeout_s": 10.0
     },
@@ -49,7 +49,7 @@
       },
       "script": {
         "path": "/home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/src/neusymnav/runtime/ui_transport.py",
-        "sha256": "2e6cec8af62f2ae4117d1a8788dd9352115ce8359cad93d65655bc9e2ed28efa"
+        "sha256": "3dca8f372e3637660883b7cf2e75c00c9013ff7c0016d5edd6945c4281dd0f57"
       }
     },
     "raycast": {
