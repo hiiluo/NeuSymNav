@@ -161,3 +161,26 @@ Canonical export obtains hierarchy and its exact immutable nav atomically from
 `Pipeline.snapshot_bundle()`, independent of the UI's retained/coalesced bundle.
 Object checkpoint revision, map revision, episode and clock checks still reject
 incoherent exports; consumers do not relabel stale UI maps to make them match.
+
+### E5 — Active object perception (opt-in development extension)
+
+Core navigation remains frontier-only when `active_perception.mode` is absent or
+`off`. The extension is scoped to existing canonical objects. It does not
+implement ObjectNav, change admission/verification semantics, or consume GT.
+
+The graph lane reads committed detected events into bounded, versioned view
+metadata; it publishes a revision-bound pointer to the control lane. The
+scheduler may queue observation requests without granting motion authority.
+`shadow` computes proposals and diagnostics only. In experimental `active`,
+one arbiter may temporarily suspend frontier selection and ask the same
+Navigator and MotionGuard to track a known-free viewpoint. The fixed optical
+mount is measured from a source-paired primary capture and body pose for the
+declared fixed-height simulator profile. Unknown space, stale sources, depth
+coverage, footprint and deadline checks remain mandatory. Predicted visibility
+is not evidence. Reaching a pose can tag a fresh capture in the existing primary
+cadence; only a matching committed independent view can satisfy the request.
+Expiry, cancellation, guard veto or loss of budget releases the request and
+revalidates the held frontier on a later control tick.
+
+Current profile proposals and measured limitations are documented in
+[active perception results](results/active-object-perception-2026-11-03.md).

@@ -1565,3 +1565,340 @@ and explicitGPUraycastgate. Independent post-delta22tests0/1.59s, scopedACCEPT
 retained;392finalpins recorded, only2declaredpostnative deltas; finaldiffcheck0.
 Wholemap display implementation and CPUcorrectness verified; actualnative-data
 view validated withincomponent scope, whole45srun remainsincomplete/RSS1.
+
+### Ordered reliability/quality/navigation campaign — 2026-10-31 (in progress)
+
+User authorizes executing five priorities in order: runtime stability; multimap
+assessment; navigation; physical geometry/cameras; evidence-led detector training
+and association. User explicitly reconfirms height1m; radius.125m unchanged.
+Plan `docs/reliability-campaign-plan.md`. Started from clean HEAD9b90d31; no
+commit/push. Root orchestration; TerraHighRSS andGPUclient writers, LunaXhigh
+read-only eval preparation. Only NeuSymNav writes, one GPU workload at a time.
+
+P1 current implemented diagnostics ONLY: bounded RSS last_failure/last_failed_sample
+stage/PID/error sidecar, GPUclient per-stage failure walltiming. Existing closed
+resource schema, .25sdeadline, retrycaps/TTL/checks unchanged. RSS144focusedpass0,
+GPUclient84pass1GPUskip0; tight injected RED→GREEN verifies diagnostics, not actual
+cause repair. CPUretained IPC processing1–4ms does not reproduce250mstimeout;
+real /proc churn has transient missingVmRSS but retries recovered, no attribution
+of old native error. Do not claim RSS/timeout fixed yet.
+
+Active soleGPU: `.runtime/reliability-campaign-20261031/runtime-diagnostic/run.py`,
+300s00861out`runs/reliability-diagnostic-00861-300s-20261031/`; frozendiagnostics,
+no concurrent source edits/heavytests. Read latestexit/summary before retrying.
+Artifacts `.runtime/reliability-campaign-20261031/{rss,gpu-timeout,eval-prep}/`.
+Evalprep three seed0 clones/scene/sourcepins/extractor available, not yet executed.
+Only00861 has matching semanticGT;00770/00802 accuracy unavailable (do not fake
+confidence as accuracy). Globaloverview can support freearea; actuationpath is
+sampledlowerbound; complete STOP denominators need retained control artifacts.
+
+P1 update: RSS shared-mm selection fix + bounded diagnostics; exact fully drained
+GPU late-response miss now typed and discarded without map/source commit, worker
+reused; generic/incomplete/malformed faults remain terminal. CPUintegration190pass0,
+independent71pass0 (12extraoracles) scopedACCEPT, reports runtime-review. Real
+postfix qualification300s00861: exit0/completed/313.80swall,4669frames,
+RSS2184/2184supported0readerrors, no workerfailed, cleanUI0drops.396pinsunchanged.
+No absolute resource bound or futuretimeout guarantee; raremisshandling covered
+byinjectedclock+realmapper/control tests, not observed in qualifyingnative.
+
+User reconfirms keep simulatedcameraRGB1.2m/downward2m withbodyheight1m. Preserve
+this baseline throughout three-map300s/seed0 campaign; do not call it a calibrated
+physical consumer-vacuum mount. P1 qualification is predeclared00861baseline.
+P2 remaining00770then00802 wrappers prepared under multimap-*; oneGPUonly, no
+source edits/heavyCPUtests during runs. Update attemptmanifest withalloutcomes.
+
+P1 follow-up: 00770 first300s attempt exit1/incomplete, clean shutdown, no runtime
+worker failures, RSS2092/2093supported (one missing_process sample). Terminal
+diagnostic census_before FileNotFoundError `/proc/76264/task/76264/children`.
+Cannot prove exited PID/descendant lifecycle after exit; no safe reason to skip
+this census or fabricate RSS. Regression149pass0; report
+`.runtime/reliability-campaign-20261031/rss/rss-followup.md`. No production delta
+from this followup. P1 remains partially resolved, not complete; successful00861
+qualification is evidence of one run only. Preserve00770 in denominator. Continue
+00802 first300s attempt for descriptive measurement with explicit runtime gate
+limitation, soleGPU; do not call this full reliability acceptance.
+00861 offline quality export currently blocked by nonempty retained SQLiteWAL;
+original preserved. Next use checkpointed analysis copy with hashes/provenance,
+never immutable-open while ignoring WAL.
+
+P2 first-attempt three-map campaign closed:00802 exit0/completed318.76swall,
+4943frames/RSS2518of2518support; no sourcepin changes.00770 remainsincomplete
+and is retained, so aggregate first-attempt wrapper completion2/3, not full
+reliability acceptance. Descriptive metrics and ACK audit in eval-prep/comparison.md.
+00861 all57committed frames exported from exclusively locked, hashed analysis
+ledgercopy with ownerintegrityvalidation+WALcheckpoint; originals unchanged.
+Five serialized offlineGT render chunks0, merge0, evaluate0, memoryevaluate0,
+detectiondiagnostic0.230GT observations/25IDs/10classes; detectionP.375/R.2348,
+assigned-memoryonlineIDF1.236 withexplicit109assigned/34unresolved/1unprojected
+scope. No cross-scene gain or held-out claim. Dataset audit pending.
+P3 important00802failure:3416of3665 yaw_preflight_unavailable despite planner
+tracking; many forwardproofs stationary. Sourceboundactual-no-progress recovery
+inprogress, no yaw safety relaxation. Currentcontroltelemetry diagnostic and
+planner/guard narrow/wide+rollingworldgoal CPUchecks114pass0, UIunchanged.
+P1additionalSQLite lifecyclefive reader/exportconnections explicitlyclosed;
+realWALredgreenfixture. UI scriptSHA refreshed in13 shippedprofiles; original
+campaignprofileclones retained atoriginalSHA for immutable evaluationprovenance.
+Finalreview/nativevalidation pending; see results/reliability-campaign-2026-10-31.md.
+
+Final source scope independentACCEPT: SQLite/config113pass0 and finalnav163pass0
+with19additionalprobes. Reviewerfoundmalformednon-dictactuatorresultdiagnostic
+exception; mainREDtest thennormalizedpubliccontrol_rejected (noactuationretry),
+75affectedtests0 and independentmeasurementsprobes0. FullCPUbefore2linenormalize
+2254pass/2optional skips/9native deselected0/131.73s; focusedpostdelta verifies
+remainingchange, notclaimfullsuitepostdelta. Reports runtime-review/{followup,navigation}.md.
+Targeted00802postfix90snative nowactive soleGPU; allheavyCPUpaused. Usercamerachoice
+formalized docs/robot-simulation-baseline.md. Hypersim1400triplets HDF5readscan0
+usingexistingCtoolchain (noh5pyinstall),0structuralerrors,19instance→semantic
+conflicts; trainingnotready pendingmapping/annotation/splitprovenance.
+
+Corrective90s00802native exit1/incomplete100.37swall/1790frames,400pinsunchanged,
+RSS796/797(one live CUDAhelperVmRSSmissing), cleanruntimeworkers/shutdown,
+objectWAL0bytes. Two genuine yaw_preflight_no_progress watchdogreleases observed;
+measuredtranslationLB.325420m, no practicalexplorationgain vsbaseline .325966m.
+Finalfrontiers_temporarily_suppressed_after_collision;physicalreachablealternative
+problem unresolved. Reportallfailures; no additionalrerun-to-green. P1partially
+resolved/P3recoveryruntimeobserved but neither whole-runtime nor navigation
+performance accepted. P4retainedplatformauditdone; P5dataauditnottrainingready.
+
+P5 finaldataaudit:2800HDF5arrays and1400RGBheaders match768x1024,0structuralerrors,
+19frameconflictreviewqueue exactpaths (instanceIDsnotretained), alloutputs pinned.
+Report eval-prep/dataset-audit/readiness-report.md;14scene inputmappingcandidate
+only25of59runtime classes,34unsupported,7scenes overlaplegacytraining/validation.
+Unapproved mapping/sentinelpolicy and independentheldout provenance blocktraining.
+No pseudo-labels, unknown-to-backgroundconversion, downloads ortraining.
+Finalsource399pinsrecheckedunchanged/diffcheck0. Allrequestedmeasurementartifacts
+and scopedimplementation available; P1RSSreliability/P3physicalexploration/P5training
+remain explicitlyunproven orblocked asdocumented, notmarkedcomplete.
+
+Final00802read-only diagnosis: live_nav UI khớp finalsource/pose, planner empty
+policy-memory4of4frontiers mapreachable; actualcooldown/visitedstate absent.
+Footprint/.1msweep clear, .3msweep13occupiedcells. Cannot provephysicalroute
+orwhyactualpolicyrejectsallremaining; nextboundedtraceper-candidatecause needed.
+Noextraimplementation/runtimeclaims; source remainsfrozen399pins.
+
+### Completion + fine-tuning authorized — 2026-11-01 (active)
+
+User explicitly authorizes finishing remaining work and fine-tuning. Plan
+`docs/completion-finetune-plan.md`; retain CG+Visual,59classes,1m body/cameras.
+Dataset converter materialized1400scene-disjoint bitmap triplets900train/300val/
+200test,4200PNG hashes/partition checked, source unchanged.25mapped classes,
+20positive classes in train;5absent class channels excluded from training loss.
+Scene ai_001_002/rawinstance3 inconsistent scene-wide excluded;223positive-instance
+void occurrences ignored, no implicit background. Certifiedbackground wall/floor/
+ceiling only. Conversion sourceQC includes held-out labels; testpredictions/metrics
+remain unopened until validationselection. Pretrainingexposure unknown, notclaim
+independentfromallpretraineddata. Dataset/readiness reports under
+`.runtime/finetune-20261101/dataset/`.
+
+Ignore-aware head training: original localYOLOE11s+MobileCLIP,59prompt outputs,
+frozenbackbone+BN, mapped20train class gradients only; unknownanchor/mask zero
+gradients. Review caught mask/ignore sampling mismatch and coupled box/mask
+eligibility; fixed and independentCPUoracles accepted.5loss tests0/1.58s.
+GPUforward/backward onebatch+checkpointsave0, reload+2valframe inference0;
+no performancegainclaimfromsmoke. Maintrainer tools/finetune_detector.py.
+
+Navigation fixes: failed spatial/ID cooldown now both reach viewpoint selection,
+including repeatedveto+watchdog ID500vs spatial100 revisions; ID/spatial TTLs
+unchanged.119focusedtests0; independentrecheck101pass0/4.27s scopedACCEPT.
+Mainpolicytelemetrycopy integration9pass0. Native00802firstpostfix300s active
+soleGPU; no sourceedits/heavyCPU duringtimingrun. Upcoming6epoch offline head
+training separateGPUslot then validationselection, lockedtestcomparison and
+native tunedcompatibility. No defaultmodelpromotion beforeevidence.
+
+RSS200pthread lifecycleprobe reproducesunknownVmRSS/transientproc,149tests0;
+no soundbehavioralrepair established. Strictunknown remains null, priorfailures
+retained. Kernelchildren census cannot proveatomicclosure underchurn; report
+finetune-20261101/rss/report.md. Do not claimguaranteedresourcecertificate.
+
+Final artifactreview corrected support prose: actual recipe trains20classes, not21;
+5mapped classes absenttrain: bed, bookcase, curtain, dresser, nightstand. Code/recipe/lossmask were
+correct throughout; this is reportcorrection only. Independent audit matches all57
+source hashes/order, sameGT/encoder/evaluator; test performance regression means
+baseline default retained, tuned model experimental only.
+
+### Completion/fine-tuning checkpoint — 2026-11-01
+
+ActualGPUtrainingcomplete: A6epochs/2700steps457.04sexit0sourcepinsunchanged,
+B2epochs/900steps208.73sexit0dependenciesunchanged. Bvalidation-selectedepoch1
+SHA13edea274868fc7fdb4c5284578ba8ee9dc671dcdd5aac96749745f929972221,
+checkpoint `.runtime/finetune-20261101/training-detection/epoch-01.pt` rehashed.
+All59outputs,20positive-supportedtrainchannels, backbone+maskbranchstateunchanged.
+ValidationbboxAP.209054→.237391,mask.258747→.260280. Held-outtest200bbox
+.150121→.118223,mask.103313→.075401 => no defaultmodelpromotion. Same57HM3D
+replaybbox.121980→.205929,mask.125581→.146842,recall@.3 .234783→.4,
+precision.375→.366534; developmentdomaintradeoffonly. Nofurthertestguidedtuning.
+
+Nativepairedprofile120s00802exit0/132.75wall/2044frames,3.175386mtranslationLB,
+RSS963/963,14realCLIPcommits0fallback. Fixedcellheight.01+initialY.0010702843
+whilebody/mounts/slabunchanged;cameraWORLDheight−.12293m explicitlyqualified
+withfreshRGBD/map/guard/motion. Optionalrequest/ACKreadbackversioned+failclosed.
+Initialstartupfailedunknownfield retained, configclosedvalidatorRED→GREEN;
+independentreviewfoundinventedenabledrequirement,removed,final53pass0.
+Default00802profile nowbyte-identical toqualifiedprofile (modelbase unchanged);
+sourcearchive+promotionhashes saved.
+Tunednative0086160s exit0/71.64wall/1054frames,2.438987m,RSS524/524,17realCLIP
+commits;0080260s exit0/70.72wall/977frames,2.238537m,RSS515/515,9realCLIPcommits.
+Allworker/shutdownclean, no sourcepinchanges. Newcommand tools/run_finetuned_demo.sh
+map/seconds/newoutput, profiles00861/00802nativechecked,00770configcheckedonly.
+
+FinalfullCPU2290pass/3skip/9deselected0/138.80s AFTERsource/configpromotion,
+full-cpu-final.log; loss5tests0separatelyindetectorenvironment. Independentmodel/
+data/metric/trainer/precisionreviews acceptscopedchanges; finalartifactreview
+corrected20vs21classproseandconfirmedall57bindingsmatch.75sensorpinsrefresh
+onlyhashplusdeclarednewprofiles/paired00802promotion. Finalsource412pins
+unchanged,diffcheck0. Artifacts completion-manifest.json/modelcard/report record
+alloutcomesincludingstartupfailuresandhistoricalincomplete. RSS /proc atomicity
+notrepairedbyguessingzerosorweakeninggate; no absolutepeak/crossscene59class/
+wholeP10certificate claimed. No commit/push/publish/download/siblingwrites.
+Report docs/results/completion-finetune-2026-11-01.md.
+
+### Object graph admission — plan only, 2026-11-01
+
+User requests an agent implementation plan for selective graph objects. Saved
+`docs/object-graph-admission-plan.md`: reuse canonical owner + verification evidence,
+separate admission from lifecycle/verified, CG+Visual/point clouds retained,
+off/shadow/enforce rollout, coherent UI/export publication, paired quality ablations,
+bounded native campaign and explicit promotion gates. Initial thresholds are
+proposals, not calibrated facts. A1–A5 are planned, not implemented/correctness-
+verified/runtime-validated. This turn authorizes documentation only; no training,
+GPU run, dependency changes, default changes, commit or push performed.
+
+### Object graph admission — implementation active, 2026-11-01
+
+User explicitly authorizes executing docs/object-graph-admission-plan.md A1–A5.
+Core/contracts owner Terra high; publication/runtime/UI owner Terra high;
+offline evaluator owner Terra high; independent Sol high reviewer. Existing
+working changes preserved; no commit/push or source-sibling edits. Shared admission
+contract delegated to core owner; main retains integration/default decisions.
+Artifacts under .runtime/object-admission/. Native six-run protocol prepared but
+not launched while durability/review gates remain in progress. Default off.
+
+### Object admission implementation + campaign checkpoint — 2026-11-01
+
+A1–A4 functional implementation and A5review/campaign executed. Canonical owner
+records exact source mask/depth admission evidence atomically; separate admission
+states candidate/admitted/review_required, bounded summary, version/hash contracts,
+SQLite journal, alias union, recovery hysteresis; unknown crash/provenance gaps
+fail closed. Runtime off/shadow/enforce, public UI/export shared subset, Qt candidate
+diagnostics, public hierarchy Floor/Room/Object. CG+Visual/pointcloud/body/cameras
+retained. Default remains off, base detector unchanged; no training/download/push.
+
+Final CPU2331pass/3skip/9deselected0/143.30s; core78/publication108/evaluator14focused0;
+independent Solhigh scopedACCEPT. Previous interrupted CPU130/collectionerror kept.
+UIpins16JSON+5YAMLrefreshed; no behavior defaultpromotion. Sourcepins unchanged
+through all6native120sruns, finaldiffcheck0 and6exportparity assertions0.
+00861shadow/enforce exit0 RSS926/926,953/953; 00802shadow0 813/813, enforce1 927/928;
+00770shadow0 958/958,enforce1 942/943. Twofailures each1RSSreaderror, all6clean
+shutdown/no failedworkers/no exportissue. Admissionavailable all6; admittedcounts
+7/5/0/0/5/6 respectively; not accuracy. No retrytohidefailures. Native wiring
+scopedvalidated, whole runtime/P10 still notaccepted. No absoluteRSSpeak guarantee.
+
+Offline realowner57frame counterfactual replay + GTscoped projection pilot230GTobs/
+25identities: baseline/confidence.5/multiview recall90/230,59/230,55/230; identities
+8/25,6/25,5/25. PartialGT prevents precisioncertification, one developmentscene,
+asyncattachmentsnotreconstructed; no heldout/nativeequivalence claim. Qualitygate
+notpassed, no thresholdcalibration or defaultenforcepromotion. Missing p95control
+latency overhead/completecontinuousconfirmation/falsemerge/roomGT remain unproved.
+Report docs/results/object-graph-admission-2026-11-01.md; artifacts
+.runtime/object-admission/ (reports/logs/review/pins/replay/campaign/export-parity).
+
+
+### Active object perception — planning only
+
+User requests a concrete plan following multiview-memory/active-observation proposal.
+Artifact: `docs/active-object-perception-plan.md`, Q0–Q7 with oracle decision gates,
+bounded request/view memory, off/shadow/active rollout, matched-budget controls,
+GT requirements and explicit promotion criteria. All implementation/correctness/
+native validation remains pending; no GPU/training/download/default/commit/push.
+Document verification: `git diff --check -- docs/active-object-perception-plan.md docs/implementation-status.md` exit0; file existence/content inspected.
+User clarified Astra is permitted for main when selected, forbidden for subagents.
+
+
+### Subagent routing preference — 2026-11-03
+
+Implemented (docs): AGENTS.md and docs/agent-orchestration.md prioritize unrestricted
+useful Luna xhigh delegation for easy/normal tasks, Terra with task-appropriate
+effort for harder work and independent reviews; Sol requires a concrete exceptional
+reason. No fixed percentage or mandatory Sol review. Astra ban applies to spawned
+agents/reviewers/fallback, not user-selected main. Historical model reports unchanged.
+Correctness: scoped git diff --check exit0; runtime dispatch not exercised.
+Artifacts: the two guidance files; no pipeline change, commit or push.
+
+Astra scope clarification — 2026-11-03: AGENTS.md and agent-orchestration.md explicitly permit Astra in the main session, including its own work/review; prohibition applies only to spawned subagents, including reviewer/fallback agents. Documentation implemented; scoped git diff --check exit0; runtime validation not applicable. No commit/push.
+
+### Active object perception — opt-in development checkpoint, 2026-11-03
+
+Implemented: Q2 committed bounded view memory, Q3 request scheduler and fixed-mount
+viewpoint planner, Q4 single arbiter and existing guarded controller, off/shadow/
+active with async proposals, exact fresh capture/commit binding and UI/export.
+Baseline/admission defaults off. No GT in runtime, no change to body, models,
+camera mounts, ID authority or safety gates. No commit/push/training/download.
+
+Q0 fixed 57-frame partial-GT cohort, 230 observations/25 identities, inventory
+exit 0. Q1 B0 owner replay matches previous projections and admission exactly.
+O-label correct labels 59→86/90 projected matches, no identity increase. O-mask/
+proposal: 74 replacements, 156 added, 70 original unmatched retained, 239 real
+same-space CPU re-encodings; 172/230 matches and 19/25 identities vs B 90/230 and
+8/25. Joint mask/proposal oracle, not deployment or isolated proposal effect.
+O-ID remains post-hoc diagnostic. Q5 passive B/M 109 valid views, 51/41 retained,
+13/26 vs 13/13 independent pairs; no quality gain claim. All replays exit 0.
+
+Correctness-verified: Q4 post-review 85 pass; full CPU 2371 passed, 3 skipped,
+9 native deselected, exit 0/145.38s. Later offline mask hook actual replay and
+27 focused tests exit 0. Independent Terra High Q4 ACCEPT after async/mount/
+ACK/retry fixes. Three config preflights exit 0. Source hashes, tests, exact
+inputs, and results in .runtime/active-object-perception/{q0,q1,q2,q3-requests,
+q3-viewpoints,q4,q5}/; see docs/results/active-object-perception-2026-11-03.md.
+
+Runtime-validated: no native active pilot or confirmation campaign. GPU idle,
+but suitable exhaustive development/held-out annotation missing. Do not promote
+default or open Q7 without separating proposal effect from mask quality. Native
+deadline/resources, actual request yield, full restart recovery and P10 remain
+unproven. Only source-bound CPU fixture and offline replay evidence claimed.
+
+### Active object perception — native smoke follow-up, 2026-11-03
+
+Implemented: no runtime changes in this follow-up. Correctness evidence and
+independent review from the checkpoint above remain separate.
+
+Runtime-validated in scope: four sequential 45 s headless Habitat 00861
+attempts, seed 0, four CLI preflights exit 0. Native CLI exits B/M/R/C = 1/0/0/0.
+B retained as incomplete due to an RSS teardown sample error. Shadow planned
+without active motion. Both active modes produced source-bound motion proofs
+and later frontier proofs. Zero requests satisfied with new independent
+evidence. Average control 16.42–18.73 Hz with 100 ms interval misses in every
+mode. Three missing actuation proofs per attempt. The existing frontier
+distance aggregate mixes frontier and reobserve goal IDs.
+
+See [native smoke results](results/active-object-perception-native-2026-11-03.md)
+for commands, p95/p99, misses, resource measurements and evidence scope.
+Artifacts: `.runtime/active-object-perception/native-smoke-20261103/`.
+Formal Q5 pilot, matched realized budgets, Q6 quality, full restart and P10
+remain unproven. Keep default off. No training, downloads or promotion.
+
+### Active object perception — GT acquisition and 120 s diagnostic, 2026-11-03
+
+Implemented: no runtime changes. Identified official HM3DSem v0.2 Minival and
+verified the local Habitat downloader lists its four components (exit 0).
+Downloaded the official public example config and semantic archives, verified
+SHA-256 and listed the archive (exit 0). Only scene 00861 has public example
+semantics. The Minival endpoint returned Matterport login HTML and tar exited 2.
+An authorized Matterport account/download is required. See
+[acquisition notes](results/hm3d-gt-acquisition.md) and
+`.runtime/active-object-perception/gt-acquisition/`.
+
+Runtime evidence: same reobserve smoke profile and scene/seed, CLI
+`run --duration-s 120`, new output
+`.runtime/active-object-perception/native-smoke-20261103/run-reobserve-diagnostic-120s/`.
+Exit 1 (incomplete RSS teardown sample), raw recording complete. Joined
+request terminal IDs to actuator proof goal IDs in `gt-acquisition/request-audit.jsonl`.
+All nine requests with reobserve proof rows expired with time_budget. Zero
+satisfied requests and no capture-ready decision in the retained navigation
+counts. Other requests ended in unknown/outside-map, unreachable or object-moved
+states. The longest first-to-last command span was 3.39 s with about 0.112 m
+observed translation. The same time-budget pattern was present for all 16
+requests with reobserve proof rows in the two prior 45 s active runs.
+The 120 s run also had 1,232 frontier collision-wait decisions and 1,256
+missing command proofs. These are distinct counters and do not certify
+complete actuation coverage. Full fresh-view completion, held-out quality,
+and promotion remain open.

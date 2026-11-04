@@ -4,24 +4,24 @@
 
 | Vai trò | Model ID | Effort | Phạm vi |
 | --- | --- | --- | --- |
-| Main | `gpt-6.1-sol` | `medium` | Giữ mục tiêu, contracts, tích hợp, kiểm chứng và trả lời |
+| Main | Do người dùng chọn | Do người dùng chọn | Giữ mục tiêu, contracts, tích hợp, kiểm chứng và trả lời |
 | Worker thông thường, dễ thực hiện | `gpt-6-luna` | `xhigh` | Mặc định cho task có phạm vi và tiêu chí rõ |
-| Worker cho task khó hơn | `gpt-6.1-terra` | Tùy tình huống | Bất định hoặc rủi ro vượt khả năng phù hợp của Luna |
-| Worker/reviewer cho task thật sự khó | `gpt-6.1-sol` | Tùy tình huống | Cân nhắc khi độ khó hoặc evidence đòi hỏi |
+| Worker/reviewer cho task khó hơn | `gpt-6.1-terra` | Theo task | Lựa chọn chính cho implementation phức tạp, debugging, contracts và review |
+| Worker/reviewer ngoại lệ | `gpt-6.1-sol` | Theo task | Chỉ khi có lý do cụ thể Terra chưa đủ phù hợp |
 
-**Tuyệt đối không sử dụng GPT-6 Astra hoặc bất kỳ model/alias nào chứa `astra`, không phân biệt hoa thường. Áp dụng cho main, subagent, reviewer và fallback.** Chỉ dispatch model khi công cụ thực tế hỗ trợ; chọn effort theo tình huống, không mặc định `max`/`ultra`.
+**Astra không bị cấm ở main session. Chỉ cấm mọi model/alias chứa `astra` (không phân biệt hoa thường) ở subagent do main tạo ra, bao gồm subagent làm reviewer hoặc fallback. Main dùng Astra vẫn được tự thực hiện công việc và review.** Chỉ dispatch model công cụ hỗ trợ; luôn đặt rõ model/effort, không để subagent kế thừa Astra từ main.
 
-Luna Extra High là lựa chọn mặc định cho task bình thường, dễ thực hiện. Dùng Terra khi task khó hơn; cân nhắc Sol cho task thật sự khó. Không tạo agent cho mỗi thao tác nhỏ hoặc chạy trùng việc.
+Ưu tiên phân bổ: **Luna xhigh cho phần lớn việc dễ–bình thường; Terra chiếm phần lớn các task còn lại; Sol là ngoại lệ, có thể bằng 0 lượt trong một chiến dịch.** Không áp tỷ lệ phần trăm cứng vì độ khó thay đổi; không tạo task giả để đạt tỷ lệ. Luna được dùng thoải mái cho công việc độc lập hữu ích, không có quota nội bộ hoặc giới hạn số lượt tùy ý; vẫn tuân thủ slots/RAM, ownership và một GPU workload.
 
-Main model do người dùng/công cụ cấu hình; Markdown không chuyển model. Nếu runtime xác nhận main là model bị cấm, dừng và báo cần đổi. Nếu không có metadata model, không đoán hay tuyên bố đã đổi. Nếu model được chọn không khả dụng, chọn model được phép phù hợp với độ khó và ghi fallback; nếu không có lựa chọn phù hợp, ghi blocked.
+Main model do người dùng/công cụ cấu hình; Markdown không chuyển model. Nếu model worker không khả dụng, ưu tiên model được phép phù hợp hoặc main tự xử lý; không tự nâng lên Sol chỉ vì tiện. Ghi lý do fallback và giữ điều kiện dùng Sol bên dưới.
 
 ## 2. Phân công theo rủi ro
 
 - **Luna xhigh:** task thông thường có contract và oracle rõ, như inventory, serialization, fixtures, UI, CLI và tổng hợp evidence.
-- **Terra:** task khó hơn, bao gồm bất định về invariant, thay đổi xuyên module hoặc review cần phân tích sâu; chọn effort theo tình huống.
-- **Sol:** cân nhắc cho task thật sự khó, chẳng hạn race khó tái hiện hoặc bất đồng xuyên module chưa giải quyết bằng evidence; chọn effort theo tình huống.
+- **Terra:** mặc định cho task vượt Luna, kể cả geometry, identity, concurrency, contracts và reviewer độc lập. Effort `medium` cho phạm vi rõ; `high` cho phân tích sâu/rủi ro xuyên module; `xhigh` khi cần reasoning đặc biệt sâu. Chọn theo task, không mặc định effort cao nhất.
+- **Sol:** chỉ dùng khi Terra với effort phù hợp đã có điều tra có căn cứ nhưng còn nút thắt, hoặc main xác định ngay một vấn đề đặc biệt khó cần Sol và ghi lý do cụ thể. Dispatch phải nêu evidence, câu hỏi còn mở và vì sao Terra chưa phù hợp. Không mặc định Sol cho review cuối, task quan trọng hay mọi thay đổi safety.
 - **Main:** chốt public contracts; quản lý dependency/environment; resolve interface conflicts; kiểm tra báo cáo worker; cập nhật integration status. Main có thể tự làm task nhỏ thay vì dispatch.
-- **Nâng cấp:** chuyển evidence từ Luna sang Terra khi độ khó vượt phạm vi phù hợp; cân nhắc Sol nếu vấn đề thật sự khó hoặc vẫn chưa được giải quyết. Không retry vô hạn; effort cao không thay thế reproduction.
+- **Nâng cấp:** chuyển evidence từ Luna sang Terra khi độ khó vượt phạm vi phù hợp; ưu tiên điều chỉnh effort/phạm vi của Terra, chỉ chuyển Sol khi đáp ứng điều kiện ngoại lệ trên. Không retry vô hạn; effort cao không thay thế reproduction.
 
 ## 3. Song song và ownership
 
@@ -52,6 +52,7 @@ Mỗi dispatch thực tế phải thêm: snapshot/commit hoặc source hashes đ
 
 ## 5. Review và tiêu chí hoàn thành
 
+- Chính sách chọn model ở đây ưu tiên hơn nhãn Sol owner/reviewer trong kế hoạch cũ khi dispatch mới; giữ yêu cầu review độc lập, không sửa báo cáo model đã thực sự dùng trong lịch sử.
 - Task nhỏ theo contract đóng: main đọc diff, xem assertion và output kiểm tra; không bắt tạo reviewer mới cho mọi file tài liệu.
 - Các gate **P01, P04, P06, P07, P10** cần reviewer độc lập với model và effort theo độ khó trên snapshot ổn định. Reviewer khác implementer, không sửa đồng thời với writer. Phát hiện phải kèm path, tình huống gây lỗi, hậu quả và test/reproduction đề nghị.
 - Main xác minh findings; không chấp nhận hay bác chỉ dựa vào kết luận của agent. Sửa lỗi thật và chạy test liên quan; chỉ mở rộng tests khi có rủi ro mới.
@@ -73,10 +74,10 @@ Triển khai pipeline NeuSymNav theo NeuSymNav/docs/architecture.md và
 NeuSymNav/docs/implementation-plan.md. Đọc NeuSymNav/AGENTS.md,
 docs/agent-orchestration.md và docs/implementation-status.md trước.
 
-Main dùng GPT-6.1 Sol Medium. Tôi cho phép chủ động phân công Luna xhigh
+Main dùng model do tôi chọn trong công cụ. Tôi cho phép chủ động phân công Luna xhigh
 cho việc bình thường, GPT-6.1 Terra cho việc khó hơn và GPT-6.1 Sol
-cho việc thật sự khó, với effort theo hướng dẫn.
-Tuyệt đối không dùng GPT-6 Astra hoặc alias chứa astra. Không tự tạo agent con
+chỉ khi thật sự cần theo điều kiện ngoại lệ, với effort theo task.
+Astra được phép ở main session; chỉ cấm ở subagent do main tạo ra, kể cả reviewer/fallback. Không tự tạo agent con
 ngoài điều phối của main. Chỉ sửa NeuSymNav; hai folder nguồn giữ nguyên.
 
 Bắt đầu P00, làm theo dependency/gate tới P10 trong phạm vi core. Khóa các
