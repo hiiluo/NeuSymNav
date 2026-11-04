@@ -1902,3 +1902,16 @@ The 120 s run also had 1,232 frontier collision-wait decisions and 1,256
 missing command proofs. These are distinct counters and do not certify
 complete actuation coverage. Full fresh-view completion, held-out quality,
 and promotion remain open.
+
+### PR #2 — khôi phục kết nối Rebuild M5 sau merge, 2026-11-04
+
+Implemented: trên `Kiet_branch`, khôi phục factory, kiểu node, DTO, export và
+trạng thái shutdown của Rebuild M5. Giữ admission ở đường compose hiện hành,
+khôi phục import `replace` và đồng bộ SHA-256 của UI worker trong cấu hình.
+
+Correctness-verified: tái hiện 5 lỗi với nhóm room hierarchy/mapping deadline.
+Sau sửa, `python -m pytest tests -q -m 'not native' --tb=short` trả exit 0,
+2445 passed, 3 skipped, 9 deselected (log `/tmp/neusym-pr2-cpu-fixed.log`).
+Các nhóm capture/replay/export và scheduling/proof chạy riêng 71 và 67 pass.
+Kiểm tra payload, preflight CPU fixture và `git diff --check` exit 0.
+Runtime-validated: chưa chạy simulator hoặc GPU cho bản sửa CI này.

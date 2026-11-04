@@ -237,6 +237,7 @@ class DisplaySources:
     navigation: NavigationOverlay | None = None
     live_nav: NavSnapshot | None = None
     overview: MapOverview | None = None
+    room_pipeline: RoomPipelinePublication | None = None
     admission: object | None = None
     admission_status: Mapping[str, object] | None = None
     active_perception: Mapping[str, object] | None = None

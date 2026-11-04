@@ -54,10 +54,10 @@ def hierarchy_rows(envelope: DisplayEnvelope) -> tuple[HierarchyRow, ...]:
 
     rows: list[HierarchyRow] = []
     for node_id, node in snapshot.nodes.items():
-        if node.kind not in {"floor", "region", "room", "object"}:
+        if node.kind not in {"floor", "region", "room", "source_region", "object"}:
             continue
         attrs = node.attributes
-        stale = node.kind in {"region", "room"} and bool(attrs.get("stale", False))
+        stale = node.kind in {"region", "room", "source_region"} and bool(attrs.get("stale", False))
         lifecycle = attrs.get("lifecycle") if node.kind == "object" else None
         membership = attrs.get("membership_status") if node.kind == "object" else None
         verification, verification_reason, _record = (

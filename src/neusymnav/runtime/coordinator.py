@@ -84,7 +84,7 @@ class Pipeline:
                  floor_id,actual_profile='geometry-only',
                  byte_cap=32*1024**2,raw_cap=2*1024**3,total_cap=8*1024**3,
                  startup_timeout_s=5.,publisher=None,measurements=None,keyframe_sampling='novelty',admission_mode='off',
-                 active_perception=None,active_body_z_m=None):
+                 active_perception=None,active_body_z_m=None,room_pipeline_factory=None):
         self._active=None
         self._active_memory=None
         self._active_input=None
@@ -870,7 +870,7 @@ class Pipeline:
             with self._lock:self._admission_status=dict(mode=mode,status='unavailable',reason=str(exc),stale=getattr(self,'_hierarchy',None) is not None)
             return
         if not hasattr(self,'_composer'):self._composer=HierarchyComposer(robot=getattr(self.mapper,'robot',None))
-        result=self._composer.compose(objects,nav,regions,latest_nav_revision=latest.revision,
+        result=self._composer.compose(public_objects,nav,regions,latest_nav_revision=latest.revision,
                                       now_ns=self.now_ns(),clock_domain=self.clock_domain,
                                       room_pipeline=room_publication)
         if scope=='accumulated_measured_occupancy_v1':
@@ -919,7 +919,7 @@ class Pipeline:
                 published_frame_id=objects.source,source_age_ns=ages,dropped_count=missing,
                 replaced_count=self.scheduler.counts['replaced'],actual_profile=self.health.profile,
                 sources=DisplaySources(nav=nav,objects=public_objects,verification=display_verification,admission=admission,
-                    active_perception=_active_display(active_status,objects))))
+                    active_perception=_active_display(active_status,objects),room_pipeline=room_publication)))
 
     @staticmethod
     def _display_verification(verification):
@@ -1244,7 +1244,7 @@ class Pipeline:
         active=getattr(self,'_active',None)
         if active is not None and not active.close(remaining(deadline)):
             pending_workers.append('reobserve_proposal')
-        clean=not pending_workers and not pending and not failed
+        clean=not pending_workers and not pending and not failed and self._room_failure is None
         report=dict(drained=self._counts['committed'],pending=pending,failed=failed,
                     room_pipeline_failed=self._room_failure,
                     semantic_sampling=self.semantic_sampling_snapshot(),

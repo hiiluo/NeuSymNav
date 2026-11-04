@@ -4,6 +4,7 @@ Rebuild profiles use accepted M5 polygons as their only room geometry source.
 Legacy profiles without the Rebuild room pipeline keep the generic region lane.
 """
 from __future__ import annotations
+from dataclasses import replace
 import hashlib
 from ..contracts import (ObjectSnapshot,NavSnapshot,RegionSnapshot,RoomPipelinePublication,
                          HierarchySnapshot,HierarchyNode,HierarchyEdge,age_ns)

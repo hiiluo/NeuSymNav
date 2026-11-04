@@ -434,6 +434,7 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
         encoder_factory=encoder,region_factory=region,mapper=mapper,navigator=navigator,guard=guard,
         keyframe_policy=_RecordedPolicy() if recorded is not None else None,now_ns=now_ns,
         actual_profile=profile,publisher=publisher,measurements=measurements,
+        room_pipeline_factory=room_pipeline,
         admission_mode=d.get('admission',{}).get('mode','off'),
         active_perception=d.get('active_perception'),
         active_body_z_m=d.get('sensor_config',{}).get('initial_position',[0.,0.,0.])[1]
@@ -544,7 +545,8 @@ def _export(root,pipeline,report,metadata):
         if not trace['complete'] and metadata['outcome']=='completed':metadata=dict(metadata,outcome='incomplete')
     if snapshot is not None:
         from ..hierarchy.composer import public_hierarchy
-        payloads['hierarchy.json']=dumps(public_hierarchy(snapshot)).encode()
+        exported_hierarchy=snapshot if room_pipeline is not None else public_hierarchy(snapshot)
+        payloads['hierarchy.json']=dumps(exported_hierarchy).encode()
     if nav is not None:payloads['nav.json']=dumps(nav).encode()
     if objects is not None:payloads['objects.json']=dumps(objects).encode()
     if room_pipeline is not None:payloads['room-pipeline.json']=dumps(room_pipeline).encode()
