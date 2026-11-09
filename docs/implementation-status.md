@@ -1565,3 +1565,26 @@ and explicitGPUraycastgate. Independent post-delta22tests0/1.59s, scopedACCEPT
 retained;392finalpins recorded, only2declaredpostnative deltas; finaldiffcheck0.
 Wholemap display implementation and CPUcorrectness verified; actualnative-data
 view validated withincomponent scope, whole45srun remainsincomplete/RSS1.
+
+### Hydra/TrackGraph replacement assessment — 2026-11-09
+
+Advisory only. Assessed the TrackGraph fork as a single candidate graph backend
+on checkout `9b90d31`. Its published 7.3–8.3 GB VRAM profiles exceed the known
+6 GiB GPU capacity. A lighter backend and runtime compatibility are unmeasured.
+See the [upstream manifest](https://github.com/ntnu-arl/trackgraph_ros/blob/main/install/packages.yaml)
+and [paper, Table III](https://arxiv.org/html/2609.31005v1#S5.T3).
+Replace overlapping semantic mapping only after isolated replay and native gates.
+Retain independent navigation safety and a single canonical ID authority.
+Implemented: status note only. Correctness-verified: scoped `git diff --check`
+(exit 0). Runtime-validated: none for this assessment. Artifact: this note.
+
+### TrackGraph 2D replay pilot plan — 2026-11-09
+
+Artifact: [TrackGraph 2D replay plan](superpowers/plans/2026-11-09-trackgraph-2d-replay.md).
+Planned fixed-input CG + Visual A/B with a bounded keyframe identity hint,
+separate evaluator, and 6 GiB hardware gate. The recent run certificate proves
+8 committed keyframes only. Inter-keyframe footage and GT support need inventory.
+Implemented: planning document only. Correctness-verified: `git diff --check
+-- docs/implementation-status.md` and Python checks of the plan's whitespace,
+local link targets and four task sections, exit 0 after fixing the evaluator link.
+Runtime-validated: pending, with no tracker or benchmark run.
