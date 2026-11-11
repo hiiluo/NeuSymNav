@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "Phase-1 lockstep runner config. Sensor rig, robot body and controller settings copied from the v11 00806 profile (configs/demo-00806.hydra-tour-slm.experimental.local.json) without the privileged tour; world map kept for the whole episode (no 10 s rolling retention) with an 8 m snapshot radius for frontier selection.",
+  "sensor": {
+    "gpu_device_id": -1,
+    "motion_adapter": "planar_fixed_y_v1",
+    "primary": {"sensor_id": "primary-rgbd", "rgb_uuid": "color_sensor", "depth_uuid": "depth_sensor",
+                "resolution_hw": [480, 640], "position_xyz": [0.0, 1.2, 0.0], "orientation_xyz_rad": [0.0, 0.0, 0.0],
+                "hfov_deg": 90.0, "depth_min_m": 0.1, "depth_max_m": 10.0},
+    "navigation": {"sensor_id": "downward-depth", "depth_uuid": "navigation_depth_sensor",
+                   "resolution_hw": [180, 240], "position_xyz": [0.0, 2.0, 0.0],
+                   "orientation_xyz_rad": [-1.5707963267948966, 0.0, 0.0],
+                   "hfov_deg": 120.0, "depth_min_m": 0.1, "depth_max_m": 10.0}
+  },
+  "robot": {"geometry_id": "cylinder-v1", "radius_m": 0.2, "height_m": 1.5, "margin_m": 0.05,
+            "near_ground_tolerance_m": 0.05},
+  "mapper": {"resolution_m": 0.05, "sampling_stride": 1, "raycast_workers": 4, "snapshot_radius_m": 8.0},
+  "navigator": {"nominal_speed_mps": 0.15, "discrete_heading_control": true, "gain_aware": true,
+                "acceleration_mps2": 0.6, "goal_selection_max_age_ns": 1500000000, "max_pulse_s": 0.5},
+  "pulse_ms": 300,
+  "rotation_pulse_ms": 500,
+  "start_unknown_tolerance": 0.2,
+  "max_sim_s": 300.0,
+  "max_cycles": 3000
+}

@@ -16,7 +16,8 @@ class Navigator:
                  goal_selection_max_age_ns=None,tour=None,max_pulse_s=None,start_unknown_tolerance=0.):
         if type(offline_replay) is not bool or (offline_replay and not clock_domain.startswith('replay:')):
             raise ValueError('offline navigation mode requires an isolated replay clock')
-        if not (clock_domain.startswith('replay:') if offline_replay else clock_domain.startswith('host_monotonic:')):
+        from .clock_domains import is_live
+        if not (clock_domain.startswith('replay:') if offline_replay else is_live(clock_domain)):
             raise ValueError('navigation requires pinned live host clock domain')
         if not 0<max_nav_age_ns<=300_000_000:raise ValueError('navigation TTL cannot exceed 300 ms')
         # Goal SELECTION only (world frontier choice and its failure watch). It
