@@ -15,7 +15,8 @@ class MotionGuard:
                  start_unknown_tolerance=0.):
         if type(offline_replay) is not bool or (offline_replay and not clock_domain.startswith('replay:')):
             raise ValueError('offline guard mode requires an isolated replay clock')
-        if not (clock_domain.startswith('replay:') if offline_replay else clock_domain.startswith('host_monotonic:')):
+        from .clock_domains import is_live, is_simulated
+        if not (clock_domain.startswith('replay:') if offline_replay else is_live(clock_domain)):
             raise ValueError('guard requires pinned live host domain')
         if not 0<max_depth_age_ns<=300_000_000:raise ValueError('depth TTL cannot exceed 300 ms')
         if command_horizon_ns<=0:
@@ -28,6 +29,8 @@ class MotionGuard:
                 or not 100_000_000<=rotation_horizon_ns<=500_000_000):
             raise ValueError('invalid guard rotation horizon')
         if type(pace_to_wall_time) is not bool:raise ValueError('pace_to_wall_time must be boolean')
+        if pace_to_wall_time and is_simulated(clock_domain):
+            raise ValueError('wall-time pacing is undefined in a simulated clock domain')
         self.mapper=mapper;self.clock_domain=clock_domain;self.max_depth_age_ns=max_depth_age_ns
         self.command_horizon_ns=command_horizon_ns;self.rotation_horizon_ns=rotation_horizon_ns
         # Opt-in real-time pacing: a pulse longer than 100 ms is never longer
