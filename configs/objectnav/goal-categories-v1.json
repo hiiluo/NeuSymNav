@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "name": "goal-categories-v1",
+  "description": "Detector label (taxonomy-v1) -> ObjectNav goal category. Frozen 11/11/2026 before any detector result was seen. Ground-truth instances come from the episodes' goals_by_category, never from these names.",
+  "detector_vocabulary": "neusymnav:taxonomy:v1",
+  "hm3d": {
+    "chair": ["chair", "armchair"],
+    "bed": ["bed"],
+    "plant": ["plant"],
+    "toilet": ["toilet"],
+    "tv_monitor": ["television"],
+    "sofa": ["sofa"]
+  },
+  "near_miss": {
+    "tv_monitor": ["computer monitor"],
+    "sofa": ["armchair"],
+    "chair": ["stool", "bench"]
+  },
+  "mp3d_draft": {
+    "chair": ["chair", "armchair"],
+    "table": ["table", "dining table", "coffee table", "desk"],
+    "picture": ["painting"],
+    "cabinet": ["cabinet", "wardrobe"],
+    "cushion": ["pillow"],
+    "sofa": ["sofa"],
+    "bed": ["bed"],
+    "chest_of_drawers": ["dresser", "nightstand"],
+    "plant": ["plant"],
+    "sink": ["sink"],
+    "toilet": ["toilet"],
+    "stool": ["stool"],
+    "towel": ["towel"],
+    "tv_monitor": ["television", "computer monitor"],
+    "shower": [],
+    "bathtub": ["bathtub"],
+    "counter": ["counter", "kitchen island"],
+    "fireplace": ["fireplace"],
+    "gym_equipment": [],
+    "seating": ["bench"],
+    "clothes": []
+  }
+}
