@@ -14,9 +14,10 @@ usage() {
 map="$1"; shift
 [[ "$map" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || usage
 branch="$(git branch --show-current)"
-# Kiet_branch2 holds the frozen 3DSG baseline; objectnav* branches build on it.
-[[ "$branch" == Kiet_branch2 || "$branch" =~ ^objectnav([/_-][A-Za-z0-9._/-]+)?$ ]] || {
-    echo "Refusing Hydra demo outside Kiet_branch2/objectnav* (active branch: $branch)." >&2
+# Kiet_branch2 holds the frozen 3DSG baseline; objectnav* build on it; main/handoff/* receive it.
+[[ "$branch" == Kiet_branch2 || "$branch" == main || "$branch" =~ ^handoff/[A-Za-z0-9._/-]+$
+   || "$branch" =~ ^objectnav([/_-][A-Za-z0-9._/-]+)?$ ]] || {
+    echo "Refusing Hydra demo outside Kiet_branch2/main/handoff/*/objectnav* (active branch: $branch)." >&2
     exit 1
 }
 worktree="$(git rev-parse --show-toplevel)"
