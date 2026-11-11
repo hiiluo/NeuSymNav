@@ -26,21 +26,39 @@ class ControllerConfig:
     stop_distance_m: float = 0.25
     goal_reached_distance_m: float = 0.025
     max_dt_s: float = 0.10
+    discrete_heading_control: bool = False
+    hybrid_pulse_control: bool = False
+    heading_align_enter_rad: float = math.radians(12.0)
+    heading_align_exit_rad: float = math.radians(6.0)
+    hybrid_align_exit_rad: float = math.radians(25.0)
 
     def __post_init__(self) -> None:
         positive = (self.max_speed_mps, self.nominal_speed_mps, self.max_yaw_rate_radps,
                     self.acceleration_mps2, self.yaw_acceleration_radps2, self.lookahead_m,
                     self.max_depth_age_s, self.max_nav_age_s, self.stop_distance_m,
                     self.goal_reached_distance_m, self.max_dt_s,
-                    self.obstacle_align_deadband_rad)
+                    self.obstacle_align_deadband_rad, self.heading_align_enter_rad,
+                    self.heading_align_exit_rad, self.hybrid_align_exit_rad)
         if any(v <= 0 or not math.isfinite(v) for v in positive):
             raise ValueError("controller limits must be finite and positive")
         if self.nominal_speed_mps > self.max_speed_mps:
             raise ValueError("nominal speed cannot exceed max speed")
+        if type(self.discrete_heading_control) is not bool:
+            raise ValueError("discrete_heading_control must be a bool")
+        if type(self.hybrid_pulse_control) is not bool:
+            raise ValueError("hybrid_pulse_control must be a bool")
+        if self.discrete_heading_control and self.hybrid_pulse_control:
+            raise ValueError("discrete_heading_control and hybrid_pulse_control are mutually exclusive")
+        if self.heading_align_exit_rad >= self.heading_align_enter_rad:
+            raise ValueError("heading alignment exit must be below its enter threshold")
+        if self.hybrid_align_exit_rad >= self.rotate_in_place_angle_rad:
+            raise ValueError("hybrid alignment exit must be below its turn-in-place threshold")
 
 
 class Controller:
     """Pure command generator; caller must execute commands collision-filtered."""
+
+    _DIAGNOSTIC_PATH_LIMIT=64
 
     _HARD_STOP_REASONS = frozenset({
         "nav_stale", "depth_stale", "depth_coverage_insufficient",
@@ -57,6 +75,23 @@ class Controller:
         self._yaw_rate = 0.0
         self._path_signature: tuple[tuple[float, float], ...] | None = None
         self._path_progress_m = 0.0
+        self._discrete_aligning = False
+        self._hybrid_aligning = False
+        self.last_diagnostics=None
+
+    @classmethod
+    def _sample_path_xy(cls,snapshot,path):
+        if snapshot is None or path is None or not path.success or not path.cells:
+            return 0,[],False
+        cells=path.cells
+        count=len(cells)
+        if count<=cls._DIAGNOSTIC_PATH_LIMIT:
+            indices=range(count)
+        else:
+            indices=sorted({round(i*(count-1)/(cls._DIAGNOSTIC_PATH_LIMIT-1))
+                            for i in range(cls._DIAGNOSTIC_PATH_LIMIT)})
+        points=[list(snapshot.cell_to_world(*cells[index])) for index in indices]
+        return count,points,count>len(points)
 
     def set_traversable(self, provider: Callable[[GridSnapshot], np.ndarray]) -> None:
         """Share the planner's observed-footprint rule without simulator geometry."""
@@ -73,6 +108,8 @@ class Controller:
         dt = min(max(float(dt_s), 0.0), self.config.max_dt_s)
         reason = "tracking"
         target_v = target_w = 0.0
+        goal_xy=None;target_xy=None;heading_error=None
+        path_point_count,path_sample_xy,path_sample_truncated=self._sample_path_xy(snapshot,path)
         nav_age = math.inf if snapshot is None else now_monotonic_s - snapshot.host_monotonic_s
         depth_age = now_monotonic_s - depth_host_monotonic_s
 
@@ -108,8 +145,15 @@ class Controller:
                 # edge while the next forward pulse still crosses that edge.
                 forward_clear = True
                 if self._traversable is not None or blocked_edges:
-                    horizon = min(distance, max(snapshot.resolution_m * math.sqrt(2.0),
-                                                self.config.max_speed_mps * self.config.max_dt_s))
+                    if self.config.discrete_heading_control or self.config.hybrid_pulse_control:
+                        # A grid-cell diagonal can be much longer than the
+                        # actual <=100 ms pulse (14 cm vs 2 cm at 10 cm cells).
+                        # Near a corner that preview can veto a safe approach
+                        # before the robot reaches its turning waypoint.
+                        horizon=min(distance,min(self.config.max_speed_mps,.2)*.1)
+                    else:
+                        horizon = min(distance, max(snapshot.resolution_m * math.sqrt(2.0),
+                                                    self.config.max_speed_mps * self.config.max_dt_s))
                     forward_xy = (robot_xy[0] + horizon * math.cos(yaw_rad),
                                   robot_xy[1] + horizon * math.sin(yaw_rad))
                     source = snapshot.world_to_cell(*robot_xy)
@@ -119,6 +163,24 @@ class Controller:
                         snapshot, (self._traversable(snapshot) if self._traversable is not None
                                    else snapshot.states == GridState.FREE), robot_xy, forward_xy,
                         anchor, blocked_edges)
+                if self.config.discrete_heading_control:
+                    if self._discrete_aligning:
+                        self._discrete_aligning = (
+                            abs(heading_error) > self.config.heading_align_exit_rad)
+                    elif abs(heading_error) > self.config.heading_align_enter_rad:
+                        self._discrete_aligning = True
+                    if ((front_blocked or not forward_clear)
+                            and abs(heading_error) > self.config.obstacle_align_deadband_rad):
+                        self._discrete_aligning = True
+                if self.config.hybrid_pulse_control:
+                    if self._hybrid_aligning:
+                        self._hybrid_aligning = (
+                            abs(heading_error) > self.config.hybrid_align_exit_rad)
+                    elif abs(heading_error) > self.config.rotate_in_place_angle_rad:
+                        self._hybrid_aligning = True
+                    if ((front_blocked or not forward_clear)
+                            and abs(heading_error) > self.config.obstacle_align_deadband_rad):
+                        self._hybrid_aligning = True
                 if front_blocked and abs(heading_error) <= self.config.obstacle_align_deadband_rad:
                     reason = "front_obstacle_brake"
                 elif (not forward_clear
@@ -128,9 +190,18 @@ class Controller:
                     # local plan instead of oscillating forever at zero speed.
                     reason = "path_segment_blocked"
                 elif (front_blocked or not forward_clear
-                      or abs(heading_error) > self.config.rotate_in_place_angle_rad):
-                    target_w = _clamp(heading_error * 1.5, -self.config.max_yaw_rate_radps,
-                                      self.config.max_yaw_rate_radps)
+                      or (self._discrete_aligning if self.config.discrete_heading_control
+                          else self._hybrid_aligning if self.config.hybrid_pulse_control
+                          else abs(heading_error) > self.config.rotate_in_place_angle_rad)):
+                    if self.config.discrete_heading_control or self.config.hybrid_pulse_control:
+                        # A bounded simulator pulse is not a continuous servo.
+                        # Use the available turn budget without an asymptotic
+                        # tail, and never request more than the remaining angle.
+                        yaw_cap=min(self.config.max_yaw_rate_radps,math.radians(30.))
+                        target_w=_clamp(heading_error/self.config.max_dt_s,-yaw_cap,yaw_cap)
+                    else:
+                        target_w = _clamp(heading_error * 1.5, -self.config.max_yaw_rate_radps,
+                                          self.config.max_yaw_rate_radps)
                     # Forward depth certifies a translation corridor. A close
                     # return must not prevent turning toward a valid route:
                     # the simulator's cylindrical footprint is unchanged by
@@ -138,16 +209,28 @@ class Controller:
                     # an obstacle on the route still reaches brake recovery.
                     reason = "obstacle_align_heading" if front_blocked else "align_heading"
                 else:
-                    target_w = _clamp(heading_error * 1.5, -self.config.max_yaw_rate_radps,
-                                      self.config.max_yaw_rate_radps)
+                    target_w = (0.0 if (self.config.discrete_heading_control
+                                        or self.config.hybrid_pulse_control) else
+                                _clamp(heading_error * 1.5, -self.config.max_yaw_rate_radps,
+                                       self.config.max_yaw_rate_radps))
                     # A simple curvature cap; slows down before tight turns.
                     curvature = 2.0 * math.sin(heading_error) / max(distance, 1e-6)
                     curve_cap = math.sqrt(0.20 / max(abs(curvature), 1e-6))
                     age_cap = self.config.nominal_speed_mps * max(0.0, 1.0 - nav_age / self.config.max_nav_age_s)
-                    target_v = min(self.config.nominal_speed_mps, self.config.max_speed_mps,
-                                   curve_cap, age_cap, distance / self.config.max_dt_s)
-                    if abs(heading_error) > math.radians(25.0):
+                    limits = [self.config.nominal_speed_mps, self.config.max_speed_mps,
+                              curve_cap, distance / self.config.max_dt_s]
+                    if self.config.discrete_heading_control or self.config.hybrid_pulse_control:
+                        limits.append(0.20)
+                    else:
+                        limits.append(age_cap)
+                    if self.config.hybrid_pulse_control:
+                        yaw_cap = min(self.config.max_yaw_rate_radps, math.radians(30.0))
+                        limits.append(yaw_cap / max(abs(curvature), 1e-6))
+                    target_v = min(limits)
+                    if abs(heading_error) > math.radians(25.0) and not self.config.hybrid_pulse_control:
                         target_v *= 0.5
+                    if self.config.hybrid_pulse_control:
+                        target_w = target_v * curvature
 
         if reason in self._HARD_STOP_REASONS:
             # The simulator applies discrete, collision-filtered steps and has
@@ -155,6 +238,68 @@ class Controller:
             # forward pulses while a virtual acceleration ramp winds down.
             self._linear = 0.0
             self._yaw_rate = 0.0
+            if self.config.discrete_heading_control:
+                self._discrete_aligning = False
+            if self.config.hybrid_pulse_control:
+                self._hybrid_aligning = False
+        elif self.config.discrete_heading_control:
+            if self._discrete_aligning or reason in {"align_heading", "obstacle_align_heading"}:
+                self._linear = 0.0
+                self._yaw_rate = _approach(self._yaw_rate, target_w,
+                                           self.config.yaw_acceleration_radps2 * dt)
+                angular_budget=min(self.config.max_yaw_rate_radps,math.radians(30.),
+                                   abs(heading_error)/self.config.max_dt_s)
+                self._yaw_rate=_clamp(self._yaw_rate,-angular_budget,angular_budget)
+                # A replanned lookahead may move to the other side. There is
+                # no sustained native yaw inertia between discrete pulses;
+                # brake an opposite-sign virtual slew rather than turn away.
+                if self._yaw_rate*heading_error<0.:self._yaw_rate=0.
+            else:
+                self._linear = min(distance / self.config.max_dt_s,
+                                   _approach(self._linear, target_v,
+                                             self.config.acceleration_mps2 * dt))
+                self._yaw_rate = 0.0
+        elif self.config.hybrid_pulse_control:
+            if self._hybrid_aligning or reason in {"align_heading", "obstacle_align_heading"}:
+                self._linear = 0.0
+                yaw_cap = min(self.config.max_yaw_rate_radps, math.radians(30.0),
+                              abs(heading_error) / self.config.max_dt_s)
+                desired_yaw = _clamp(target_w, -yaw_cap, yaw_cap)
+                if self._yaw_rate * desired_yaw < 0.0:
+                    self._yaw_rate = 0.0
+                else:
+                    self._yaw_rate = _approach(
+                        self._yaw_rate, desired_yaw,
+                        self.config.yaw_acceleration_radps2 * dt)
+                    self._yaw_rate = _clamp(self._yaw_rate, -yaw_cap, yaw_cap)
+                if self._yaw_rate * heading_error < 0.0:
+                    self._yaw_rate = 0.0
+            else:
+                curvature = 2.0 * math.sin(heading_error) / max(distance, 1e-6)
+                yaw_cap = min(self.config.max_yaw_rate_radps, math.radians(30.0))
+                curvature_speed_cap = yaw_cap / max(abs(curvature), 1e-6)
+                hard_speed_cap = min(0.20, self.config.max_speed_mps,
+                                     distance / self.config.max_dt_s,
+                                     math.sqrt(0.20 / max(abs(curvature), 1e-6)),
+                                     curvature_speed_cap)
+                self._linear = min(hard_speed_cap,
+                                   _approach(self._linear, target_v,
+                                             self.config.acceleration_mps2 * dt))
+                if abs(heading_error) <= self.config.obstacle_align_deadband_rad:
+                    # Inside the heading deadband spend the entire pulse on
+                    # translation and clear any residual virtual yaw slew.
+                    self._yaw_rate = 0.0
+                else:
+                    desired_yaw = self._linear * curvature
+                    if self._yaw_rate * desired_yaw < 0.0:
+                        # No modeled yaw inertia exists between pulses. Brake
+                        # an old-direction virtual slew before reversing it.
+                        self._yaw_rate = 0.0
+                    else:
+                        self._yaw_rate = _approach(
+                            self._yaw_rate, desired_yaw,
+                            self.config.yaw_acceleration_radps2 * dt)
+                        self._yaw_rate = _clamp(self._yaw_rate, -yaw_cap, yaw_cap)
         else:
             # Turning in place is a motion constraint, so do not let the
             # virtual acceleration ramp emit residual forward steps here.
@@ -170,6 +315,12 @@ class Controller:
                                     snapshot.host_monotonic_s + self.config.max_nav_age_s)
         # Every command carries its evidence deadline; hard-stop reasons also
         # reset the discrete simulator's velocity state before returning.
+        self.last_diagnostics=dict(
+            goal_xy=None if goal_xy is None else list(goal_xy),
+            path_point_count=path_point_count,path_sample_xy=path_sample_xy,
+            path_sample_truncated=path_sample_truncated,
+            lookahead_xy=None if target_xy is None else list(target_xy),
+            heading_error_rad=heading_error,decision_reason=reason)
         return ActionCommand(
             linear_mps=self._linear,
             yaw_rate_radps=self._yaw_rate,
@@ -188,6 +339,8 @@ class Controller:
         self._yaw_rate = 0.0
         self._path_signature = None
         self._path_progress_m = 0.0
+        self._discrete_aligning = False
+        self._hybrid_aligning = False
 
     def _lookahead(self, snapshot: GridSnapshot, cells: tuple[tuple[int, int], ...],
                    robot_xy: tuple[float, float], *,

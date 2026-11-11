@@ -650,6 +650,17 @@ class RebuildRoomSession:
                     self._append_journal({
                         "admission_id": admission_id, "accepted": True,
                         "reason": "processed", "request_revision": response["request_revision"],
+                        "m3_projection_mode": response.get("record", {}).get("m3_mode"),
+                        "timings_ms": dict(response.get("timings_ms", {})),
+                        "mapping_work": {
+                            key: value for key, value in response.get("record", {}).items()
+                            if key in {
+                                "input_pixel_count", "finite_depth_pixel_count",
+                                "valid_mask_pixel_count", "backprojected_hit_count",
+                                "point_count", "m1_runtime_ms", "m2_runtime_ms",
+                                "m3_runtime_ms", "m1_m2_m3_runtime_ms",
+                            }
+                        },
                         "m3_revision": publication.latest_map.revision,
                         "accepted_map_revision": publication.accepted_map_revision,
                         "regions_stale": publication.regions_stale,

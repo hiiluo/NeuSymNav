@@ -21,6 +21,7 @@ import numpy as np
 from ..contracts import (FrameKey, HierarchySnapshot, NavSnapshot, ObjectSnapshot,
                          RoomPipelinePublication, age_ns)
 from ..mapping.overview import MapOverview
+from ..backends.hydra.graph_adapter import HydraGraphProjection
 
 
 from .robot_overlay import RobotTrack
@@ -238,12 +239,15 @@ class DisplaySources:
     live_nav: NavSnapshot | None = None
     overview: MapOverview | None = None
     room_pipeline: RoomPipelinePublication | None = None
+    hydra_graph: HydraGraphProjection | None = None
 
     def __post_init__(self) -> None:
         if self.overview is not None and not isinstance(self.overview, MapOverview):
             raise ValueError('typed accumulated map overview required')
         if self.room_pipeline is not None and not isinstance(self.room_pipeline, RoomPipelinePublication):
             raise ValueError('typed independent Rebuild room publication required')
+        if self.hydra_graph is not None and not isinstance(self.hydra_graph,HydraGraphProjection):
+            raise ValueError('typed native Hydra graph projection required')
         if self.nav is not None and not isinstance(self.nav, NavSnapshot):
             raise ValueError("nav source must be NavSnapshot or None")
         if self.live_nav is not None and not isinstance(self.live_nav, NavSnapshot):
@@ -464,6 +468,8 @@ class DisplayPublisher:
 
     @staticmethod
     def _validate_sources(snapshot: HierarchySnapshot, metrics: DisplayMetrics, sources: DisplaySources) -> None:
+        if sources.hydra_graph is not None and sources.hydra_graph.episode_id!=snapshot.episode_id:
+            raise ValueError('Hydra graph projection belongs to a different episode')
         source_region_nodes=[node for node in snapshot.nodes.values() if node.kind=='source_region']
         source_memberships=[node for node in snapshot.nodes.values()
                             if node.kind=='object' and node.attributes.get('rebuild_region_map_domain_id') is not None]

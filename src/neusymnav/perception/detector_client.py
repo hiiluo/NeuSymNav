@@ -25,15 +25,24 @@ from .appearance_client import _write_all, _terminate_process_group
 
 MAX_REQUEST_BYTES = 32 * 1024**2
 MAX_RESPONSE_BYTES = 32 * 1024**2
-RECIPE_KEYS = {'checkpoint_path', 'checkpoint_sha256', 'encoder_path', 'encoder_sha256',
-               'taxonomy_path', 'taxonomy_sha256', 'checkpoint_license', 'imgsz',
-               'max_detections', 'confidence_threshold', 'device'}
+BASE_RECIPE_KEYS = {'checkpoint_path', 'checkpoint_sha256', 'encoder_path', 'encoder_sha256',
+                    'taxonomy_path', 'taxonomy_sha256', 'checkpoint_license', 'imgsz',
+                    'max_detections', 'confidence_threshold', 'device'}
+OPENVINO_RECIPE_KEYS = {'openvino_model_path', 'openvino_model_sha256', 'openvino_bin_path',
+                        'openvino_bin_sha256', 'openvino_metadata_path', 'openvino_metadata_sha256'}
+RECIPE_KEYS = BASE_RECIPE_KEYS | OPENVINO_RECIPE_KEYS | {'backend', 'fallback_policy'}
+RECIPE_CONFIG_ASSETS = {'checkpoint', 'encoder', 'taxonomy', 'openvino_model',
+                        'openvino_bin', 'openvino_metadata'}
 
 
 def validate_recipe(recipe):
-    if not isinstance(recipe, Mapping) or set(recipe) != RECIPE_KEYS:
+    if not isinstance(recipe, Mapping) or not BASE_RECIPE_KEYS <= set(recipe) or set(recipe) - RECIPE_KEYS:
         raise ValueError('detector recipe requires the closed local YOLOE fields')
     result = dict(recipe)
+    result.setdefault('backend', 'torch')
+    result.setdefault('fallback_policy', 'torch_cpu' if result['backend'] == 'openvino_gpu' else 'none')
+    for key in OPENVINO_RECIPE_KEYS:
+        result.setdefault(key, None)
     for asset in ('checkpoint', 'encoder', 'taxonomy'):
         path = Path(result[asset + '_path'])
         digest = result[asset + '_sha256']
@@ -57,6 +66,43 @@ def validate_recipe(recipe):
     for name in ('checkpoint_license', 'device'):
         if not isinstance(result[name], str) or not result[name].strip():
             raise ValueError(name + ' must be explicit')
+    if not isinstance(result['backend'],str) or result['backend'] not in {'torch', 'openvino_gpu'}:
+        raise ValueError('detector backend must be torch or openvino_gpu')
+    if not isinstance(result['fallback_policy'],str):
+        raise ValueError('detector fallback_policy must be a string')
+    if result['backend'] == 'torch':
+        if any(result[key] is not None for key in OPENVINO_RECIPE_KEYS):
+            raise ValueError('OpenVINO IR assets require backend=openvino_gpu')
+        if result['fallback_policy'] != 'none':
+            raise ValueError('Torch backend fallback_policy must be none')
+    else:
+        if result['device'] != 'intel:gpu':
+            raise ValueError('openvino_gpu requires device=intel:gpu')
+        if result['fallback_policy'] not in {'torch_cpu', 'fail'}:
+            raise ValueError('OpenVINO fallback_policy must be torch_cpu or fail')
+        for asset in ('openvino_model', 'openvino_bin', 'openvino_metadata'):
+            path_key, digest_key = asset + '_path', asset + '_sha256'
+            path = Path(result[path_key]) if isinstance(result[path_key], str) else None
+            digest = result[digest_key]
+            if path is None or not path.is_absolute() or not path.is_file():
+                raise ValueError(asset + ' requires an existing absolute local path')
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or any(c not in '0123456789abcdef' for c in digest)
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != digest):
+                raise ValueError(asset + ' checksum mismatch')
+            result[path_key] = str(path.resolve())
+        if Path(result['openvino_model_path']).with_suffix('.bin')!=Path(result['openvino_bin_path']):
+            raise ValueError('OpenVINO XML and BIN must be a matching sidecar pair')
+        metadata = _json(Path(result['openvino_metadata_path']).read_bytes())
+        taxonomy = Taxonomy.load(result['taxonomy_path'])
+        if (not isinstance(metadata, dict)
+                or metadata.get('checkpoint_sha256') != result['checkpoint_sha256']
+                or metadata.get('encoder_sha256') != result['encoder_sha256']
+                or metadata.get('taxonomy_sha256') != result['taxonomy_sha256']
+                or metadata.get('prompt_count') != len(taxonomy.categories)
+                or metadata.get('end2end_preserved') is not True
+                or metadata.get('export_format') != 'OpenVINO IR'):
+            raise ValueError('OpenVINO model provenance does not match checkpoint, encoder, or taxonomy')
     Taxonomy.load(result['taxonomy_path'])
     return result
 
@@ -236,7 +282,8 @@ class DetectorClient:
     YOLOE recipe offline, reports actual versions, then processes one source per
     request. Duplicate/nonchronological frames are rejected, never reinferred.
     """
-    def __init__(self, *, python, recipe, timeout_s=2., startup_timeout_s=30., worker_script=None):
+    def __init__(self, *, python, recipe, timeout_s=2., startup_timeout_s=30., worker_script=None,
+                 nice=0):
         path = Path(python)
         if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
             raise ValueError('python must be an explicit absolute executable interpreter')
@@ -245,7 +292,11 @@ class DetectorClient:
         self.recipe = MappingProxyType(validate_recipe(recipe))
         self.taxonomy = Taxonomy.load(self.recipe['taxonomy_path'])
         script = Path(worker_script) if worker_script else Path(__file__).with_name('detector_worker.py')
-        self._wire = _BoundedProcess([str(path), '-u', str(script.resolve())],
+        from ..runtime.priority import nice_prefix
+        if type(nice) is not int or not 0 <= nice <= 19:
+            raise ValueError('detector nice must be an int in [0, 19]')
+        self.nice = nice
+        self._wire = _BoundedProcess([*nice_prefix(nice), str(path), '-u', str(script.resolve())],
                                     timeout_s=timeout_s, response_limit=MAX_RESPONSE_BYTES)
         self._startup_timeout_s = startup_timeout_s
         self._started = False
@@ -272,11 +323,42 @@ class DetectorClient:
             raise RuntimeError('detector worker unavailable: ' + str(response.get('error', response)))
         digest = hashlib.sha256(json.dumps(dict(self.recipe), sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         runtime = response['runtime']
+        runtime_keys={'python', 'numpy', 'torch', 'ultralytics', 'clip'}
+        if self.recipe['backend']=='openvino_gpu':
+            runtime_keys|={'backend_requested','backend_active','fallback_reason','warmup_ms','openvino'}
         if (response['recipe_sha256'] != digest or not isinstance(runtime, dict)
-                or set(runtime) != {'python', 'numpy', 'torch', 'ultralytics', 'clip'}
-                or any(not isinstance(v, str) or not v.strip() for v in runtime.values())):
+                or set(runtime) != runtime_keys
+                or any(not isinstance(v, str) or (not v.strip() and k!='fallback_reason')
+                       for k,v in runtime.items())):
             raise ValueError('detector actual recipe/runtime metadata mismatch')
+        if self.recipe['backend']=='openvino_gpu':
+            if runtime['backend_requested']!='openvino_gpu' or runtime['backend_active'] not in {'openvino_gpu','torch'}:
+                raise ValueError('detector backend selection/runtime metadata mismatch')
+            if ((runtime['backend_active']=='torch') != bool(runtime['fallback_reason'])
+                    or (runtime['backend_active']=='torch' and self.recipe['fallback_policy']!='torch_cpu')):
+                raise ValueError('detector fallback/runtime metadata mismatch')
         self.runtime_metadata, self._started = dict(runtime), True
+
+    def start(self):
+        """Load and initialize the worker before any source frame is admitted."""
+        if not self._wire.lock.acquire(blocking=False):
+            raise RuntimeError('detector request already in flight')
+        failure=None
+        try:
+            if self._wire.closed.is_set():
+                raise RuntimeError('detector worker is closed')
+            if not self._started:self._start()
+        except BaseException as exc:
+            failure=exc
+            self._wire.closed.set()
+            if self._wire.process is not None:
+                _terminate_process_group(self._wire.process)
+        finally:
+            self._wire.lock.release()
+        if failure is not None:
+            self._wire.close()
+            raise failure
+        return dict(self.runtime_metadata)
 
     def infer(self, observation: Observation) -> DetectionBatch:
         require_rgbd(observation)

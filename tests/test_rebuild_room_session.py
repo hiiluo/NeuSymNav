@@ -51,6 +51,11 @@ for line in sys.stdin:
         m5_revision = 1
     emit({
         "status":"ok", "request_revision":revision,
+        "record":{"m3_mode":"full_refresh" if revision == 1 else "partial_update",
+                  "input_pixel_count":12,"valid_mask_pixel_count":8,
+                  "backprojected_hit_count":7,"point_count":7,
+                  "m1_runtime_ms":1.0,"m2_runtime_ms":2.0,"m3_runtime_ms":3.0,
+                  "m1_m2_m3_runtime_ms":8.5},
         "latest_map":{"revision":revision, "m2_revision":revision, "m3_revision":revision,
             "resolution_m":0.05, "origin_xy":[-0.05,0.1], "states":enc(states),
             "z_floor_m":enc(height), "z_ceiling_m":enc(height), "floor_valid":enc(invalid),
@@ -148,6 +153,16 @@ def test_session_bounds_pending_queue_and_publishes_exact_accepted_map_pair(tmp_
     saved = (run_dir / first_entry["payload_path"]).read_bytes()
     assert hashlib.sha256(saved).hexdigest() == first_entry["payload_sha256"]
     assert (run_dir / "admission-journal.jsonl").is_file()
+    journal=[json.loads(line) for line in (run_dir/"admission-journal.jsonl").read_text().splitlines()]
+    processed_modes=[item["m3_projection_mode"] for item in journal if item.get("reason")=="processed"]
+    assert processed_modes==["full_refresh","partial_update","partial_update"]
+    processed=[item for item in journal if item.get("reason")=="processed"]
+    assert processed[0]["timings_ms"]["m1_runtime_ms"]==1.0
+    assert processed[0]["mapping_work"]=={
+        "input_pixel_count":12,"valid_mask_pixel_count":8,
+        "backprojected_hit_count":7,"point_count":7,
+        "m1_runtime_ms":1.0,"m2_runtime_ms":2.0,"m3_runtime_ms":3.0,
+        "m1_m2_m3_runtime_ms":8.5}
 
 
 def test_native_failure_poison_requires_new_session_and_stales_publication(tmp_path, monkeypatch):

@@ -88,10 +88,27 @@ if (not isinstance(data, dict) or "sensor_config" not in data
     raise SystemExit(f"profile is missing required calibrated RGB-D fields: {base}")
 if not data.get("sensor_config", {}).get("scene", {}).get("path"):
     raise SystemExit(f"profile is missing a simulator scene asset path: {base}")
+room_options=data.get("workers",{}).get("room_pipeline",{})
+room_options={key:room_options[key] for key in ("fps_cap_hz","queue_policy") if key in room_options}
 data["profile"] = "rebuild-rgbd-m1-m5-v1"
+# Keep the sensor owner's primary capture from starving navigation captures.
+# Preserve slower explicit primary rates and the existing navigation cadence.
+cadence=data.setdefault("runtime", {"primary_hz":1,"navigation_hz":10,"control_sample_cap":20000})
+cadence["primary_hz"]=min(cadence.get("primary_hz",1),1)
+controller=data.setdefault("navigation",{}).setdefault("controller",{})
+controller.setdefault("discrete_heading_control",True)
+controller.setdefault("gain_aware",True)
+controller.setdefault("nominal_speed_mps",.2)
+controller.setdefault("acceleration_mps2",.6)
+controller.setdefault("allow_fresh_map_lag",False)
+# Navigation has a separate map domain from the unchanged 5 cm M3/M5 map.
+# Coarser control voxels reduce ray traversal and footprint work, with all
+# observed-free/height/closed-footprint checks still required.
+data["navigation"].setdefault("mapper",{})["resolution_m"]=.1
 data.setdefault("workers", {}).setdefault("sensor", {})["timeout_s"] = 60.0
 data.setdefault("workers", {}).pop("region", None)
 data.setdefault("workers", {})["room_pipeline"] = {
+    **room_options,
     "source_root": str(source_root),
     "m23_binary": {"path": str(m23), "sha256": actual_m23},
     "m4_binary": {"path": str(m4), "sha256": actual_m4},

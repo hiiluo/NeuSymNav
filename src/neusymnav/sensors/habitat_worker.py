@@ -29,6 +29,10 @@ MAX_WIRE_BYTES = 64 * 1024**2
 _ARRAY_NAMES = ('rgb', 'depth_m', 'valid_depth', 'K', 'T_world_camera')
 
 
+
+MAX_TRANSLATION_PULSE_NS = 300_000_000
+MAX_ROTATION_PULSE_NS = 500_000_000
+
 def _canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
 
@@ -172,7 +176,7 @@ class _NativeYawMath:
     def prepare(self, agent, state, action, requested):
         try:
             if (action not in ('turn_left', 'turn_right') or type(requested) not in (int, float) or
-                    not math.isfinite(requested) or not 0 < requested <= 3. or
+                    not math.isfinite(requested) or not 0 < requested <= 15. or
                     not self.action_supported(action) or not self.agent_supported(agent)):
                 return None
             values = self.components(agent, state)
@@ -582,6 +586,8 @@ class HabitatCapture:
             self.pose_version = 0
             self._navigation_state = None
             self._last_map_revision = -1
+            self.last_capture_stages = []
+            self.last_simulator_stages = []
             self._set_pose(config['initial_position'], config['initial_rotation_xyzw'])
             self._yaw_math = _qualified_native_yaw(habitat_sim)
             self._planar_math = _qualified_native_planar(habitat_sim) if self._motion_adapter == 'planar_fixed_y_v1' else None
@@ -615,9 +621,13 @@ class HabitatCapture:
         # cached target from a different lane and label it a new capture.
         uuids = (spec['rgb_uuid'], spec['depth_uuid']) if lane == 'primary' else (spec['depth_uuid'],)
         sensors = {uuid: self.sim._sensors[uuid] for uuid in uuids}
+        draw_start_ns = time.monotonic_ns()
         for sensor in sensors.values():
             sensor.draw_observation()
+        draw_end_ns = time.monotonic_ns()
+        readback_start_ns = time.monotonic_ns()
         raw = {uuid: sensor.get_observation() for uuid, sensor in sensors.items()}
+        readback_end_ns = time.monotonic_ns()
         capture_ns = time.monotonic_ns()
         state = self.agent.get_state()
         depth_uuid = spec['depth_uuid']
@@ -635,6 +645,7 @@ class HabitatCapture:
         # pose stays per-capture, so moving the agent does not change calibration.
         local_extrinsic = np.linalg.inv(sensor_pose(state)) @ T
         calibration_id = _calibration_id(K, local_extrinsic, spec)
+        packet_start_ns = time.monotonic_ns()
         packet = normalize_capture(
             rgb=rgb, depth=depth, K=K, T_world_habitat=T,
             episode_id=self.episode_id, sensor_id=spec['sensor_id'], frame_index=self.indices[lane],
@@ -654,7 +665,14 @@ class HabitatCapture:
             if getattr(self, '_motion_adapter', 'strict_3d') == 'planar_fixed_y_v1':
                 self._navigation_state.update(body_source_xyz=tuple(float(v) for v in state.position),
                     body_source_up=tuple(float(v) for v in _rotation(state.rotation)[:, 1]))
-        return encode_packet(packet)
+        encoded = encode_packet(packet)
+        packet_end_ns = time.monotonic_ns()
+        self.last_capture_stages = [
+            dict(stage='sensor_draw_observations', start_ns=draw_start_ns, end_ns=draw_end_ns),
+            dict(stage='sensor_readback_observations', start_ns=readback_start_ns, end_ns=readback_end_ns),
+            dict(stage='sensor_packet_normalize_encode', start_ns=packet_start_ns, end_ns=packet_end_ns),
+        ]
+        return encoded
 
     def step(self, action):
         if getattr(self, '_motion_adapter', 'strict_3d') == 'planar_fixed_y_v1':
@@ -663,7 +681,10 @@ class HabitatCapture:
             raise ValueError('unknown simulator action')
         self._navigation_state = None
         self.last_actuation_proof = None
+        step_start_ns = time.monotonic_ns()
         self.sim.step(action)
+        step_end_ns = time.monotonic_ns()
+        self.last_simulator_stages = [dict(stage='simulator_step',start_ns=step_start_ns,end_ns=step_end_ns)]
         self.pose_version += 1
 
     def robot_pose(self):
@@ -685,7 +706,9 @@ class HabitatCapture:
         """
         self.last_actuation_proof = None
         state, self._navigation_state = self._navigation_state, None
-        result = dict(executed=False, reason='stopped', actions=[], displacement_m=0., yaw_rad=0.)
+        result = dict(executed=False, reason='stopped', failure_detail=None,
+                      actions=[], displacement_m=0., yaw_rad=0.)
+        self.last_simulator_stages = []
         names = {'source', 'map_revision', 'issued_monotonic_ns', 'deadline_monotonic_ns',
                  'clock_domain', 'linear_mps', 'yaw_radps', 'reason', 'source_capture_monotonic_ns'}
         if not isinstance(command, dict) or set(command) != names:
@@ -713,8 +736,13 @@ class HabitatCapture:
         if not capture <= issued <= now or deadline < issued:
             result['reason'] = 'future_or_invalid_command'
             return result
-        if now >= deadline or (command['linear_mps'] == 0 and command['yaw_radps'] == 0):
+        if command['linear_mps'] == 0 and command['yaw_radps'] == 0:
             result['reason'] = 'expired_or_zero'
+            result['failure_detail'] = 'zero_motion_command'
+            return result
+        if now >= deadline:
+            result['reason'] = 'expired_or_zero'
+            result['failure_detail'] = 'deadline_expired'
             return result
         if (state is None or key != {n: state[n] for n in ('episode_id', 'sensor_id', 'frame_index')}
                 or capture != state['capture_monotonic_ns'] or state['pose_version'] != pose_version
@@ -724,10 +752,15 @@ class HabitatCapture:
         if now - capture > 300_000_000 or command['map_revision'] < self._last_map_revision:
             result['reason'] = 'stale_source_or_map_revision'
             return result
+        v, w = command['linear_mps'], command['yaw_radps']
         # The caller cannot extend the exact source's safety lifetime. Keep
         # this same deadline for preparation, both pulse budgets and every step.
-        deadline = min(deadline, state['capture_monotonic_ns'] + 300_000_000)
-        v, w = command['linear_mps'], command['yaw_radps']
+        # A pure in-place yaw of the cylindrical body sweeps no new cells: it
+        # starts on fresh evidence (checked above) and is bounded to 500 ms.
+        if v == 0:
+            deadline = min(deadline, issued + MAX_ROTATION_PULSE_NS)
+        else:
+            deadline = min(deadline, state['capture_monotonic_ns'] + 300_000_000)
         if not 0 <= v <= .2 or abs(w) > math.radians(30.):
             result['reason'] = 'motion_limits_exceeded'
             return result
@@ -837,7 +870,9 @@ class HabitatCapture:
         operations = [('move_forward', v)] if v else []
         if w:
             operations.append(('turn_left' if w > 0 else 'turn_right', abs(w)))
-        budget = min((deadline - now) / 1e9, .1)
+        # The guard sets the pulse (<= 100 ms by default; opt-in real-time
+        # pulses up to 300 ms translation / 500 ms pure rotation).
+        budget = min((deadline - now) / 1e9, (MAX_ROTATION_PULSE_NS if v == 0 else MAX_TRANSLATION_PULSE_NS) / 1e9)
         for action, speed in operations:
             # Configure ONLY a private action, never the default 0.25m/10deg.
             # Construction can take time: check again immediately before step.
@@ -896,8 +931,17 @@ class HabitatCapture:
             # physics APIs preserve body collision filtering and the same
             # 1/60 s world step; explicit capture reads current agent/sensor
             # state and world time without Simulator's private last-state cache.
+            action_start_ns = time.monotonic_ns()
             native_act(private)
+            action_end_ns = time.monotonic_ns()
+            physics_start_ns = time.monotonic_ns()
             step_physics(1. / 60.)
+            physics_end_ns = time.monotonic_ns()
+            self.last_simulator_stages.extend((
+                dict(stage='simulator_step',start_ns=pre_step_ns,end_ns=physics_end_ns),
+                dict(stage='simulator_action',start_ns=action_start_ns,end_ns=action_end_ns),
+                dict(stage='simulator_physics_step',start_ns=physics_start_ns,end_ns=physics_end_ns),
+            ))
             post_step_ns = time.monotonic_ns()
             self.pose_version += 1
             body_after = self.agent.get_state()
@@ -977,6 +1021,7 @@ def main(argv=None):
             line = sys.stdin.buffer.readline(64 * 1024 + 1)
             if not line:
                 break
+            worker_request_received_ns = time.monotonic_ns()
             if len(line) > 64 * 1024 or not line.endswith(b"\n"):
                 raise ValueError('request too large')
             try:
@@ -984,25 +1029,35 @@ def main(argv=None):
                 op = request['op']
                 if op == 'close':
                     break
+                worker_handler_start_ns = time.monotonic_ns()
                 with contextlib.redirect_stdout(sys.stderr):
                     if op in ('capture', 'capture_navigation'):
                         result = dict(packet=capture.capture('primary' if op == 'capture' else 'navigation'))
                         if op == 'capture_navigation':
                             result['pose'] = capture.robot_pose()
+                        worker_stages = list(capture.last_capture_stages)
                     elif op == 'robot_pose':
                         result = dict(pose=capture.robot_pose())
+                        worker_stages = []
                     elif op == 'execute':
                         result = dict(actuation=capture.execute(request['command'], request['pose_version']),
                                       actuation_proof=getattr(capture,'last_actuation_proof',None))
+                        worker_stages = list(capture.last_simulator_stages)
                     elif op == 'step':
                         capture.step(request['action'])
                         result = {}
+                        worker_stages = list(capture.last_simulator_stages)
                     elif op == 'reset':
                         capture.reset(request['episode_id'], request['position'], request['rotation_xyzw'])
                         result = {}
+                        worker_stages = []
                     else:
                         raise ValueError('unknown operation')
-                output.write(json.dumps(dict(ok=True, **result), separators=(',', ':')) + '\n')
+                timing = dict(schema_version=1,clock_domain=capture.clock_domain,
+                    worker_request_received_ns=worker_request_received_ns,
+                    worker_handler_start_ns=worker_handler_start_ns,
+                    worker_handler_end_ns=time.monotonic_ns(),worker_stages=worker_stages)
+                output.write(json.dumps(dict(ok=True, **result, timing=timing), separators=(',', ':')) + '\n')
             except Exception as exc:
                 output.write(json.dumps(dict(ok=False, error=type(exc).__name__ + ': ' + str(exc))) + '\n')
         return 0

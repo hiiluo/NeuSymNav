@@ -14,6 +14,7 @@ from .proc_scope import (rooted_census, check_deadline, ScopeIdentityError,
                          ScopeLimitError, ScopeDeadlineError)
 
 MAX_COUNTER = (1 << 63)-1
+MAX_RESOURCE_DIAGNOSTIC_RECORDS = 8192
 
 
 def _integer(value, name, minimum=0):
@@ -37,6 +38,13 @@ class ResourceReading:
     read_errors: int = 0
     identity_changes: int = 0
     scope_truncated: bool = False
+    sample_started_ns: int | None = None
+    sample_finished_ns: int | None = None
+    sample_duration_ns: int | None = None
+    attempt_count: int = 0
+    failure_phase: str | None = None
+    failure_class: str | None = None
+    failure_pid: int | None = None
     schema_version: str = 'process_tree_resource_reading_v1'
 
     def __post_init__(self):
@@ -48,6 +56,21 @@ class ResourceReading:
             _integer(self.rss_bytes, 'rss_bytes')
         if type(self.scope_truncated) is not bool:
             raise ValueError('scope_truncated must be bool')
+        for name in ('sample_started_ns','sample_finished_ns','sample_duration_ns','attempt_count'):
+            value=getattr(self,name)
+            if value is not None:_integer(value,name)
+        if self.failure_pid is not None:_integer(self.failure_pid,'failure_pid',1)
+        for name in ('failure_phase','failure_class'):
+            value=getattr(self,name)
+            if value is not None and (type(value) is not str or not 1<=len(value)<=128):
+                raise ValueError(name+' must be a bounded string or null')
+        if (self.sample_started_ns is not None and self.sample_finished_ns is not None
+                and self.sample_finished_ns < self.sample_started_ns):
+            raise ValueError('sample finish precedes start')
+        if (self.sample_duration_ns is not None and self.sample_started_ns is not None
+                and self.sample_finished_ns is not None
+                and self.sample_duration_ns != self.sample_finished_ns-self.sample_started_ns):
+            raise ValueError('sample duration does not match timestamps')
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +107,8 @@ class _ProviderDiagnostics:
                             scope_changes=0, scope_truncations=0, query_errors=0,
                             deadline_exhaustions=0, attempt_limit_exhaustions=0)
         self._saturated = False
+        self._sample_records=[]
+        self._sample_records_dropped=0
 
     def add(self, **increments):
         with self._lock:
@@ -93,9 +118,19 @@ class _ProviderDiagnostics:
                     self._saturated = True
                 self._counts[name] = min(MAX_COUNTER, value)
 
+    def record_sample(self, record):
+        with self._lock:
+            if len(self._sample_records)<MAX_RESOURCE_DIAGNOSTIC_RECORDS:
+                self._sample_records.append(record)
+            elif self._sample_records_dropped<MAX_COUNTER:
+                self._sample_records_dropped+=1
+
     def snapshot(self):
         with self._lock:
-            return dict(schema_version=1, **self._counts, counter_saturated=self._saturated)
+            return dict(schema_version=1, **self._counts, counter_saturated=self._saturated,
+                        sample_records=list(self._sample_records),
+                        sample_records_dropped=self._sample_records_dropped,
+                        sample_record_cap=MAX_RESOURCE_DIAGNOSTIC_RECORDS)
 
 
 class ProcTreeProvider:
@@ -130,6 +165,9 @@ class ProcTreeProvider:
             self._root_start = None
 
     def _stat(self, pid):
+        parent_phase=getattr(self,'_diagnostic_phase','')
+        self._diagnostic_phase=(parent_phase+':' if parent_phase else '')+'proc_stat_read'
+        self._diagnostic_pid=pid
         with (self.proc_root/str(pid)/'stat').open() as handle:
             text = handle.read(8193)
         if len(text) > 8192:
@@ -143,6 +181,9 @@ class ProcTreeProvider:
         return _integer(int(fields[1]), 'ppid'), _integer(int(fields[19]), 'starttime')
 
     def _rss(self, pid):
+        parent_phase=getattr(self,'_diagnostic_phase','')
+        self._diagnostic_phase=(parent_phase+':' if parent_phase else '')+'proc_status_rss_read'
+        self._diagnostic_pid=pid
         with (self.proc_root/str(pid)/'status').open() as handle:
             text = handle.read(65537)
         if len(text) > 65536:
@@ -191,10 +232,11 @@ class ProcTreeProvider:
         deadline = time.monotonic_ns()+int(self.sample_timeout_s*1e9)
 
         def read(path, limit=65536):
-            check_deadline(deadline)
+            self._diagnostic_phase='thread_rss_file_read';self._diagnostic_pid=pid
+            check_deadline(deadline,phase='thread_rss_file_read_before',pid=pid)
             with path.open() as handle:
                 value = handle.read(limit+1)
-            check_deadline(deadline)
+            check_deadline(deadline,phase='thread_rss_file_read_after',pid=pid)
             if len(value)>limit:
                 raise ScopeLimitError('thread RSS proc text cap')
             return value
@@ -242,7 +284,7 @@ class ProcTreeProvider:
             entries_seen = 0
             with os.scandir(self.proc_root/str(pid)/'task') as entries:
                 for entry in entries:
-                    check_deadline(deadline)
+                    check_deadline(deadline,phase='thread_rss_task_enumeration',pid=pid)
                     entries_seen += 1
                     if entries_seen>self.max_directory_entries:
                         raise ScopeLimitError('thread RSS enumeration cap')
@@ -284,19 +326,46 @@ class ProcTreeProvider:
         final_count, _, _ = metadata(read(self.proc_root/str(pid)/'status'), pid, leader=True)
         if final_count!=count or tasks()!=before or self._stat(pid)!=leader_identity:
             raise ScopeIdentityError('thread RSS identity or topology changed')
-        check_deadline(deadline)
+        check_deadline(deadline,phase='thread_rss_complete',pid=pid)
         return selected_rss
 
     def _census(self, deadline_ns):
-        return rooted_census(self, deadline_ns)
+        phase=getattr(self,'_census_phase','census')
+        return rooted_census(self, deadline_ns,phase=phase)
 
     def diagnostics(self):
         return self._diagnostics.snapshot()
 
     def __call__(self):
-        deadline_ns = time.monotonic_ns()+int(self.sample_timeout_s*1e9)
+        call_started_ns=time.monotonic_ns()
+        deadline_ns = call_started_ns+int(self.sample_timeout_s*1e9)
         self._diagnostics.add(calls=1)
         result = None
+        attempt_records=[]
+        failure_phase=None;failure_class=None;failure_pid=None
+        sampled_at_ns=call_started_ns;process_count=0
+
+        def finish(rss_bytes, *, scope_truncated=False, missing_processes=0,
+                   read_errors=0, identity_changes=0):
+            finished=time.monotonic_ns()
+            outcome=('supported' if rss_bytes is not None and not scope_truncated
+                     and not missing_processes and not read_errors and not identity_changes
+                     else 'unsupported')
+            self._diagnostics.record_sample(dict(
+                schema_version=1,
+                call_started_ns=call_started_ns,call_finished_ns=finished,
+                duration_ns=finished-call_started_ns,outcome=outcome,
+                process_count=process_count,attempt_count=len(attempt_records),
+                failure_phase=failure_phase,failure_class=failure_class,
+                failure_pid=failure_pid,attempts=attempt_records))
+            return ResourceReading(sampled_at_ns,rss_bytes,process_count,
+                missing_processes=missing_processes,read_errors=read_errors,
+                identity_changes=identity_changes,scope_truncated=scope_truncated,
+                sample_started_ns=call_started_ns,sample_finished_ns=finished,
+                sample_duration_ns=finished-call_started_ns,
+                attempt_count=len(attempt_records),failure_phase=failure_phase,
+                failure_class=failure_class,failure_pid=failure_pid)
+
         for attempt in range(self.max_attempts):
             if attempt and time.monotonic_ns()<deadline_ns and self.retry_wait_s:
                 # Give the owning parent a bounded scheduling opportunity to
@@ -305,44 +374,93 @@ class ProcTreeProvider:
                 time.sleep(min(self.retry_wait_s,max(0.,(deadline_ns-time.monotonic_ns())/1e9)))
             if time.monotonic_ns() >= deadline_ns:
                 self._diagnostics.add(deadline_exhaustions=1)
-                return ResourceReading(time.monotonic_ns(), None, 0, scope_truncated=True)
+                failure_phase='retry_wait_deadline' if attempt else 'deadline_before_attempt'
+                failure_class='ScopeDeadlineError'
+                return finish(None,scope_truncated=True)
+            attempt_started_ns=time.monotonic_ns()
             self._diagnostics.add(attempts=1, retries=int(attempt > 0))
-            now = time.monotonic_ns()
+            now = attempt_started_ns
+            sampled_at_ns=now
             selected = {}
+            phase='initial_census';active_pid=None
+            self._diagnostic_phase=phase;self._diagnostic_pid=None
             try:
+                self._census_phase='initial_census'
                 selected = self._census(deadline_ns)
                 rss = 0
                 for pid, identity in selected.items():
-                    check_deadline(deadline_ns)
-                    if self._stat(pid) != identity:
+                    phase='rss_identity_before';active_pid=pid
+                    check_deadline(deadline_ns,phase=phase,pid=pid)
+                    self._diagnostic_phase=phase;self._diagnostic_pid=pid
+                    before_identity=self._stat(pid)
+                    check_deadline(deadline_ns,phase='rss_identity_before_complete',pid=pid)
+                    if before_identity != identity:
                         raise ScopeIdentityError('identity changed before RSS read')
+                    phase='rss_read';active_pid=pid
+                    self._diagnostic_phase=phase;self._diagnostic_pid=pid
                     rss += self._rss(pid)
                     if rss > MAX_COUNTER:
                         raise ValueError('RSS counter overflow')
-                    if self._stat(pid) != identity:
+                    check_deadline(deadline_ns,phase='rss_read_complete',pid=pid)
+                    phase='rss_identity_after'
+                    self._diagnostic_phase=phase;self._diagnostic_pid=pid
+                    after_identity=self._stat(pid)
+                    check_deadline(deadline_ns,phase='rss_identity_after_complete',pid=pid)
+                    if after_identity != identity:
                         raise ScopeIdentityError('identity changed after RSS read')
+                phase='final_census';active_pid=None
+                self._census_phase='final_census'
                 if self._census(deadline_ns) != selected:
                     self._diagnostics.add(scope_changes=1)
                     raise ScopeIdentityError('process closure changed during RSS trial')
-                check_deadline(deadline_ns)
-                return ResourceReading(now, rss, len(selected))
-            except ScopeDeadlineError:
+                check_deadline(deadline_ns,phase='trial_complete')
+                process_count=len(selected)
+                failure_phase=None;failure_class=None;failure_pid=None
+                attempt_finished_ns=time.monotonic_ns()
+                attempt_records.append(dict(attempt=attempt+1,start_ns=attempt_started_ns,
+                    end_ns=attempt_finished_ns,duration_ns=attempt_finished_ns-attempt_started_ns,
+                    phase='trial_complete',pid=None,error_class=None,outcome='supported'))
+                return finish(rss)
+            except ScopeDeadlineError as exc:
                 self._diagnostics.add(failed_attempts=1, deadline_exhaustions=1)
-                return ResourceReading(now, None, len(selected), scope_truncated=True)
-            except ScopeLimitError:
+                failure_phase=getattr(exc,'phase',None) or phase
+                failure_class=type(exc).__name__
+                failure_pid=getattr(exc,'pid',None) or active_pid
+                process_count=len(selected)
+                attempt_finished_ns=time.monotonic_ns()
+                attempt_records.append(dict(attempt=attempt+1,start_ns=attempt_started_ns,
+                    end_ns=attempt_finished_ns,duration_ns=attempt_finished_ns-attempt_started_ns,
+                    phase=failure_phase,pid=failure_pid,error_class=failure_class,outcome='deadline'))
+                return finish(None,scope_truncated=True)
+            except ScopeLimitError as exc:
                 self._diagnostics.add(failed_attempts=1, scope_truncations=1)
                 result = ResourceReading(now, None, len(selected), scope_truncated=True)
-            except ScopeIdentityError:
+                failure_phase=getattr(self,'_diagnostic_phase',phase);failure_class=type(exc).__name__;failure_pid=getattr(self,'_diagnostic_pid',active_pid)
+            except ScopeIdentityError as exc:
                 self._diagnostics.add(failed_attempts=1, identity_changes=1)
                 result = ResourceReading(now, None, len(selected), identity_changes=1)
-            except FileNotFoundError:
+                failure_phase=getattr(self,'_diagnostic_phase',phase);failure_class=type(exc).__name__;failure_pid=getattr(self,'_diagnostic_pid',active_pid)
+            except FileNotFoundError as exc:
                 self._diagnostics.add(failed_attempts=1, missing_processes=1)
                 result = ResourceReading(now, None, len(selected), missing_processes=1)
-            except (OSError, ValueError):
+                failure_phase=getattr(self,'_diagnostic_phase',phase);failure_class=type(exc).__name__;failure_pid=getattr(self,'_diagnostic_pid',active_pid)
+            except (OSError, ValueError) as exc:
                 self._diagnostics.add(failed_attempts=1, read_errors=1)
                 result = ResourceReading(now, None, len(selected), read_errors=1)
+                failure_phase=getattr(self,'_diagnostic_phase',phase);failure_class=type(exc).__name__;failure_pid=getattr(self,'_diagnostic_pid',active_pid)
+            else:
+                continue
+            attempt_finished_ns=time.monotonic_ns()
+            attempt_records.append(dict(attempt=attempt+1,start_ns=attempt_started_ns,
+                end_ns=attempt_finished_ns,duration_ns=attempt_finished_ns-attempt_started_ns,
+                phase=failure_phase,pid=failure_pid,error_class=failure_class,
+                outcome='retryable_failure'))
+            process_count=len(selected)
         self._diagnostics.add(attempt_limit_exhaustions=1)
-        return result
+        return finish(None,scope_truncated=False if result is None else result.scope_truncated,
+                      missing_processes=0 if result is None else result.missing_processes,
+                      read_errors=0 if result is None else result.read_errors,
+                      identity_changes=0 if result is None else result.identity_changes)
 
 
 class ResourceSampler:
@@ -383,7 +501,10 @@ class ResourceSampler:
         self._rss = dict(samples=0, support=0, sampled_peak_bytes=None,
                          missing_processes=0, read_errors=0, identity_changes=0,
                          truncated_samples=0, first_sample_ns=None, last_sample_ns=None,
-                         max_sample_gap_ns=None, method='sampled_process_tree_rss_sum')
+                         max_sample_gap_ns=None, method='sampled_process_tree_rss_sum',
+                         sample_trace=[],sample_trace_dropped=0,discarded_after_stop=0,
+                         sample_trace_cap=MAX_RESOURCE_DIAGNOSTIC_RECORDS,
+                         sample_trace_schema_version=1)
         self._gpu = dict(samples=0, support=0, sampled_peak_bytes=None,
                          unavailable_reason='no_usable_provider' if gpu_provider is None else 'not_sampled',
                          errors=0, timeouts=0, method='injected_process_tree_attributed_gpu_sample')
@@ -426,17 +547,46 @@ class ResourceSampler:
 
     def _run_rss(self):
         while not self._stop.is_set():
+            call_started_ns=time.monotonic_ns()
             try:
                 sample = self._provider()
                 if type(sample) is not ResourceReading:
                     raise ValueError('ResourceReading required')
-            except Exception:
-                sample = ResourceReading(time.monotonic_ns(), None, 0, read_errors=1)
+            except Exception as exc:
+                finished=time.monotonic_ns()
+                sample = ResourceReading(finished, None, 0, read_errors=1,
+                    sample_started_ns=call_started_ns,sample_finished_ns=finished,
+                    sample_duration_ns=finished-call_started_ns,failure_phase='provider_call',
+                    failure_class=type(exc).__name__)
+            received_ns=time.monotonic_ns()
+            valid = (sample.rss_bytes is not None and not sample.missing_processes and
+                     not sample.read_errors and not sample.identity_changes and not sample.scope_truncated)
+            record=dict(schema_version=1,sampled_at_ns=sample.sampled_at_ns,
+                sample_started_ns=sample.sample_started_ns,
+                sample_finished_ns=sample.sample_finished_ns,
+                sample_duration_ns=sample.sample_duration_ns,
+                received_ns=received_ns,process_count=sample.process_count,
+                rss_bytes=sample.rss_bytes,supported=valid,
+                missing_processes=sample.missing_processes,read_errors=sample.read_errors,
+                identity_changes=sample.identity_changes,scope_truncated=sample.scope_truncated,
+                attempt_count=sample.attempt_count,failure_phase=sample.failure_phase,
+                failure_class=sample.failure_class,failure_pid=sample.failure_pid)
             # A late response after close is discarded; pending close remains truthful.
             if self._stop.is_set():
+                with self._lock:
+                    state=self._rss
+                    self._add(state,'discarded_after_stop')
+                    record['disposition']='discarded_after_stop'
+                    if len(state['sample_trace'])<MAX_RESOURCE_DIAGNOSTIC_RECORDS:
+                        state['sample_trace'].append(record)
+                    else:self._add(state,'sample_trace_dropped')
                 break
             with self._lock:
                 state = self._rss
+                record['disposition']='accepted_by_sampler'
+                if len(state['sample_trace'])<MAX_RESOURCE_DIAGNOSTIC_RECORDS:
+                    state['sample_trace'].append(record)
+                else:self._add(state,'sample_trace_dropped')
                 self._add(state, 'samples')
                 for name in ('missing_processes','read_errors','identity_changes'):
                     self._add(state, name, getattr(sample, name))

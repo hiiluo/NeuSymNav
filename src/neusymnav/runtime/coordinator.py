@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from threading import Event,RLock
 import time
-from ..contracts import Observation,RegionSnapshot,MotionCommand,age_ns
+from ..contracts import Observation,RegionSnapshot,MotionCommand,HierarchySnapshot,FrameKey,age_ns
 from ..contracts.observations import validate_detection_batch,validate_appearance_batch
 from ..contracts.serialization import dumps
 from ..hierarchy.composer import HierarchyComposer
@@ -28,6 +28,28 @@ from .quota import RunQuota
 
 ROOM_PIPELINE_DISK_RESERVATION_BYTES = 2 * 1024**3 + 128 * 1024**2
 
+
+def _record_timing_stage(measurements,obs,timing,stage,start_name,end_name):
+    try:
+        start,end=timing[start_name],timing[end_name]
+        if type(start) is int and type(end) is int and end>=start:
+            measurements.stage(obs,stage,start,end)
+    except Exception:
+        pass  # Diagnostics must never change control behavior.
+
+
+class StaleNavigationCapture(ValueError):
+    """A valid capture expired before pose admission; acquire a NEW source."""
+
+
+
+def set_gil_switch_interval(seconds):
+    """Set the interpreter GIL switch interval; returns the previous value."""
+    import sys as _sys
+    if type(seconds) is not float or not math.isfinite(seconds) or not .0005<=seconds<=.005:
+        raise ValueError('gil switch interval must be in [0.0005, 0.005] s')
+    previous=_sys.getswitchinterval();_sys.setswitchinterval(seconds)
+    return previous
 
 class Pipeline:
     """Episode-scoped runtime with injected, worker-owned resources.
@@ -46,9 +68,30 @@ class Pipeline:
                  floor_id,actual_profile='geometry-only',
                  byte_cap=32*1024**2,raw_cap=2*1024**3,total_cap=8*1024**3,
                  startup_timeout_s=5.,publisher=None,measurements=None,keyframe_sampling='novelty',
-                 room_pipeline_factory=None):
+                 room_pipeline_factory=None,room_fps_cap_hz=None,room_queue_policy='bounded_fifo',
+                 allow_fresh_map_lag=False,scene_graph_backend='legacy',hydra_runtime_factory=None,
+                 offline_replay_control=False,local_depth_control=False,world_navigation_hz=None,
+                 world_intent_ttl_ns=2_000_000_000,local_sampling_stride=None,
+                 command_horizon_ns=100_000_000,rotation_horizon_ns=None,
+                 overview_refresh_ns=None,gil_switch_interval_s=None,start_unknown_tolerance=0.):
+        if scene_graph_backend not in {'legacy','hydra'}:raise ValueError('scene_graph_backend must be legacy or hydra')
+        if scene_graph_backend=='hydra' and (hydra_runtime_factory is None or room_pipeline_factory is not None or region_factory is not None or verifier_factory is not None or encoder_factory is not None):
+            raise ValueError('Hydra backend requires its runtime factory and excludes legacy region/room/verification/appearance workers')
+        if type(allow_fresh_map_lag) is not bool:raise ValueError('allow_fresh_map_lag must be boolean')
+        self.allow_fresh_map_lag=allow_fresh_map_lag
+        if type(offline_replay_control) is not bool:raise ValueError('offline_replay_control must be boolean')
+        if offline_replay_control and not clock_domain.startswith('replay:'):
+            raise ValueError('offline replay control requires an isolated replay clock')
+        self.offline_replay_control=offline_replay_control
         if type(keyframe_sampling) is not str or keyframe_sampling not in {'novelty','capacity_deferred'}:
             raise ValueError('keyframe_sampling must be novelty or capacity_deferred')
+        if room_fps_cap_hz is not None and (type(room_fps_cap_hz) not in (int,float)
+                or not math.isfinite(room_fps_cap_hz) or not 0 < room_fps_cap_hz <= 20):
+            raise ValueError('room_fps_cap_hz must be positive finite and <= 20')
+        if type(room_queue_policy) is not str or room_queue_policy not in {'bounded_fifo','latest_wins'}:
+            raise ValueError('room_queue_policy must be bounded_fifo or latest_wins')
+        if room_queue_policy=='latest_wins' and room_fps_cap_hz is None:
+            raise ValueError('latest_wins room queue requires an explicit room_fps_cap_hz')
         if not all(isinstance(v,str) and v for v in (episode_id,primary_sensor_id,clock_domain,floor_id,actual_profile)):
             raise ValueError('explicit episode/sensor/clock/floor/profile identities required')
         valid_timeout(startup_timeout_s)
@@ -56,9 +99,62 @@ class Pipeline:
         self.episode_id=episode_id;self.primary_sensor_id=primary_sensor_id;self.clock_domain=clock_domain
         self.floor_id=floor_id;self.now_ns=now_ns;self.publisher=publisher;self.measurements=measurements
         self.owner_factory=owner_factory;self.detector_factory=detector_factory;self.verifier_factory=verifier_factory
+        self.scene_graph_backend=scene_graph_backend;self.hydra_runtime_factory=hydra_runtime_factory
+        self._hydra_runtime=None;self._hydra_failure=None;self._hydra_snapshot=None;self._hydra_diagnostics=None
+        self._hydra_close_report=None
+        self._hydra_projection=None;self._hydra_publication_key=None;self._hydra_publication_ns=0
+        self._hydra_display_revision=0
+        self._hydra_counts=dict(offered=0,queued=0,replaced=0,rejected=0,processed=0)
         self.encoder_factory=encoder_factory;self.region_factory=region_factory
         self.room_pipeline_factory=room_pipeline_factory
+        self._room_fps_cap_hz=None if room_fps_cap_hz is None else float(room_fps_cap_hz)
+        self._room_min_period_ns=None if room_fps_cap_hz is None else int(math.ceil(1_000_000_000/float(room_fps_cap_hz)))
+        self._room_queue_policy=room_queue_policy
+        self._room_last_selected_capture_ns=None
         self.mapper=mapper;self.navigator=navigator;self.guard=guard
+        if type(local_depth_control) is not bool:raise ValueError('local_depth_control must be boolean')
+        if local_depth_control and (mapper is None or navigator is None or guard is None):
+            raise ValueError('local depth control requires mapper, navigator and guard')
+        if world_navigation_hz is not None:
+            if (type(world_navigation_hz) not in (int,float) or not math.isfinite(world_navigation_hz)
+                    or not 0<world_navigation_hz<=10):
+                raise ValueError('world_navigation_hz must be in (0,10]')
+            if not local_depth_control:raise ValueError('world_navigation_hz requires local_depth_control')
+        if (type(world_intent_ttl_ns) is not int or not 2_000_000_000<=world_intent_ttl_ns<=5_000_000_000):
+            raise ValueError('world_intent_ttl_ns must be an int in [2 s, 5 s]')
+        if not local_depth_control and (world_intent_ttl_ns!=2_000_000_000 or local_sampling_stride is not None
+                                        or command_horizon_ns!=100_000_000 or rotation_horizon_ns is not None
+                                        or start_unknown_tolerance):
+            raise ValueError('world intent TTL, local sampling stride and pulse horizons require local_depth_control')
+        self.world_intent_ttl_ns=world_intent_ttl_ns
+        self.local_depth_control=local_depth_control
+        self.world_navigation_hz=None if world_navigation_hz is None else float(world_navigation_hz)
+        # Display/room overview refresh period on the world thread. Its cost
+        # grows with explored area and competes with control for the GIL.
+        if overview_refresh_ns is not None and (type(overview_refresh_ns) is not int
+                or not 500_000_000<=overview_refresh_ns<=10_000_000_000):
+            raise ValueError('overview_refresh_ns must be an int in [0.5 s, 10 s]')
+        self.overview_refresh_ns=overview_refresh_ns
+        self._last_overview_refresh_ns=None
+        self.overview_refresh_counts=dict(refreshed=0,skipped=0)
+        self._hydra_polled_token=None
+        self.hydra_poll_counts=dict(polled=0,skipped=0)
+        # Shorter GIL switch interval: the control thread waits less for the
+        # GIL while the world thread runs long Python/numpy sections.
+        self._previous_switch_interval=(None if gil_switch_interval_s is None
+                                        else set_gil_switch_interval(gil_switch_interval_s))
+        self.gil_switch_interval_s=gil_switch_interval_s
+        if local_depth_control:
+            from ..navigation.local_control import LocalMeasuredMap, LocalFollower
+            from ..navigation.safety import MotionGuard
+            self._local_map=LocalMeasuredMap(mapper,sampling_stride=local_sampling_stride);self._local_follower=LocalFollower(navigator)
+            self._local_guard=MotionGuard(self._local_map.mapper,clock_domain=clock_domain,
+                now_ns=now_ns,offline_replay=offline_replay_control,
+                command_horizon_ns=command_horizon_ns,rotation_horizon_ns=rotation_horizon_ns,
+                pace_to_wall_time=command_horizon_ns!=100_000_000 or rotation_horizon_ns is not None,
+                start_unknown_tolerance=start_unknown_tolerance)
+            self._local_intent=None;self._local_feedback=deque(maxlen=1)
+            self._local_intent_generation=0
         core=getattr(mapper,'_core',None)
         if core is not None:self._require_run_path(core._tile_archive.directory,'NavMapper tile_archive_dir')
         self.policy=keyframe_policy or KeyframePolicy();self.projector=projector or Projector()
@@ -73,6 +169,7 @@ class Pipeline:
         self.health=Health(actual_profile);self._lock=RLock();self._control_lock=RLock()
         self._wake=Event();self._nav_wake=Event();self._region_wake=Event();self._ready=Event();self._recorder_done=Event()
         self._closing=False;self._paused=False;self._stop_requested=False;self._deadline=None
+        self._step_navigation_diagnostics=None
         self._latest_depth=None;self._nav_input=None;self._nav_pose_input=None;self._latest_nav=None;self._region_input=None
         self._latest_overview_tiles=None
         self._pose_offer=None;self._pose_watermark=None;self._place_input=None
@@ -84,13 +181,21 @@ class Pipeline:
         self._room_publication=None;self._room_session=None;self._room_failure=None
         self._room_journal=deque(maxlen=8192)
         self._room_journal_dropped=0
-        self._room_counts=dict(offered=0,queued=0,session_admitted=0,rejected=0,processed=0,queue_dropped=0)
+        self._room_counts=dict(candidates=0,fps_limited=0,offered=0,queued=0,queue_replaced=0,
+            session_admitted=0,rejected=0,processed=0,queue_dropped=0,age_clock_errors=0)
+        self._room_latency_samples={key:deque(maxlen=8192) for key in
+            ('source_age_at_start','source_age_at_completion','queue_wait','service')}
         self._room_wake=Event()
         self._prior_incomplete=False;self._fast=None;self._processed=None;self._captured=None;self._last_index=-1;self._last_stamp=-1
         self._counts=dict(submitted=0,offered=0,durable_accepted=0,committed=0,missing=0,recovered=0,detector_calls=0)
         self._journal_counts=dict(accepted=0,committed=0,pending=0);self._cleanup_pending={};self._worker_done={}
         self._config=dict(schema_version=1,episode_id=episode_id,primary_sensor_id=primary_sensor_id,
                           clock_domain=clock_domain,floor_id=floor_id,actual_profile=actual_profile)
+        if allow_fresh_map_lag:self._config['navigation_map_policy']='fresh_map_current_depth_v1'
+        if local_depth_control:self._config['navigation_map_policy']='local_measured_depth_v1'
+        if self.world_navigation_hz is not None:self._config['world_navigation_hz']=self.world_navigation_hz
+        if world_intent_ttl_ns!=2_000_000_000:self._config['world_intent_ttl_ns']=world_intent_ttl_ns
+        if local_sampling_stride is not None:self._config['local_sampling_stride']=local_sampling_stride
         if keyframe_sampling!='novelty':self._config['keyframe_sampling']=keyframe_sampling
         self._threads={}
         self._threads['graph']=background('graph',self._graph_run)
@@ -110,6 +215,7 @@ class Pipeline:
 
     def _fail(self,name,error):
         self.health.fail(name,error)
+        if getattr(self,'local_depth_control',False):self._invalidate_local_intent()
         with self._lock:self.scheduler.failed=str(error)
         self._wake.set();self._nav_wake.set();self._region_wake.set()
 
@@ -136,7 +242,7 @@ class Pipeline:
                     obs.key.frame_index<=self._latest_depth.key.frame_index or obs.capture_monotonic_ns<self._latest_depth.capture_monotonic_ns):
                     raise ValueError('navigation source replay or sensor change')
                 self._latest_depth=obs
-            if self.mapper is not None:
+            if self.mapper is not None and (not self.offline_replay_control or obs.modality=='depth_only'):
                 if self._nav_input is not None:self.health.increment('nav_replaced')
                 self._nav_input=obs
                 proof=self._pose_offer
@@ -238,13 +344,15 @@ class Pipeline:
             raise ValueError('body pose source/time/domain/version mismatch')
         if type(pose['capture_monotonic_ns']) is not int or type(pose['pose_version']) is not int:
             raise ValueError('body pose integer provenance required')
-        if obs.key.episode_id!=self.episode_id or obs.clock_domain!=self.clock_domain or not self.clock_domain.startswith('host_monotonic:'):
+        allowed_clock=(self.clock_domain.startswith('replay:') if self.offline_replay_control
+                       else self.clock_domain.startswith('host_monotonic:'))
+        if obs.key.episode_id!=self.episode_id or obs.clock_domain!=self.clock_domain or not allowed_clock:
             raise ValueError('body pose admission requires current live episode clock')
-        if age_ns(obs.capture_monotonic_ns,obs.clock_domain,self.now_ns(),self.clock_domain)>300_000_000:
-            raise ValueError('body pose source is stale')
+        capture_age=age_ns(obs.capture_monotonic_ns,obs.clock_domain,self.now_ns(),self.clock_domain)
         xy=pose['robot_xy']
         if not isinstance(xy,(tuple,list)) or len(xy)!=2 or any(type(v) not in (int,float) or not math.isfinite(v) for v in (*xy,pose['yaw_rad'])):
             raise ValueError('finite measured robot_xy/yaw required')
+        if capture_age>300_000_000:raise StaleNavigationCapture('body pose source is stale')
         return identity,dict(pose,robot_xy=tuple(float(v) for v in xy))
 
     def _validate_pose_order(self,obs):
@@ -333,7 +441,8 @@ class Pipeline:
             if 'timeout_s' in inspect.signature(method).parameters:
                 report=method(timeout_s=(remaining(self._deadline) if self._deadline else 1.))
             else:report=method()
-            if isinstance(report,dict) and report.get('clean_shutdown') is False:
+            if name=='hydra' and isinstance(report,dict):self._hydra_close_report=report
+            if isinstance(report,dict) and (report.get('clean_shutdown') is False or report.get('complete') is False):
                 self._cleanup_pending[name]=report
                 return False
             elif bool(getattr(resource,'is_alive',False)):
@@ -348,7 +457,7 @@ class Pipeline:
             return False
 
     def _graph_run(self):
-        journal=owner=detector=encoder=verifier=None
+        journal=owner=detector=encoder=verifier=hydra_runtime=None
         try:
             if self.measurements is not None and self.measurements.stop_requested.is_set():
                 raise RuntimeError('resource cap breached before graph/model startup')
@@ -358,15 +467,21 @@ class Pipeline:
             if certificate_path.exists():
                 self._prior_incomplete=not json.loads(certificate_path.read_text()).get('complete',False)
             atomic_write(certificate_path,json.dumps(dict(complete=False,stopped=False,reason='runtime_active_or_unclean_exit')).encode())
-            owner=self.owner_factory()
-            if hasattr(owner,'ledger'):
+            if self.scene_graph_backend=='hydra':
+                hydra_runtime=self.hydra_runtime_factory()
+                diagnostics=getattr(hydra_runtime,'diagnostics',None)
+                with self._lock:
+                    self._hydra_runtime=hydra_runtime
+                    self._hydra_diagnostics=diagnostics() if callable(diagnostics) else None
+            else:owner=self.owner_factory()
+            if owner is not None and hasattr(owner,'ledger'):
                 self._require_run_path(owner.ledger.root,'ObjectOwner ledger root')
                 owner_config=json.loads(owner.ledger.get('config'))
                 for identity in ('episode_id','primary_sensor_id','clock_domain','floor_id'):
                     if owner_config[identity]!=self._config[identity]:raise ValueError('owner '+identity+' mismatch')
             detector=self.detector_factory()
             encoder=None if self.encoder_factory is None else self.encoder_factory()
-            if self.verifier_factory is not None:
+            if self.scene_graph_backend=='legacy' and self.verifier_factory is not None:
                 # Explicit recovery can rebuild the complete derived ledger.
                 # Reserve its persisted row payload/index/WAL growth before
                 # even constructing it; fixed startup headroom is insufficient
@@ -386,14 +501,15 @@ class Pipeline:
             self.quota.release('startup')
             self.scheduler.watermark=max(journal.watermark(),getattr(owner,'dispatch_watermark',-1))
             self._last_index=self.scheduler.watermark
-            self._objects=owner.snapshot()
+            self._objects=None if owner is None else owner.snapshot()
             self._verification=None if verifier is None or not hasattr(verifier,'snapshot') else verifier.snapshot()
             # Drain persisted accepted refs BEFORE enabling new admission.
             while journal.next_pending() is not None:
                 index=journal.next_pending();obs=journal.load(index)
                 self._validate_recovery_source(obs)
                 journal.watermark(index)
-                self._process(obs,journal,owner,detector,encoder,verifier,recovery=True)
+                if self.scene_graph_backend=='hydra':self._process_hydra(obs,journal,detector,hydra_runtime,recovery=True)
+                else:self._process(obs,journal,owner,detector,encoder,verifier,recovery=True)
                 self._counts['recovered']+=1
             # Recovery may have advanced beyond the watermark that existed at
             # process start. Restore both source ordering dimensions before
@@ -408,27 +524,128 @@ class Pipeline:
                 if self.health.snapshot()['failed']:break
                 entry=self.scheduler.take_next(journal.watermark)
                 if entry is not None:
-                    self._process(entry.observation,journal,owner,detector,encoder,verifier)
+                    if self.scene_graph_backend=='hydra':self._process_hydra(entry.observation,journal,detector,hydra_runtime)
+                    else:self._process(entry.observation,journal,owner,detector,encoder,verifier)
                     self.scheduler.complete(entry);self._journal_counts=journal.counts()
                 self._consume_place()
-                self._publish(verifier)
+                if self.scene_graph_backend=='hydra' and hydra_runtime is not None and self._hydra_poll_due(hydra_runtime):
+                    snapshot=hydra_runtime.snapshot()
+                    project=getattr(hydra_runtime,'projection',None)
+                    projection=project() if callable(project) else None
+                    with self._lock:
+                        self._hydra_snapshot=snapshot
+                        if projection is not None:self._hydra_projection=projection
+                        reason=(snapshot.get('failure_reason') if isinstance(snapshot,Mapping)
+                                else getattr(snapshot,'failure_reason',None))
+                        if reason:self._hydra_failure=str(reason)
+                if self.scene_graph_backend=='legacy':self._publish(verifier)
+                else:self._publish_hydra()
                 if (self._closing and self._recorder_done.is_set() and not self.scheduler.snapshot()['pending']
                     and (self.mapper is None or self._worker_done.get('navigation',False))
                     and (self.region_factory is None or self._worker_done.get('region',False))
                     and self._place_input is None):
                     # Producers can finish between the preceding publication
                     # and this predicate. Flush once after observing quiescence.
-                    self._publish(verifier)
+                    if self.scene_graph_backend=='legacy':self._publish(verifier)
+                    else:self._publish_hydra(force=True)
                     break
                 self._wake.wait(.01);self._wake.clear()
-        except BaseException as exc:self._fail('graph',exc)
+        except BaseException as exc:
+            if self.scene_graph_backend=='hydra':
+                with self._lock:self._hydra_failure=f'{type(exc).__name__}: {exc}'
+                self._ready.set()
+            else:self._fail('graph',exc)
         finally:
             self._ready.set()
             if journal is not None:
                 self._journal_counts=journal.counts();journal.close()
+            if hydra_runtime is not None:
+                self._cleanup('hydra',hydra_runtime)
+                self._publish_hydra_after_close(hydra_runtime)
+                with self._lock:self._hydra_runtime=None
             for name,resource in (('verifier',verifier),('encoder',encoder),('detector',detector),('owner',owner)):
                 self._cleanup(name,resource)
             self._worker_done['graph']=True
+
+    def _publish_hydra_after_close(self,hydra_runtime):
+        """Refresh the display from the graph after close drains accepted work."""
+        snapshot=hydra_runtime.snapshot()
+        project=getattr(hydra_runtime,'projection',None)
+        projection=project() if callable(project) else None
+        with self._lock:
+            self._hydra_snapshot=snapshot
+            if projection is not None:self._hydra_projection=projection
+            reason=(snapshot.get('failure_reason') if isinstance(snapshot,Mapping)
+                    else getattr(snapshot,'failure_reason',None))
+            if reason:self._hydra_failure=str(reason)
+        self._publish_hydra(force=True)
+
+    def _process_hydra(self,obs,journal,detector,hydra_runtime,*,recovery=False):
+        """Offer from the durable graph lane; child failures stay graph-local."""
+        batch=journal.result(obs.key.frame_index)
+        if batch is None:
+            batch=detector.infer(obs);validate_detection_batch(obs,batch)
+            measured_return_ns=self.now_ns();self._counts['detector_calls']+=1
+            if self.measurements is not None:
+                self.measurements.result(obs,measured_return_ns,'detector_return',
+                    origin='recovery' if recovery else 'historical' if self.clock_domain.startswith('replay:') else 'live')
+            key=('hydra-result',obs.key.frame_index)
+            self.quota.reserve(key,3*len(dumps(batch).encode())+131072)
+            try:journal.result(obs.key.frame_index,batch)
+            finally:self.quota.release(key)
+        else:validate_detection_batch(obs,batch)
+        with self._lock:self._hydra_counts['offered']+=1
+        if self._hydra_failure is None:
+            try:
+                admission=hydra_runtime.offer(obs,batch)
+                with self._lock:
+                    self._hydra_counts['queued']+=admission.status=='queued'
+                    self._hydra_counts['replaced']+=admission.status=='replaced'
+                    self._hydra_counts['rejected']+=admission.status not in {'queued','replaced'}
+                    self._hydra_snapshot=hydra_runtime.snapshot()
+                    if self._hydra_snapshot is not None and self._hydra_snapshot.failure_reason:
+                        self._hydra_failure=self._hydra_snapshot.failure_reason
+            except BaseException as exc:
+                with self._lock:self._hydra_failure=f'{type(exc).__name__}: {exc}';self._hydra_counts['rejected']+=1
+        else:
+            with self._lock:self._hydra_counts['rejected']+=1
+        journal.done(obs.key.frame_index)
+        with self._lock:
+            self._processed=obs.key;self._last_processed_capture=obs.capture_monotonic_ns
+            self._counts['committed']+=1;self._hydra_counts['processed']+=1
+
+    def _publish_hydra(self,*,force=False):
+        """Publish a native graph snapshot on the display lane, separate from control."""
+        if self.publisher is None:return
+        with self._lock:
+            projection=self._hydra_projection;nav=self._latest_nav
+            captured=self._captured;processed=self._processed
+            failure=self._hydra_failure
+            display_revision=self._hydra_display_revision+1
+        now=self.now_ns()
+        key=(None if projection is None else projection.graph_revision,
+             None if nav is None else nav.revision,
+             None if projection is None else projection.status,failure)
+        if not force and key==self._hydra_publication_key and now-self._hydra_publication_ns<100_000_000:return
+        map_age=None if nav is None else age_ns(nav.capture_monotonic_ns,nav.clock_domain,now,self.clock_domain)
+        hierarchy=HierarchySnapshot(self.episode_id,
+            display_revision,0,0 if nav is None else nav.revision,0,
+            {},(),{'legacy_hierarchy':'unavailable_hydra_backend',
+                'hydra_graph':'unavailable' if projection is None else projection.status,
+                'hydra_failure':failure or ''},0 if nav is None else nav.revision,
+            0 if map_age is None else map_age)
+        from ..visualization.publisher import DisplaySources
+        metrics=dict(captured_frame_id=captured,processed_frame_id=processed,
+            published_frame_id=None if projection is None or projection.last_source is None else
+                FrameKey(projection.last_source['episode_id'],projection.last_source['sensor_id'],
+                         projection.last_source['frame_index']),
+            source_age_ns={} if map_age is None else {'map':map_age},dropped_count=self._counts['missing'],
+            replaced_count=self.scheduler.counts['replaced'],actual_profile=self.health.profile,
+            sources=DisplaySources(nav=nav,hydra_graph=projection))
+        self.publisher.publish(hierarchy,metrics)
+        with self._lock:
+            self._hydra_display_revision=display_revision
+            self._hydra_publication_key=key;self._hydra_publication_ns=now
 
     def _validate_recovery_source(self,obs):
         if obs.key.episode_id!=self.episode_id or obs.key.sensor_id!=self.primary_sensor_id or obs.clock_domain!=self.clock_domain:
@@ -509,39 +726,100 @@ class Pipeline:
         finally:
             self.quota.release('navigation-archive')
 
+    def _wait_world_navigation_slot(self, deadline):
+        """Wait before dequeue so source admission can keep replacing pending data."""
+        while not self._closing and not self.health.snapshot()['failed']:
+            delay=deadline-time.monotonic()
+            if delay<=0:return
+            # Events wake shutdown immediately; short polling bounds races
+            # between wake and clear without ever holding the admission lock.
+            self._nav_wake.wait(min(delay,.02));self._nav_wake.clear()
+
     def _navigation_run(self):
         try:
+            rate=getattr(self,'world_navigation_hz',None)
+            period=None if rate is None else 1./rate
+            next_start=0.
             while True:
+                if period is not None:self._wait_world_navigation_slot(next_start)
                 with self._lock:
                     obs=self._nav_input;proof=self._nav_pose_input
                     self._nav_input=None;self._nav_pose_input=None
                 if obs is None:
                     if self._closing or self.health.snapshot()['failed']:break
                     self._nav_wake.wait(.02);self._nav_wake.clear();continue
+                if period is not None:next_start=time.monotonic()+period
                 core=getattr(self.mapper,'_core',None)
                 budget=(2*(core.MAX_PLANAR_MEMORY_BYTES+core.MAX_HEIGHT_MEMORY_BYTES)+1024*1024) if core is not None and not getattr(self,'_archive_write_reserved',False) else 0
                 if budget:self.quota.reserve('navigation-archive',budget)
-                try:nav=self.mapper.update(obs)
+                fast_update=getattr(self.mapper,'update_for_control',None)
+                refresh_overview=getattr(self.mapper,'refresh_overview',None)
+                deferred_overview=callable(fast_update) and callable(refresh_overview)
+                map_start_ns=time.monotonic_ns()
+                try:nav=fast_update(obs) if deferred_overview else self.mapper.update(obs)
                 finally:
+                    map_end_ns=time.monotonic_ns()
+                    if self.measurements is not None:
+                        self.measurements.stage(obs,'navmap_update',map_start_ns,map_end_ns)
+                        phases=getattr(self.mapper,'last_update_stages',None)
+                        if isinstance(phases,dict):
+                            for stage,(start_ns,end_ns) in tuple(phases.items()):
+                                self.measurements.stage(obs,stage,start_ns,end_ns)
                     if budget:self.quota.release('navigation-archive')
+                publish_start_ns=time.monotonic_ns()
+                with self._lock:
+                    self._latest_nav=nav
+                    if deferred_overview:self._latest_overview_tiles=None
+                    if proof is not None:
+                        if self._place_input is not None:self._place_counts['pair_replaced']+=1
+                        self._place_input=(nav,proof)
+                    else:self._place_counts['unmatched']+=1
+                publish_end_ns=time.monotonic_ns()
+                if self.local_depth_control and proof is not None:
+                    intent_start_ns=time.monotonic_ns()
+                    try:self._update_world_intent(nav,proof)
+                    finally:
+                        if self.measurements is not None:
+                            self.measurements.stage(obs,'world_navigation_intent',intent_start_ns,time.monotonic_ns())
+                if self.measurements is not None:
+                    self.measurements.stage(obs,'navmap_publish',publish_start_ns,publish_end_ns)
+                # Navigation/control can consume the immutable snapshot while
+                # display-only overview tiles are refreshed below.
+                self._wake.set()
                 overview = None
+                counts=getattr(self,'overview_refresh_counts',None)
+                due=self._overview_refresh_due(time.monotonic_ns())
+                if deferred_overview and not due and counts is not None:counts['skipped']+=1
+                if deferred_overview and due:
+                    self._last_overview_refresh_ns=time.monotonic_ns()
+                    if counts is not None:counts['refreshed']+=1
+                    overview_start_ns=time.monotonic_ns()
+                    try:refresh_overview(nav)
+                    except Exception:pass
+                    finally:
+                        overview_end_ns=time.monotonic_ns()
+                        if self.measurements is not None:
+                            self.measurements.stage(obs,'navmap_overview_refresh',overview_start_ns,overview_end_ns)
+                            phases=getattr(self.mapper,'last_overview_stages',None)
+                            if isinstance(phases,dict):
+                                for stage,(start_ns,end_ns) in tuple(phases.items()):
+                                    self.measurements.stage(obs,stage,start_ns,end_ns)
                 try:
                     provider = getattr(self.mapper, 'overview_tiles', None)
                     if provider is not None:overview = provider()
                 except Exception:
                     pass  # Optional display data must never fail control.
-                room_provider=getattr(self.mapper,'room_input_tiles',None)
+                room_provider=getattr(self.mapper,'room_input_tiles',None) if self.region_factory is not None else None
                 room_tiles=None
                 if callable(room_provider):
+                    room_start_ns=time.monotonic_ns()
                     try:room_tiles=room_provider()
                     except Exception:pass  # Region lane reports unavailable; control proceeds.
+                    finally:
+                        if self.measurements is not None:
+                            self.measurements.stage(obs,'navmap_room_input',room_start_ns,time.monotonic_ns())
                 with self._lock:
-                    self._latest_nav=nav
                     self._latest_overview_tiles=overview
-                    if proof is not None:
-                        if self._place_input is not None:self._place_counts['pair_replaced']+=1
-                        self._place_input=(nav,proof)
-                    else:self._place_counts['unmatched']+=1
                     if self.region_factory is not None:
                         self._region_input=(nav,room_tiles) if callable(room_provider) else nav
                         self._region_wake.set()
@@ -549,6 +827,27 @@ class Pipeline:
         except BaseException as exc:self._fail('navigation',exc)
         finally:
             self._cleanup('mapper',self.mapper);self._worker_done['navigation']=True;self._wake.set()
+
+    def _hydra_poll_due(self,hydra_runtime):
+        """Re-read the Hydra snapshot/projection only after its state changed.
+
+        Both deep-copy/re-project the whole (growing) graph; polling them on
+        every graph-lane wake starved the control thread of the GIL."""
+        token_fn=getattr(hydra_runtime,'state_token',None)
+        token=token_fn() if callable(token_fn) else None
+        if token is None:return True
+        if token==getattr(self,'_hydra_polled_token',None):
+            counts=getattr(self,'hydra_poll_counts',None)
+            if counts is not None:counts['skipped']+=1
+            return False
+        self._hydra_polled_token=token
+        counts=getattr(self,'hydra_poll_counts',None)
+        if counts is not None:counts['polled']+=1
+        return True
+
+    def _overview_refresh_due(self,now_ns):
+        period=getattr(self,'overview_refresh_ns',None);last=getattr(self,'_last_overview_refresh_ns',None)
+        return period is None or last is None or now_ns-last>=period
 
     @staticmethod
     def _room_payload_budget(obs):
@@ -564,17 +863,39 @@ class Pipeline:
         self._room_journal.append(event)
 
     def _offer_room_input_locked(self,obs):
+        self._room_counts['candidates']+=1
+        if self._room_min_period_ns is not None:
+            previous=self._room_last_selected_capture_ns
+            if previous is not None and obs.capture_monotonic_ns-previous<self._room_min_period_ns:
+                self._room_counts['fps_limited']+=1
+                self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=False,
+                    reason='room_fps_cap',fps_cap_hz=self._room_fps_cap_hz))
+                return
+            self._room_last_selected_capture_ns=obs.capture_monotonic_ns
         self._room_counts['offered']+=1
         budget=self._room_payload_budget(obs)
         if self._room_failure is not None:
             self._room_counts['rejected']+=1
             self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=False,reason='room_worker_failed'))
             return
-        if len(self._room_queue)>=2 or self._room_queue_bytes+self._room_inflight_bytes+budget>32*1024**2:
+        max_pending=1 if self._room_queue_policy=='latest_wins' else 2
+        replaced=None
+        if self._room_queue_policy=='latest_wins' and self._room_queue:
+            replaced=self._room_queue[0]
+        bytes_after_replace=self._room_queue_bytes-(0 if replaced is None else replaced[1])
+        if ((len(self._room_queue)>=max_pending and replaced is None)
+                or bytes_after_replace+self._room_inflight_bytes+budget>32*1024**2):
             self._room_counts['rejected']+=1;self._room_counts['queue_dropped']+=1
             self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=False,reason='room_queue_full',estimated_bytes=budget))
             return
-        self._room_queue.append((obs,budget));self._room_queue_bytes+=budget
+        if replaced is not None:
+            replaced_obs,replaced_budget,_=self._room_queue.popleft()
+            self._room_queue_bytes-=replaced_budget
+            self._room_counts['queue_replaced']+=1;self._room_counts['queue_dropped']+=1
+            self._record_room_event(dict(frame_index=replaced_obs.key.frame_index,accepted=False,
+                reason='room_queue_replaced_by_newer',replacement_frame_index=obs.key.frame_index,
+                estimated_bytes=replaced_budget))
+        self._room_queue.append((obs,budget,time.perf_counter_ns()));self._room_queue_bytes+=budget
         self._room_counts['queued']+=1
         self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=True,reason='room_queue_admitted',estimated_bytes=budget))
         self._room_wake.set()
@@ -599,14 +920,19 @@ class Pipeline:
             while True:
                 with self._lock:
                     if self._room_queue:
-                        obs,budget=self._room_queue.popleft();self._room_queue_bytes-=budget
+                        obs,budget,enqueued_perf_ns=self._room_queue.popleft();self._room_queue_bytes-=budget
                         self._room_inflight_bytes=budget
                     else:
-                        obs=None;budget=0
+                        obs=None;budget=0;enqueued_perf_ns=0
                     closing=self._closing
                 if obs is None:
                     if closing:break
                     self._room_wake.wait(.05);self._room_wake.clear();continue
+                room_start_perf_ns=time.perf_counter_ns()
+                now_ns=self.now_ns()
+                source_age_start_ns=(now_ns-obs.capture_monotonic_ns
+                    if obs.clock_domain==self.clock_domain and now_ns>=obs.capture_monotonic_ns else None)
+                queue_wait_ms=max(0,room_start_perf_ns-enqueued_perf_ns)/1_000_000
                 admission=session.submit(obs)
                 with self._lock:
                     self._record_room_event(dict(frame_index=obs.key.frame_index,
@@ -628,10 +954,25 @@ class Pipeline:
                         elif publication is not None:
                             self._room_counts['processed']+=1
                 with self._lock:
+                    room_service_ms=max(0,time.perf_counter_ns()-room_start_perf_ns)/1_000_000
+                    completion_ns=self.now_ns()
+                    source_age_completion_ns=(completion_ns-obs.capture_monotonic_ns
+                        if obs.clock_domain==self.clock_domain and completion_ns>=obs.capture_monotonic_ns else None)
+                    for key,value in (('queue_wait',queue_wait_ms),('service',room_service_ms)):
+                        self._room_latency_samples[key].append(value)
+                    if source_age_start_ns is None or source_age_completion_ns is None:
+                        self._room_counts['age_clock_errors']+=1
+                    else:
+                        self._room_latency_samples['source_age_at_start'].append(source_age_start_ns/1_000_000)
+                        self._room_latency_samples['source_age_at_completion'].append(source_age_completion_ns/1_000_000)
+                    self._record_room_event(dict(frame_index=obs.key.frame_index,accepted=True,
+                        reason='room_update_finished',queue_wait_ms=queue_wait_ms,service_ms=room_service_ms,
+                        source_age_at_start_ms=None if source_age_start_ns is None else source_age_start_ns/1_000_000,
+                        source_age_at_completion_ms=None if source_age_completion_ns is None else source_age_completion_ns/1_000_000))
                     self._room_inflight_bytes=0
                     if self._room_failure is not None:
                         while self._room_queue:
-                            queued,_=self._room_queue.popleft()
+                            queued,_,_=self._room_queue.popleft()
                             self._record_room_event(dict(frame_index=queued.key.frame_index,
                                 accepted=False,reason='room_worker_failed'))
                             self._room_counts['rejected']+=1
@@ -783,6 +1124,15 @@ class Pipeline:
     def snapshot(self):
         with self._lock:return self._hierarchy
 
+    def scene_graph_query(self):
+        """Read one canonical Hydra generation without blocking the control lock.
+
+        Returns None before graph availability or after runtime shutdown.
+        Object candidates remain semantic hypotheses, not traversable goals.
+        """
+        with self._lock:runtime=getattr(self,'_hydra_runtime',None)
+        return None if runtime is None else runtime.scene_graph_query()
+
     def snapshot_bundle(self):
         """Return the canonical hierarchy and its exact immutable map together.
 
@@ -808,14 +1158,37 @@ class Pipeline:
             plan=getattr(self,'_navigation_display',None)
             counts=dict(getattr(self,'_navigation_reason_counts',{}))
             last_failure=getattr(self,'_last_goal_failure',None)
-        if plan is None:return dict(reason='navigation_unavailable',reason_counts=counts)
+            world={}
+            if getattr(self,'local_depth_control',False):
+                latest=getattr(self,'_world_planner_latest',None)
+                world=dict(world_planner=dict(
+                    reason_counts=dict(getattr(self,'_world_planner_reason_counts',{})),
+                    latest=None if latest is None else dict(latest,source=dict(latest['source'])),
+                    last_goal_failure=last_failure))
+                if getattr(self,'overview_refresh_ns',None) is not None:
+                    world['world_planner']['overview_refresh']=dict(getattr(self,'overview_refresh_counts',{}),
+                        period_ms=self.overview_refresh_ns//1_000_000)
+                guard=getattr(self,'_local_guard',None)
+                if getattr(guard,'start_unknown_tolerance',0):
+                    world['world_planner']['start_unknown']=dict(tolerance=guard.start_unknown_tolerance,
+                        guard_tolerated=int(guard.start_unknown_tolerated),
+                        world_cleared=int(getattr(self.navigator,'start_unknown_cleared',0)),
+                        local_cleared=int(getattr(getattr(self,'_local_follower',None),'start_unknown_cleared',0)))
+                if getattr(self,'gil_switch_interval_s',None) is not None:
+                    world['world_planner']['gil_switch_interval_ms']=self.gil_switch_interval_s*1000.
+                tour=getattr(self.navigator,'tour',None)
+                if tour is not None:
+                    world['world_planner']['tour']=dict(tour.status(),
+                        frontier_fallback_steps=int(getattr(self.navigator,'tour_fallback_steps',0)),
+                        frontier_fallback_active=bool(getattr(self.navigator,'tour_fallback_active',False)))
+        if plan is None:return dict(reason='navigation_unavailable',reason_counts=counts,**world)
         nav,frontiers,decision,reason,computed,rejected,held_goal=plan
         goal=held_goal or ((decision.goal_id,decision.path[-1]) if not rejected and decision.goal_id and decision.path else None)
         return dict(map_revision=nav.revision,computed_monotonic_ns=computed,
             reason=reason,decision_reason=decision.reason,reason_counts=counts,last_goal_failure=last_failure,
             goal_id=None if goal is None else goal[0],goal_xy=None if goal is None else goal[1],
             route_available=bool(decision.path) and not rejected,
-            frontier_count=0 if frontiers is None else len(frontiers.frontiers))
+            frontier_count=0 if frontiers is None else len(frontiers.frontiers),**world)
 
     def navigation_display(self):
         """UI-lane projection of the last actual plan; never a control input."""
@@ -859,7 +1232,27 @@ class Pipeline:
 
     def telemetry(self):
         with self._lock:
-            report=dict(**self._counts,semantic_sampling=self.semantic_sampling_snapshot(),configuration=dict(self._config,
+            def latency_summary(values):
+                ordered=sorted(values)
+                if not ordered:return dict(samples=0,p50_ms=None,p95_ms=None,max_ms=None)
+                def percentile(fraction):return ordered[min(len(ordered)-1,math.ceil(fraction*len(ordered))-1)]
+                return dict(samples=len(ordered),p50_ms=percentile(.50),p95_ms=percentile(.95),max_ms=ordered[-1])
+        hydra_snapshot=self._hydra_snapshot
+        hydra_close=self._hydra_close_report
+        hydra_export=None if hydra_close is None else dict(
+            complete=bool(hydra_close.get('complete')),
+            manifest_path=hydra_close.get('manifest_path'),
+            manifest_sha256=hydra_close.get('manifest_sha256'),
+            graph_asset_verified=bool(hydra_close.get('graph_asset_verified')),
+            failure_reason=hydra_close.get('failure_reason'))
+        if hydra_snapshot is not None and not isinstance(hydra_snapshot,Mapping):
+            hydra_snapshot={key:getattr(hydra_snapshot,key,None) for key in (
+                'episode_id','graph_revision','last_capture_monotonic_ns','last_clock_domain',
+                'input_prefix_sha256','config_sha256','source_sha256','build_sha256',
+                'graph_asset_sha256','graph_asset_bytes','node_counts','edge_count','stale',
+                'replay_required','failure_reason')}
+        report=dict(**self._counts,semantic_sampling=self.semantic_sampling_snapshot(),configuration=dict(self._config,
+                            scene_graph_backend=self.scene_graph_backend,
                             depth_max_age_ns=300_000_000,semantic_max_age_ns=750_000_000,
                             inference_start_max_age_ns=250_000_000,publication_interval_ns=100_000_000,
                             appearance_enabled=self.encoder_factory is not None,verification_enabled=self.verifier_factory is not None,
@@ -869,6 +1262,9 @@ class Pipeline:
                         source_age_ns=self._source_ages_locked(),regions=dict(getattr(self,'_region_diagnostics',{})),
                         room_pipeline=dict(enabled=self.room_pipeline_factory is not None,
                             failed=self._room_failure,counts=dict(self._room_counts),
+                            admission=dict(fps_cap_hz=self._room_fps_cap_hz,queue_policy=self._room_queue_policy,
+                                max_pending_frames=1 if self._room_queue_policy=='latest_wins' else 2),
+                            latency_ms={key:latency_summary(values) for key,values in self._room_latency_samples.items()},
                             queued_frames=len(self._room_queue),queued_estimated_bytes=self._room_queue_bytes,
                             inflight_estimated_bytes=self._room_inflight_bytes,
                             queue_byte_cap=32*1024**2,
@@ -880,19 +1276,238 @@ class Pipeline:
                             journal=list(self._room_journal),journal_dropped=self._room_journal_dropped),
                         journal=dict(self._journal_counts),ready=self._ready.is_set() and not self.health.snapshot()['failed'],paused=self._paused,
                         stop_requested=self._stop_requested,cleanup_pending=dict(self._cleanup_pending),
+                        hydra=dict(backend='hydra' if self.scene_graph_backend=='hydra' else None,
+                            failure=self._hydra_failure,counts=dict(self._hydra_counts),snapshot=hydra_snapshot,
+                            diagnostics=self._hydra_diagnostics,native_export=hydra_export),
                         places=dict(self._place_counts,status=self._place_status,pose_pending=self._pose_offer is not None,pair_pending=self._place_input is not None))
         # In particular quota.lock can cover a filesystem scan. Never acquire
         # it while holding the lock needed by source admission and control.
-        return dict(report,scheduler=self.scheduler.snapshot(),health=self.health.snapshot(),quota=self.quota.snapshot(),navigation=self.navigation_status())
+        return dict(report,scheduler=self.scheduler.snapshot(),health=self.health.snapshot(),quota=self.quota.snapshot(),navigation=self.navigation_status(),
+                    navmap_retention=dict(getattr(self.mapper,'retention_diagnostics',{})))
+
+    def _update_world_intent(self, nav, proof):
+        """Only the navigation worker owns policy and processes feedback."""
+        from ..navigation.local_control import WorldIntent
+        with self._lock:
+            generation=getattr(self,'_local_intent_generation',0)
+            previous=self._local_intent
+            feedback=self._local_feedback.pop() if self._local_feedback else None
+            self._local_feedback.clear()
+            stopped=self._paused or self._closing or bool(self.health.snapshot()['failed'])
+        if stopped:
+            self._invalidate_local_intent()
+            self.navigator.reset_goal_failure_watch()
+            return
+        if previous is not None and not previous.compatible(nav,self.now_ns()):
+            previous=None
+        if feedback is not None:
+            intent,xy,reason,rejected=feedback
+            if previous is intent:
+                # Missing current local evidence is a conservative stop, not
+                # proof that the world target is unreachable. Existing recovery
+                # requires persistent failure across fresh WORLD revisions.
+                if reason=='world_goal_reached':
+                    self.navigator.report_goal_reached(intent.goal_id,intent.path[-1])
+                    previous=None
+                result=self.navigator.observe_navigation_result(nav,xy,self.now_ns(),
+                    'path_segment_blocked' if reason=='local_path_blocked' else reason,rejected)
+                if result is not None:
+                    previous=None
+                    with self._lock:self._last_goal_failure=result
+        decision=self.navigator.step(nav,proof['robot_xy'],proof['yaw_rad'],self.now_ns())
+        if not decision.path:
+            # A held world target may become untraversable before the local
+            # follower gets an intent. Its own fresh no-path STOP must advance
+            # recovery even while local control has nothing to feed back.
+            failure=self.navigator.observe_navigation_result(nav,proof['robot_xy'],
+                self.now_ns(),decision.reason,True)
+            if failure is not None:
+                with self._lock:self._last_goal_failure=failure
+        candidate=None
+        if decision.goal_id and decision.path:
+            try:candidate=WorldIntent.from_decision(nav,decision.goal_id,decision.path,self.now_ns(),
+                    ttl_ns=getattr(self,'world_intent_ttl_ns',2_000_000_000))
+            except ValueError:pass
+        elif decision.reason=='nav_stale':
+            candidate=previous
+        # A control fault or pause that occurred during planning invalidates
+        # this publication. Never resurrect an intent across that boundary.
+        with self._lock:
+            if (generation==getattr(self,'_local_intent_generation',0)
+                    and not self._paused and not self._closing and not self.health.snapshot()['failed']):
+                self._local_intent=candidate
+            counts=getattr(self,'_world_planner_reason_counts',None)
+            if counts is None:self._world_planner_reason_counts=counts={}
+            reason=decision.reason if decision.reason in counts or len(counts)<64 else 'other'
+            counts[reason]=min(counts.get(reason,0)+1,2**63-1)
+            computed=self.now_ns()
+            try:source_age=age_ns(nav.capture_monotonic_ns,nav.clock_domain,computed,self.clock_domain)
+            except ValueError:source_age=None
+            self._world_planner_latest=dict(
+                source=dict(episode_id=nav.source.episode_id,sensor_id=nav.source.sensor_id,
+                            frame_index=nav.source.frame_index),
+                capture_monotonic_ns=nav.capture_monotonic_ns,clock_domain=nav.clock_domain,
+                map_revision=nav.revision,computed_monotonic_ns=computed,source_age_ns=source_age,
+                reason=decision.reason,goal_id=decision.goal_id,path_point_count=len(decision.path),
+                intent_available=self._local_intent is not None)
+
+    def _invalidate_local_intent(self, *, expected=None):
+        """Clear expired intent by identity; faults invalidate the whole epoch."""
+        with self._lock:
+            if expected is not None and self._local_intent is not expected:
+                return False
+            self._local_intent=None
+            # Expiry of A must neither clear a published B nor cancel a fresh B
+            # currently being planned. Fault/pause still invalidate both.
+            if expected is None:
+                self._local_intent_generation=getattr(self,'_local_intent_generation',0)+1
+            feedback=getattr(self,'_local_feedback',None)
+            if feedback is not None and (expected is None or (feedback and feedback[0][0] is expected)):
+                feedback.clear()
+            return True
+
+    @staticmethod
+    def _local_stop_diagnostics(reason):
+        return dict(goal_id=None,goal_xy=None,path_point_count=0,path_sample_xy=[],
+            path_sample_truncated=False,lookahead_xy=None,heading_error_rad=None,
+            decision_reason=reason,control_map_scope='local_measured_depth_v1',world_intent=None)
+
+    def _local_control_step(self,actuator,*,robot_xy=None,yaw_rad=None):
+        with self._lock:
+            latest=self._latest_depth
+            intent=self._local_intent
+            generation=getattr(self,'_local_intent_generation',0)
+        self._step_source=latest
+        self._step_navigation_diagnostics=self._local_stop_diagnostics('navigation_unavailable')
+        if self._paused or self._closing or self.health.snapshot()['failed']:
+            reason='runtime_paused' if self._paused and not self._closing else 'runtime_stopped'
+            self._invalidate_local_intent();self._local_follower.reset()
+            self._step_navigation_diagnostics=self._local_stop_diagnostics(reason)
+            return dict(executed=False,reason=reason)
+        if latest is None:
+            self._invalidate_local_intent();self._local_follower.reset()
+            return dict(executed=False,reason='navigation_unavailable')
+        try:
+            pose=actuator.robot_pose(latest)
+            if (pose['source']!=latest.key or pose['capture_monotonic_ns']!=latest.capture_monotonic_ns
+                    or pose['clock_domain']!=self.clock_domain or pose['pose_version']!=latest.pose_version):
+                raise ValueError('actuation pose source mismatch')
+            xy=tuple(pose['robot_xy']);yaw=pose['yaw_rad']
+            if (robot_xy is not None and tuple(robot_xy)!=xy) or (yaw_rad is not None and yaw_rad!=yaw):
+                raise ValueError('caller pose does not match captured robot pose')
+            stage_start_ns=time.monotonic_ns()
+            try:nav=self._local_map.snapshot(latest,robot_xy=xy)
+            finally:
+                if self.measurements is not None:
+                    self.measurements.stage(latest,'local_depth_map',stage_start_ns,time.monotonic_ns())
+            self._local_guard.bind_nav(nav,robot_xy=xy,yaw_rad=yaw)
+            stage_start_ns=time.monotonic_ns()
+            try:decision=self._local_follower.step(nav,intent,xy,yaw,self.now_ns())
+            finally:
+                if self.measurements is not None:
+                    self.measurements.stage(latest,'local_path_follow',stage_start_ns,time.monotonic_ns())
+            self._step_decision=decision
+            if decision.reason=='world_intent_stale':self._invalidate_local_intent(expected=intent)
+            detail=dict(self._local_follower.last_control_diagnostics)
+            world=None if intent is None or not intent.same_scope(nav) else dict(source=dict(episode_id=intent.source.episode_id,
+                sensor_id=intent.source.sensor_id,frame_index=intent.source.frame_index),
+                capture_monotonic_ns=intent.capture_monotonic_ns,clock_domain=intent.clock_domain,
+                map_revision=intent.map_revision,created_monotonic_ns=intent.created_monotonic_ns,
+                valid_until_monotonic_ns=intent.valid_until_monotonic_ns)
+            detail.update(control_map_scope='local_measured_depth_v1',world_intent=world)
+            self._step_navigation_diagnostics=detail
+            stage_start_ns=time.monotonic_ns()
+            try:command=self._local_guard.filter(decision,latest,self.now_ns())
+            finally:
+                if self.measurements is not None:
+                    self.measurements.stage(latest,'local_motion_guard',stage_start_ns,time.monotonic_ns())
+            if intent is not None and self.now_ns()>=intent.valid_until_monotonic_ns:
+                command=replace(command,linear_mps=0.,yaw_radps=0.,reason='world_intent_stale')
+                self._invalidate_local_intent(expected=intent)
+            elif intent is not None and (command.linear_mps or command.yaw_radps):
+                command=replace(command,deadline_monotonic_ns=min(command.deadline_monotonic_ns,
+                    intent.valid_until_monotonic_ns))
+            if self._paused or self._closing or self.health.snapshot()['failed']:
+                command=replace(command,linear_mps=0.,yaw_radps=0.,reason='runtime_stopped')
+                self._invalidate_local_intent()
+            elif generation!=getattr(self,'_local_intent_generation',0) and command.reason!='world_intent_stale':
+                command=replace(command,linear_mps=0.,yaw_radps=0.,reason='world_intent_invalidated')
+            self._step_command=command
+            result=actuator.execute(command);self._last_command=command
+            stopped=(not isinstance(result,dict) or result.get('executed') is not True
+                     or command.linear_mps==command.yaw_radps==0.)
+            display_reason=(result.get('reason') or command.reason) if stopped and isinstance(result,dict) else command.reason
+            if display_reason=='expired_or_zero':display_reason=command.reason
+            with self._lock:
+                if intent is not None and intent.compatible(nav,self.now_ns()) and hasattr(self,'_local_feedback'):
+                    self._local_feedback.append((intent,xy,display_reason,stopped))
+                counts=getattr(self,'_navigation_reason_counts',None)
+                if counts is None:self._navigation_reason_counts=counts={}
+                key=display_reason if display_reason in counts or len(counts)<64 else 'other'
+                counts[key]=min(counts.get(key,0)+1,2**63-1)
+                self._navigation_display=(nav,None,decision,display_reason,self.now_ns(),stopped,
+                    None if intent is None else (intent.goal_id,intent.path[-1]))
+            return result
+        except Exception as exc:
+            self._invalidate_local_intent();self._local_follower.reset()
+            if self._step_command is None:
+                self._step_decision=None
+                self._step_navigation_diagnostics=self._local_stop_diagnostics('control_rejected')
+            with self._lock:self._navigation_display=None
+            return dict(executed=False,reason='control_rejected',error=f'{type(exc).__name__}: {exc}')
+
+    def _navigation_map_compatible(self,nav,latest):
+        if nav is None or latest is None:return False
+        exact=(nav.source==latest.key and nav.capture_monotonic_ns==latest.capture_monotonic_ns
+               and nav.clock_domain==latest.clock_domain)
+        if exact:return True
+        if not getattr(self,'allow_fresh_map_lag',False):return False
+        # A world map may lag the body pose, but never its safety lifetime.
+        # Current measured-depth bootstrap and swept-footprint checks remain
+        # mandatory in MotionGuard; map and command keep DIFFERENT source IDs.
+        if (nav.episode_id!=latest.key.episode_id or nav.source.episode_id!=latest.key.episode_id
+                or nav.source.sensor_id!=latest.key.sensor_id
+                or nav.source.frame_index>=latest.key.frame_index
+                or nav.capture_monotonic_ns>latest.capture_monotonic_ns
+                or nav.clock_domain!=latest.clock_domain or latest.clock_domain!=self.clock_domain):return False
+        now=self.now_ns()
+        return (0<=now-nav.capture_monotonic_ns<=300_000_000
+                and 0<=now-latest.capture_monotonic_ns<=300_000_000)
 
     def control_step(self,actuator,*,robot_xy=None,yaw_rad=None):
+        if getattr(self,'offline_replay_control',False):
+            from .replay_control import OfflineReplayActuator
+            if type(actuator) is not OfflineReplayActuator:
+                raise TypeError('offline replay control only accepts OfflineReplayActuator')
         with self._control_lock:
             if self.measurements is not None and self.measurements.stop_requested.is_set():
                 self._paused=True;self._stop_requested=True
             self._step_command=None;self._step_decision=None;self._step_source=None
+            self._step_navigation_diagnostics=None
             self._step_navigation_observed=False
-            result=self._control_step(actuator,robot_xy=robot_xy,yaw_rad=yaw_rad)
-            if not self._step_navigation_observed:
+            control_start_ns=time.monotonic_ns()
+            try:result=self._control_step(actuator,robot_xy=robot_xy,yaw_rad=yaw_rad)
+            finally:
+                control_end_ns=time.monotonic_ns()
+                if self.measurements is not None and self._step_source is not None:
+                    self.measurements.stage(self._step_source,'control_loop',control_start_ns,control_end_ns)
+                    timing=getattr(actuator,'last_actuation_timing',None)
+                    if isinstance(timing,dict) and timing.get('clock_domain')==self._step_source.clock_domain:
+                        _record_timing_stage(self.measurements,self._step_source,timing,
+                            'actuation_roundtrip','host_request_start_ns','host_response_received_ns')
+                        _record_timing_stage(self.measurements,self._step_source,timing,
+                            'sensor_worker_dispatch','worker_request_received_ns','worker_handler_start_ns')
+                        _record_timing_stage(self.measurements,self._step_source,timing,
+                            'sensor_worker_handler','worker_handler_start_ns','worker_handler_end_ns')
+                        for stage in timing.get('worker_stages',()):
+                            if isinstance(stage,dict):
+                                self.measurements.stage(self._step_source,stage.get('stage'),
+                                    stage.get('start_ns'),stage.get('end_ns'))
+            # A missing exact map supplies no new evidence either way. Keep
+            # the watch unchanged; Navigator itself restarts it after >1 s
+            # without fresh observations. Pause/error still cancels the window.
+            if (not getattr(self,'local_depth_control',False) and not self._step_navigation_observed and
+                    (not isinstance(result,dict) or result.get('reason')!='navigation_source_pending')):
                 reset=getattr(self.navigator,'reset_goal_failure_watch',None)
                 if callable(reset):reset()
             if self.measurements is not None:
@@ -901,7 +1516,8 @@ class Pipeline:
                     try:proof=getattr(actuator,'last_actuation_proof',None)
                     except Exception:pass
                 self.measurements.control(self._step_source,self.now_ns(),result,command=self._step_command,
-                    decision=self._step_decision,proof=proof,profile=self.health.profile.split(':')[0])
+                    decision=self._step_decision,proof=proof,profile=self.health.profile.split(':')[0],
+                    navigation=self._step_navigation_diagnostics)
             return result
 
     def _control_step(self,actuator,*,robot_xy=None,yaw_rad=None):
@@ -910,6 +1526,8 @@ class Pipeline:
         Guard/actuator exceptions never fall back to a bare action or republish
         an old capture. The caller can keep capturing while detector/disk hangs.
         """
+        if getattr(self,'local_depth_control',False):
+            return self._local_control_step(actuator,robot_xy=robot_xy,yaw_rad=yaw_rad)
         with self._control_lock:
             with self._lock:latest=self._latest_depth;nav=self._latest_nav
             self._step_source=latest
@@ -922,7 +1540,7 @@ class Pipeline:
             if latest is None or nav is None or self.guard is None or self.navigator is None:
                 with self._lock:self._navigation_display=None
                 return dict(executed=False,reason='navigation_unavailable')
-            if nav.source!=latest.key or nav.capture_monotonic_ns!=latest.capture_monotonic_ns or nav.clock_domain!=latest.clock_domain:
+            if not self._navigation_map_compatible(nav,latest):
                 return dict(executed=False,reason='navigation_source_pending')
             try:
                 pose=actuator.robot_pose(latest)
@@ -938,6 +1556,8 @@ class Pipeline:
                 else:
                     decision=self.navigator.step(nav,xy,yaw,self.now_ns())
                     self._step_decision=decision
+                    detail=getattr(self.navigator,'last_control_diagnostics',None)
+                    if isinstance(detail,dict):self._step_navigation_diagnostics=dict(detail)
                     command=self.guard.filter(decision,latest,self.now_ns())
                 if age_ns(latest.capture_monotonic_ns,latest.clock_domain,self.now_ns(),self.clock_domain)>300_000_000:
                     self.health.increment('depth_stale')
@@ -1001,12 +1621,17 @@ class Pipeline:
                 if reason is None:
                     self._paused=True
                     if command.action=='stop':self._stop_requested=True
+                    if getattr(self,'local_depth_control',False):self._invalidate_local_intent()
         return UiCommandAck(command.request_uuid,'accepted' if reason is None else 'rejected',reason,self.now_ns(),self.clock_domain)
 
     def close(self,timeout_s:float)->dict:
+        if getattr(self,'_previous_switch_interval',None) is not None:
+            import sys as _sys
+            _sys.setswitchinterval(self._previous_switch_interval);self._previous_switch_interval=None
         timeout_s=valid_timeout(timeout_s);deadline=time.monotonic()+timeout_s
         control_acquired=self._control_lock.acquire(timeout=remaining(deadline))
         with self._lock:self._closing=True;self._paused=True;self._deadline=deadline;self.scheduler.closed=True
+        if getattr(self,'local_depth_control',False):self._invalidate_local_intent()
         if control_acquired:self._control_lock.release()
         # Eager resources remain owned even if graph startup prevented the
         # navigation thread (and its finally block) from ever starting.

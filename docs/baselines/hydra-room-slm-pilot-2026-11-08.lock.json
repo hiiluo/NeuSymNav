@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "created_date": "2026-11-08",
+  "workspace": "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2",
+  "branch": "Kiet_branch2",
+  "head": "62f16fcf0b1ae508b49820e0184e99714387c490",
+  "working_tree": "dirty; HEAD alone does not identify this baseline",
+  "scope": "experimental Hydra geometry profiles, dataset/labelspace, private DSO and selected integration sources; not a full installed dependency closure or runtime loaded-library proof",
+  "policy": "hold geometry config during SLM pilot; do not chmod, promote defaults, freeze graph evolution, or block independent exploration work",
+  "entries": [
+    {
+      "path": ".runtime/hydra_ws/env.sh",
+      "bytes": 1514,
+      "sha256": "a3db15c5defd22c99adf639c48e64dea67b2aca6982196f028e489488ed0bb72"
+    },
+    {
+      "path": "configs/demo-00805.hydra-world2hz-room-stability.experimental.local.json",
+      "bytes": 10224,
+      "sha256": "4b18c6dde0712a47f99275bb3d5cd1d0e2bdfcd84a5726728b6902a4bd2fb0b4"
+    },
+    {
+      "path": "configs/demo-00806.hydra-world2hz-room-stability.experimental.local.json",
+      "bytes": 10330,
+      "sha256": "ecb36c30c1fe747d75876d5d95aa079955e9b156f3d3fad2b7b14f7071439c2d"
+    },
+    {
+      "path": "configs/demo-00807.hydra-world2hz-room-stability.experimental.local.json",
+      "bytes": 10341,
+      "sha256": "31506b8ff54cedc1bd6be18139f6bd3dd07740d1b9ad650bbb520bf8e9523e81"
+    },
+    {
+      "path": "configs/taxonomy-v1.json",
+      "bytes": 1484,
+      "sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    },
+    {
+      "path": "runs/hydra-objectnav/B1-stability-20261107/config-root/stable/datasets/neusymnav.yaml",
+      "bytes": 2723,
+      "sha256": "45b2874ce46ff0f956cd0e4dc30899dcebd63b225ed914511fb9afbfc83e4a94"
+    },
+    {
+      "path": "runs/hydra-objectnav/B1-stability-20261107/config-root/stable/label_spaces/neusymnav_label_space.yaml",
+      "bytes": 2572,
+      "sha256": "ff1eb56f2bd402839c835ac5e53fc7bbd09ff2d3fe142c618e3f596e668b0075"
+    },
+    {
+      "path": "runs/hydra-objectnav/B1-stability-20261107/native/libhydra.so",
+      "bytes": 50216888,
+      "sha256": "9364ca487e8826112705d942ff01734cdbe3372fbdcc91c21c42a14a42fb7e4b"
+    },
+    {
+      "path": "src/neusymnav/backends/hydra/entry.py",
+      "bytes": 351,
+      "sha256": "f098c84c377c232685012e46de9e4fcf0641ad30bee99185e20f676c1f24ade5"
+    },
+    {
+      "path": "src/neusymnav/backends/hydra/room_stability.py",
+      "bytes": 11921,
+      "sha256": "448d0322dfef406682ccad96a297b841afc0ad40d4420c35bf7099684792b0e3"
+    },
+    {
+      "path": "src/neusymnav/backends/hydra/worker.py",
+      "bytes": 14801,
+      "sha256": "b47fb56ed740c6f68368e901de71428184d23d85e9825c509bf2f6b477e040a5"
+    },
+    {
+      "path": "src/neusymnav/contracts/room_semantics.py",
+      "bytes": 6707,
+      "sha256": "fb3a9916dc38c204106e1b27cc9d69ce4deb28bb650e023cfd854760f06f291f"
+    },
+    {
+      "path": "src/neusymnav/perception/detector_worker.py",
+      "bytes": 7397,
+      "sha256": "67dc30d56192daf5b2ebd96605053a8cb5405b25ed2b7233bd3b55131ab8794f"
+    },
+    {
+      "path": "src/neusymnav/rooms/context.py",
+      "bytes": 6477,
+      "sha256": "ed355c9cd81c2c2812c43f2825a7bed7b097905f9c7098e4e99b1a5eaa37d891"
+    },
+    {
+      "path": "src/neusymnav/runtime/ui_transport.py",
+      "bytes": 41061,
+      "sha256": "d095f3aa309ef4d87a4b7f5c5309ea3835ea62850a6d0027ff6c1c4f81a00781"
+    },
+    {
+      "path": "src/neusymnav/sensors/habitat_worker.py",
+      "bytes": 60848,
+      "sha256": "740ae8b0e16975080bcf8c51ed013bb8b5990710e559f956f2920c1953b9c8ce"
+    },
+    {
+      "path": "tools/native/hydra_room_stability/room_finder.cpp",
+      "bytes": 18073,
+      "sha256": "1c0a7ac828a5681f7d32c77865b91c3c10168764160931f714147fded0f734fd"
+    }
+  ]
+}

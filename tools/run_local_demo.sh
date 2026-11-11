@@ -12,7 +12,10 @@ export PYTHONPATH="$project_root/src" PYTHONDONTWRITEBYTECODE=1 YOLO_AUTOINSTALL
 export XDG_CACHE_HOME="$project_root/.runtime/cache"
 export YOLO_CONFIG_DIR="$project_root/.runtime/config/ultralytics"
 export MPLCONFIGDIR="$project_root/.runtime/cache/matplotlib" TORCH_HOME="$project_root/.runtime/cache/torch"
-if [[ "${HABITAT_FORCE_SOFTWARE:-0}" == 1 || ! -r /dev/dri/renderD128 ]]; then
+# Missing /dev/dri is not evidence that EGL needs LIBGL_ALWAYS_SOFTWARE.
+# Mesa may expose a software EGL device directly; forcing software while
+# Habitat explicitly selects that device aborts initialization on such hosts.
+if [[ "${HABITAT_FORCE_SOFTWARE:-0}" == 1 ]]; then
     export LIBGL_ALWAYS_SOFTWARE=1 MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 fi
 demo_config="${NEUSYMNAV_DEMO_CONFIG:-configs/demo.local.json}"

@@ -17,7 +17,10 @@ import numpy as np
 from typing import Any
 Observation = Any  # private index-layout adapter only
 from ._grid import GridSpec
+from ._log_odds_kernel import apply_log_odds_kernel
 from ._raycast_kernel import RaycastVotes, collect_ray_votes
+from .rolling import (maintain_tile,RollingWindow, clear_tile_outside_window, expire_tile_components,
+                      validate_local_retention_s)
 from .tiles import TileArchive, TileArchiveError
 
 
@@ -146,14 +149,20 @@ class _Tile:
     planar_log_odds: np.ndarray
     height_log_odds: np.ndarray
     floor_support: np.ndarray
+    planar_last_ns: np.ndarray | None = None
+    height_last_ns: np.ndarray | None = None
+    floor_last_ns: np.ndarray | None = None
 
     @classmethod
-    def empty(cls, tile_size_cells: int, height_bin_count: int) -> _Tile:
+    def empty(cls, tile_size_cells: int, height_bin_count: int, *, track_timestamps: bool = False) -> _Tile:
         shape = (tile_size_cells, tile_size_cells)
         return cls(
             planar_log_odds=np.full(shape, np.nan, dtype=np.float32),
             height_log_odds=np.full((*shape, height_bin_count), np.nan, dtype=np.float32),
             floor_support=np.zeros(shape, dtype=np.bool_),
+            planar_last_ns=np.full(shape, -1, dtype=np.int64) if track_timestamps else None,
+            height_last_ns=np.full((*shape, height_bin_count), -1, dtype=np.int64) if track_timestamps else None,
+            floor_last_ns=np.full(shape, -1, dtype=np.int64) if track_timestamps else None,
         )
 
 
@@ -193,9 +202,11 @@ class OccupancyMapper:
         min_depth_m: float = 0.15,
         max_depth_m: float = 5.0,
         sampling_stride: int = 4,
+        free_ray_stride: int = 1,
         raycast_workers: int = 1,
         raycast_collector=None,
         tile_archive_dir: str | Path | None = None,
+        local_retention_s: float | None = None,
     ) -> None:
         if not math.isfinite(robot_height_m) or robot_height_m <= height_bin_m:
             raise ValueError("robot_height_m must be finite and exceed one height bin")
@@ -207,6 +218,8 @@ class OccupancyMapper:
             raise ValueError("max_depth_m must exceed min_depth_m")
         if isinstance(sampling_stride, bool) or not isinstance(sampling_stride, int) or sampling_stride <= 0:
             raise ValueError("sampling_stride must be a positive integer")
+        if type(free_ray_stride) is not int or not 1 <= free_ray_stride <= 4:
+            raise ValueError("free_ray_stride must be an integer from 1 to 4")
         if type(raycast_workers) is not int or not 1 <= raycast_workers <= 4:
             raise ValueError("raycast workers must be an integer from 1 to 4")
         self._archive_reservation = None
@@ -220,12 +233,24 @@ class OccupancyMapper:
         self.min_depth_m = float(min_depth_m)
         self.max_depth_m = float(max_depth_m)
         self.sampling_stride = sampling_stride
+        self.free_ray_stride = free_ray_stride
         self.height_bin_count = math.ceil(self.robot_height_m / self.height_bin_m)
+        self.local_retention_s = validate_local_retention_s(local_retention_s)
+        self._retention_ns = (None if self.local_retention_s is None
+                              else max(1, math.ceil(self.local_retention_s * 1_000_000_000)))
         self._tiles: OrderedDict[tuple[int, int], _Tile] = OrderedDict()
         self._tile_archive = TileArchive(tile_archive_dir)
         self._planar_memory_bytes = 0
         self._height_memory_bytes = 0
+        self._expired_planar_components = 0
+        self._expired_height_components = 0
+        self._expired_floor_components = 0
+        self._spatially_evicted_components = 0
+        self._spatially_evicted_tiles = 0
+        self._capacity_evicted_tiles = 0
+        self._expired_empty_tiles = 0
         self._seen_frames: set[tuple[str, int]] = set()
+        self._rolling_frame_watermarks: dict[tuple[str, str], int] = {}
         self._episode_id: str | None = None
         self._version = 0
         self._ray_step_m = min(grid.resolution_m, self.height_bin_m) / 2.0
@@ -270,13 +295,49 @@ class OccupancyMapper:
         """Bytes held by sparse-tile height log odds arrays."""
         return self._height_memory_bytes
 
+    def retention_memory_stats(self) -> dict[str, int]:
+        """Return bounded, JSON-safe resident tile bytes and cumulative counts."""
+        planar_bytes = sum(tile.planar_log_odds.nbytes + tile.floor_support.nbytes
+                           for tile in self._tiles.values())
+        height_bytes = sum(tile.height_log_odds.nbytes for tile in self._tiles.values())
+        timestamp_bytes = sum(
+            sum(array.nbytes for array in (tile.planar_last_ns, tile.height_last_ns, tile.floor_last_ns)
+                if array is not None)
+            for tile in self._tiles.values()
+        )
+        return {
+            "resident_tile_count": len(self._tiles),
+            "resident_planar_bytes": int(planar_bytes),
+            "resident_height_bytes": int(height_bytes),
+            "resident_timestamp_bytes": int(timestamp_bytes),
+            "resident_bytes": int(planar_bytes + height_bytes + timestamp_bytes),
+            "expired_planar_components": self._expired_planar_components,
+            "expired_height_components": self._expired_height_components,
+            "expired_floor_components": self._expired_floor_components,
+            "spatially_evicted_components": self._spatially_evicted_components,
+            "spatially_evicted_tiles": self._spatially_evicted_tiles,
+            "capacity_evicted_tiles": self._capacity_evicted_tiles,
+            "expired_empty_tiles": self._expired_empty_tiles,
+        }
+
     def reset(self, episode_id: str | None = None) -> None:
         """Clear all evidence before starting a new episode."""
-        self._tile_archive.clear()
+        # Rolling mode never writes or reloads archives; do not clear an archive
+        # directory that may contain unrelated legacy history.
+        if self.local_retention_s is None:
+            self._tile_archive.clear()
         self._tiles.clear()
         self._planar_memory_bytes = 0
         self._height_memory_bytes = 0
+        self._expired_planar_components = 0
+        self._expired_height_components = 0
+        self._expired_floor_components = 0
+        self._spatially_evicted_components = 0
+        self._spatially_evicted_tiles = 0
+        self._capacity_evicted_tiles = 0
+        self._expired_empty_tiles = 0
         self._seen_frames.clear()
+        self._rolling_frame_watermarks.clear()
         self._episode_id = episode_id
         self._version = 0
         self._last_snapshot = None
@@ -285,15 +346,35 @@ class OccupancyMapper:
         """Integrate one immutable RGB-D observation from its source pose."""
         return self._integrate(obs)
 
-    def _integrate(self, obs: Observation, prepared: _PreparedMeasuredProjection | None = None) -> MapDelta:
+    def _integrate(self, obs: Observation, prepared: _PreparedMeasuredProjection | None = None, *,
+                   rolling_window: RollingWindow | None = None,
+                   capture_monotonic_ns: int | None = None) -> MapDelta:
         """Private adapter entry; prepared points never survive this call."""
+        if self.local_retention_s is not None:
+            if not isinstance(rolling_window, RollingWindow):
+                raise ValueError('rolling map update needs its current spatial window')
+            if (isinstance(capture_monotonic_ns, (bool, np.bool_))
+                    or not isinstance(capture_monotonic_ns, (int, np.integer))
+                    or capture_monotonic_ns < 0):
+                raise ValueError('rolling map update needs a nonnegative monotonic timestamp')
         integration_started_ns = time.perf_counter_ns()
+        self._last_integrate_stages={}
+        def record_stage(name,started_ns):
+            self._last_integrate_stages[name]=(started_ns,time.monotonic_ns())
         key = (obs.episode_id, obs.frame_id)
-        if key in self._seen_frames:
+        if self.local_retention_s is None:
+            duplicate = key in self._seen_frames
+        else:
+            sensor_id, frame_index = obs.frame_id
+            watermark_key = (obs.episode_id, sensor_id)
+            previous = self._rolling_frame_watermarks.get(watermark_key)
+            duplicate = previous is not None and frame_index <= previous
+        if duplicate:
             raise DuplicateFrameError(f"duplicate observation frame {obs.episode_id}:{obs.frame_id}")
         if self._episode_id is not None and obs.episode_id != self._episode_id:
             raise ValueError("reset the mapper before integrating a different episode")
 
+        projection_started_ns=time.monotonic_ns()
         intrinsics = np.asarray(obs.K, dtype=np.float64)
         if intrinsics[0, 0] <= 0 or intrinsics[1, 1] <= 0:
             raise ValueError("camera focal lengths must be positive")
@@ -305,6 +386,8 @@ class OccupancyMapper:
         camera_origin = obs.T_world_camera_cv[:3, 3]
         rotation = obs.T_world_camera_cv[:3, :3]
         stride = self.sampling_stride
+        free_trace_stride=self.free_ray_stride
+        measured_trace_free=None
         if prepared is not None:
             if (type(prepared) is not _PreparedMeasuredProjection or prepared.source is not obs
                     or not isinstance(prepared.camera_points, np.ndarray)
@@ -313,6 +396,14 @@ class OccupancyMapper:
                     or not np.isfinite(prepared.camera_points).all()):
                 raise ValueError('invalid call-local measured projection')
             camera_points = prepared.camera_points
+            if free_trace_stride>1:
+                sampled_depth=obs.depth_m[::stride,::stride]
+                sampled_valid=obs.valid_depth[::stride,::stride]
+                usable=(sampled_valid & np.isfinite(sampled_depth)
+                    & (sampled_depth>=self.min_depth_m) & (sampled_depth<self.max_depth_m))
+                sample_v,sample_u=np.nonzero(usable)
+                measured_trace_free=np.ascontiguousarray(
+                    (sample_v%free_trace_stride==0)&(sample_u%free_trace_stride==0),dtype=np.bool_)
         else:
             sampled_depth = obs.depth_m[::stride, ::stride]
             sampled_valid = obs.valid_depth[::stride, ::stride]
@@ -329,11 +420,15 @@ class OccupancyMapper:
             finite_rays = np.isfinite(rays).all(axis=1) & (np.abs(rays[:, 2]) >= 1e-12)
             rays = rays[finite_rays]
             depths = depths[finite_rays]
+            if free_trace_stride>1:
+                measured_trace_free=np.ascontiguousarray(
+                    ((sample_v%free_trace_stride==0)&(sample_u%free_trace_stride==0))[finite_rays],dtype=np.bool_)
             rays /= rays[:, 2:3]
             camera_points = rays * depths[:, None]
         measured_endpoints = camera_points @ rotation.T + camera_origin
         endpoints = measured_endpoints
         has_return = np.ones(len(endpoints), dtype=np.bool_)
+        trace_free=measured_trace_free
         if obs.no_return is not None and np.any(obs.no_return[::stride, ::stride]):
             certified_range = min(float(obs.no_return_range_m), self.max_depth_m)
             if certified_range > self.min_depth_m:
@@ -344,32 +439,67 @@ class OccupancyMapper:
                 no_hit_rays = no_hit_pixels @ inverse_intrinsics.T
                 ray_norms = np.linalg.norm(no_hit_rays, axis=1)
                 good = np.isfinite(no_hit_rays).all(axis=1) & np.isfinite(ray_norms) & (ray_norms > 1e-12)
+                no_hit_trace=None
+                if free_trace_stride>1:
+                    no_hit_trace=((no_hit_v%free_trace_stride==0)&(no_hit_u%free_trace_stride==0))[good]
                 unit_world = (no_hit_rays[good] / ray_norms[good, None]) @ rotation.T
                 no_hit_endpoints = camera_origin + unit_world * certified_range
                 no_hit_endpoints = self._clip_no_return_rays(
-                    camera_origin, no_hit_endpoints, measured_endpoints
+                    camera_origin, no_hit_endpoints, measured_endpoints,
+                    capture_monotonic_ns=capture_monotonic_ns,
+                    rolling_window=rolling_window,
                 )
                 if len(no_hit_endpoints):
                     endpoints = np.concatenate((endpoints, no_hit_endpoints))
                     has_return = np.concatenate((
                         has_return, np.zeros(len(no_hit_endpoints), dtype=np.bool_)
                     ))
-        votes = self._raycast_collector(
-            endpoints,
-            camera_origin,
-            has_return=has_return,
-            resolution_m=self.grid.resolution_m,
-            origin_x_m=self.grid.origin_x_m,
-            origin_z_m=self.grid.origin_z_m,
-            floor_y_m=self.grid.floor_y_m,
-            robot_height_m=self.robot_height_m,
-            height_bin_m=self.height_bin_m,
-            ray_step_m=self._ray_step_m,
-            workers=self.raycast_workers,
-        )
+                    if no_hit_trace is not None:
+                        trace_free=(np.ones(len(measured_endpoints),dtype=np.bool_)
+                            if trace_free is None else trace_free)
+                        trace_free=np.concatenate((trace_free,no_hit_trace))
+        record_stage('navmap_projection',projection_started_ns)
+        raycast_started_ns=time.monotonic_ns()
+        try:
+            raycast_options=dict(has_return=has_return,
+                resolution_m=self.grid.resolution_m,
+                origin_x_m=self.grid.origin_x_m,
+                origin_z_m=self.grid.origin_z_m,
+                floor_y_m=self.grid.floor_y_m,
+                robot_height_m=self.robot_height_m,
+                height_bin_m=self.height_bin_m,
+                ray_step_m=self._ray_step_m,
+                workers=self.raycast_workers)
+            if (rolling_window is not None and self.local_retention_s is not None
+                    and self._raycast_collector is collect_ray_votes):
+                raycast_options['grid_bounds']=(rolling_window.min_row,rolling_window.min_col,
+                    rolling_window.end_row,rolling_window.end_col)
+            if trace_free is not None:raycast_options['trace_free']=trace_free
+            votes = self._raycast_collector(endpoints,camera_origin,**raycast_options)
+        finally:record_stage('navmap_raycast',raycast_started_ns)
 
-        changed_tiles, cells = self._integrate_votes(votes)
+        rolling_changed_tiles = ()
+        retention_started_ns = time.monotonic_ns()
+        try:
+            if self.local_retention_s is not None:
+                self._validate_vote_arrays(votes)
+                rolling_changed_tiles = self._prepare_rolling_update(
+                    rolling_window, now_ns=capture_monotonic_ns
+                )
+                votes = rolling_window.crop_votes(votes)
+        finally:
+            if self.local_retention_s is not None:
+                record_stage('navmap_retention', retention_started_ns)
 
+        integrate_votes_started_ns=time.monotonic_ns()
+        try:
+            changed_tiles, cells = self._integrate_votes(
+                votes, capture_monotonic_ns=capture_monotonic_ns
+            )
+            changed_tiles = tuple(sorted(set(changed_tiles) | set(rolling_changed_tiles)))
+        finally:record_stage('navmap_vote_integration',integrate_votes_started_ns)
+
+        snapshot_started_ns=time.monotonic_ns()
         if changed_tiles:
             self._version += 1
         integration_wall_ns = time.monotonic_ns()
@@ -388,11 +518,16 @@ class OccupancyMapper:
             source_z_m=float(camera_origin[2]),
             _cell_arrays=cells,
         )
-        self._seen_frames.add(key)
+        if self.local_retention_s is None:
+            self._seen_frames.add(key)
+        else:
+            self._rolling_frame_watermarks[(obs.episode_id, obs.frame_id[0])] = obs.frame_id[1]
         for tile_key in changed_tiles:
-            self._tiles.move_to_end(tile_key)
+            if tile_key in self._tiles:
+                self._tiles.move_to_end(tile_key)
         if self._episode_id is None:
             self._episode_id = obs.episode_id
+        record_stage('navmap_core_snapshot_publish',snapshot_started_ns)
         return MapDelta(self._version, changed_tiles, votes)
 
     def _clip_no_return_rays(
@@ -400,14 +535,21 @@ class OccupancyMapper:
         origin: np.ndarray,
         endpoints: np.ndarray,
         measured_endpoints: np.ndarray,
+        *,
+        capture_monotonic_ns: int | None = None,
+        rolling_window: RollingWindow | None = None,
     ) -> np.ndarray:
         """Stop certified clear rays before observed walls in this or prior frames."""
+        if self.local_retention_s is not None and (
+                not isinstance(rolling_window, RollingWindow) or capture_monotonic_ns is None):
+            raise ValueError('rolling no-return clipping needs current time and spatial window')
         same_frame_hits: set[tuple[int, int]] = set()
         for point in measured_endpoints:
             height = float(point[1] - self.grid.floor_y_m)
             if self.height_bin_m <= height <= self.robot_height_m:
                 same_frame_hits.add(self.grid.world_to_grid(float(point[0]), float(point[2])))
-        archived = set(self._tile_archive.tile_keys) - set(self._tiles)
+        archived = (set() if self.local_retention_s is not None
+                    else set(self._tile_archive.tile_keys) - set(self._tiles))
         safe_endpoints = []
         for endpoint in endpoints:
             delta = endpoint - origin
@@ -427,12 +569,31 @@ class OccupancyMapper:
                 key = (tile_row, tile_col)
                 tile = self._tiles.get(key)
                 blocked = (row, col) in same_frame_hits or key in archived
+                if self.local_retention_s is not None and not rolling_window.contains(row, col):
+                    tile = None
                 if tile is not None:
                     planar = tile.planar_log_odds[local_row, local_col]
-                    blocked |= bool(np.isfinite(planar) and planar >= self.occupied_threshold)
+                    if self.local_retention_s is None:
+                        blocked |= bool(np.isfinite(planar) and planar >= self.occupied_threshold)
+                        height_occupied = np.any(
+                            tile.height_log_odds[local_row, local_col, 1:] >= self.occupied_threshold
+                        )
+                    else:
+                        planar_stamp = tile.planar_last_ns[local_row, local_col]
+                        planar_fresh = (planar_stamp >= 0
+                            and capture_monotonic_ns - int(planar_stamp) < self._retention_ns)
+                        blocked |= bool(planar_fresh and np.isfinite(planar)
+                                        and planar >= self.occupied_threshold)
+                        height_stamps = tile.height_last_ns[local_row, local_col, 1:]
+                        height_fresh = ((height_stamps >= 0)
+                            & ((capture_monotonic_ns - height_stamps) < self._retention_ns))
+                        height_occupied = np.any(
+                            height_fresh
+                            & (tile.height_log_odds[local_row, local_col, 1:] >= self.occupied_threshold)
+                        )
                     # A height-specific wall can remain occupied after planar
                     # evidence has become ambiguous, so honor either record.
-                    blocked |= bool(np.any(tile.height_log_odds[local_row, local_col, 1:] >= self.occupied_threshold))
+                    blocked |= bool(height_occupied)
                 if blocked:
                     clipped = previous
                     break
@@ -443,16 +604,69 @@ class OccupancyMapper:
             return np.empty((0, 3), dtype=np.float64)
         return np.asarray(safe_endpoints, dtype=np.float64)
 
-    def _integrate_votes(
-        self,
-        votes: RaycastVotes,
-    ) -> tuple[tuple[tuple[int, int], ...], _SnapshotCellArrays]:
+    def _validate_vote_arrays(self, votes: RaycastVotes) -> None:
+        if not isinstance(votes, RaycastVotes):
+            raise ValueError("raycast collector must return RaycastVotes")
         shape = votes.planar_free.shape
         planar = (votes.planar_free, votes.planar_hit, votes.floor_hit)
         height = (votes.height_free, votes.height_hit)
-        if (len(shape) != 2 or any(a.shape != shape or a.dtype != np.bool_ for a in planar)
+        if (len(shape) != 2 or votes.height_free.ndim != 3
+                or any(a.shape != shape or a.dtype != np.bool_ for a in planar)
                 or any(a.shape != (*shape, self.height_bin_count) or a.dtype != np.bool_ for a in height)):
             raise ValueError("vote array shape/dtype does not match mapper height-bin profile")
+
+    @staticmethod
+    def _tile_planar_bytes(tile: _Tile) -> int:
+        return (tile.planar_log_odds.nbytes + tile.floor_support.nbytes
+                + sum(array.nbytes for array in (tile.planar_last_ns, tile.floor_last_ns)
+                      if array is not None))
+
+    @staticmethod
+    def _tile_height_bytes(tile: _Tile) -> int:
+        return tile.height_log_odds.nbytes + (0 if tile.height_last_ns is None else tile.height_last_ns.nbytes)
+
+    def _prepare_rolling_update(self, window: RollingWindow, *, now_ns: int) -> tuple[tuple[int, int], ...]:
+        """Expire each component and discard evidence that left the local window."""
+        changed: set[tuple[int, int]] = set()
+        for key in tuple(self._tiles):
+            tile = self._tiles[key]
+            planar_count, height_count, floor_count, spatial_p, spatial_h, spatial_f = maintain_tile(
+                tile,key,self.grid.tile_size_cells,window,now_ns=now_ns,retention_ns=self._retention_ns
+            )
+            self._expired_planar_components += planar_count
+            self._expired_height_components += height_count
+            self._expired_floor_components += floor_count
+            if planar_count or height_count or floor_count:
+                changed.add(key)
+
+            spatial_counts = (spatial_p,spatial_h,spatial_f)
+            spatial_total = sum(spatial_counts)
+            self._spatially_evicted_components += spatial_total
+            tile_size = self.grid.tile_size_cells
+            row_start, col_start = key[0] * tile_size, key[1] * tile_size
+            fully_outside = (row_start >= window.end_row or row_start + tile_size <= window.min_row
+                             or col_start >= window.end_col or col_start + tile_size <= window.min_col)
+            empty = (np.isnan(tile.planar_log_odds).all() and np.isnan(tile.height_log_odds).all()
+                     and not tile.floor_support.any())
+            if fully_outside or empty:
+                self._tiles.pop(key)
+                self._planar_memory_bytes -= self._tile_planar_bytes(tile)
+                self._height_memory_bytes -= self._tile_height_bytes(tile)
+                if fully_outside or spatial_total:
+                    self._spatially_evicted_tiles += 1
+                elif planar_count or height_count or floor_count:
+                    self._expired_empty_tiles += 1
+                changed.add(key)
+            elif spatial_total:
+                changed.add(key)
+        return tuple(sorted(changed))
+
+    def _integrate_votes(self, votes: RaycastVotes, *, capture_monotonic_ns: int | None = None
+    ) -> tuple[tuple[tuple[int, int], ...], _SnapshotCellArrays]:
+        self._validate_vote_arrays(votes)
+        if self.local_retention_s is not None and capture_monotonic_ns is None:
+            raise ValueError('rolling vote integration needs a timestamp')
+        shape = votes.planar_free.shape
         rows, cols = votes.planar_free.shape
         if rows == 0 or cols == 0:
             return (), self._empty_snapshot_cell_arrays()
@@ -485,6 +699,9 @@ class OccupancyMapper:
         cell_count = tile_size * tile_size
         planar_tile_bytes = cell_count * (np.dtype(np.float32).itemsize + np.dtype(np.bool_).itemsize)
         height_tile_bytes = cell_count * self.height_bin_count * np.dtype(np.float32).itemsize
+        if self.local_retention_s is not None:
+            planar_tile_bytes += cell_count * 2 * np.dtype(np.int64).itemsize
+            height_tile_bytes += cell_count * self.height_bin_count * np.dtype(np.int64).itemsize
         required_keys = tuple(item.key for item in tile_slices)
         self._admit_tiles(
             required_keys,
@@ -508,6 +725,13 @@ class OccupancyMapper:
             self._apply_log_odds(tile.planar_log_odds[tile_slice], planar_hit, planar_free)
             self._apply_log_odds(tile.height_log_odds[tile_slice], height_hit, height_free)
             tile.floor_support[tile_slice] |= floor_hit
+            if self.local_retention_s is not None:
+                stamp = int(capture_monotonic_ns)
+                planar_observed = planar_hit | planar_free
+                height_observed = height_hit | height_free
+                tile.planar_last_ns[tile_slice][planar_observed] = stamp
+                tile.height_last_ns[tile_slice][height_observed] = stamp
+                tile.floor_last_ns[tile_slice][floor_hit] = stamp
 
             dirty = planar_hit | planar_free | floor_hit
             np.logical_or(dirty, np.any(height_hit | height_free, axis=2), out=dirty)
@@ -541,6 +765,12 @@ class OccupancyMapper:
         height_tile_bytes: int,
     ) -> None:
         """Make all required tiles active, staging archive IO before map mutation."""
+        if self.local_retention_s is not None:
+            self._admit_rolling_tiles(
+                required_keys, tile_size=tile_size,
+                planar_tile_bytes=planar_tile_bytes, height_tile_bytes=height_tile_bytes,
+            )
+            return
         required = set(required_keys)
         max_active_tiles = min(
             self.MAX_PLANAR_MEMORY_BYTES // planar_tile_bytes,
@@ -600,6 +830,38 @@ class OccupancyMapper:
             self._planar_memory_bytes += tile.planar_log_odds.nbytes + tile.floor_support.nbytes
             self._height_memory_bytes += tile.height_log_odds.nbytes
 
+    def _admit_rolling_tiles(self, required_keys, *, tile_size: int,
+                             planar_tile_bytes: int, height_tile_bytes: int) -> None:
+        """Admit local tiles in memory without consulting or writing the archive."""
+        required = set(required_keys)
+        max_active_tiles = min(
+            self.MAX_PLANAR_MEMORY_BYTES // planar_tile_bytes,
+            self.MAX_HEIGHT_MEMORY_BYTES // height_tile_bytes,
+        )
+        if max_active_tiles < 1:
+            raise MemoryError("occupancy tile memory cap cannot admit one rolling tile")
+        if len(required) > max_active_tiles:
+            planar_fits = len(required) * planar_tile_bytes <= self.MAX_PLANAR_MEMORY_BYTES
+            if not planar_fits:
+                raise MemoryError("planar occupancy tile memory cap exceeded")
+            raise MemoryError("height occupancy tile memory cap exceeded")
+
+        missing = list(dict.fromkeys(key for key in required_keys if key not in self._tiles))
+        evict_count = max(0, len(self._tiles) + len(missing) - max_active_tiles)
+        eviction_keys = [key for key in self._tiles if key not in required][:evict_count]
+        if len(eviction_keys) != evict_count:
+            raise MemoryError("rolling occupancy tile memory cap exceeded")
+        for key in eviction_keys:
+            tile = self._tiles.pop(key)
+            self._planar_memory_bytes -= self._tile_planar_bytes(tile)
+            self._height_memory_bytes -= self._tile_height_bytes(tile)
+            self._capacity_evicted_tiles += 1
+        for key in missing:
+            tile = _Tile.empty(tile_size, self.height_bin_count, track_timestamps=True)
+            self._tiles[key] = tile
+            self._planar_memory_bytes += self._tile_planar_bytes(tile)
+            self._height_memory_bytes += self._tile_height_bytes(tile)
+
     def reload_tile(self, key: tuple[int, int]) -> bool:
         """Synchronously reload an archived tile into the bounded active set.
 
@@ -619,6 +881,8 @@ class OccupancyMapper:
         if current is not None:
             self._tiles.move_to_end(normalized_key)
             return True
+        if self.local_retention_s is not None:
+            return False
         if not self._tile_archive.contains(normalized_key):
             return False
 
@@ -681,6 +945,16 @@ class OccupancyMapper:
         )
 
     def _apply_log_odds(self, tile_values: np.ndarray, hit_votes: np.ndarray, free_votes: np.ndarray) -> None:
+        if apply_log_odds_kernel(
+            tile_values,
+            hit_votes,
+            free_votes,
+            self.hit_log_odds,
+            self.free_log_odds,
+            self.min_log_odds,
+            self.max_log_odds,
+        ):
+            return
         observed = hit_votes | free_votes
         if not np.any(observed):
             return

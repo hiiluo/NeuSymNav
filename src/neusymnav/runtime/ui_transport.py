@@ -31,6 +31,7 @@ from neusymnav.visualization import publisher as dto
 from neusymnav.visualization.robot_overlay import RobotSample, CameraCone, CameraProjection, RobotTrack, RobotTrailBuffer
 from neusymnav.visualization.navigation_overlay import NavigationOverlay
 from neusymnav.mapping.overview import MapOverview, build_overview
+from neusymnav.backends.hydra.graph_adapter import HydraDisplayNode,HydraDisplayEdge,HydraGraphProjection
 from neusymnav.recording.replay import _write_atomic
 
 MAX_PUBLICATION_BYTES=64*1024**2
@@ -41,6 +42,14 @@ _DTO={name:getattr(dto,name) for name in ('DisplayEnvelope','DisplayImage','Disp
     'DisplayVerificationEvidence','DisplayVerificationRecord','DisplayVerificationSnapshot','UiCommand','UiCommandAck')}
 _DTO.update({c.__name__:c for c in (RobotSample,CameraCone,CameraProjection,RobotTrack,NavigationOverlay)})
 _DTO['MapOverview']=MapOverview
+_DTO.update({c.__name__:c for c in (HydraDisplayNode,HydraDisplayEdge,HydraGraphProjection)})
+
+
+def _matches_graph_source(frame_key,source):
+    return (frame_key is not None and isinstance(source,dict)
+        and frame_key.episode_id==source.get('episode_id')
+        and frame_key.sensor_id==source.get('sensor_id')
+        and frame_key.frame_index==source.get('frame_index'))
 
 
 def _encode_value(value):
@@ -58,9 +67,9 @@ def _decode_value(value,depth=0):
     if set(value)=={'dto','fields'}:
         cls=_DTO.get(value['dto'])
         if cls is dto.DisplaySources and isinstance(value['fields'],dict):
-            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview'}
+            incoming=set(value['fields']); required={f.name for f in fields(cls)}-{'robot','observation','navigation','live_nav','overview','hydra_graph'}
             if required <= incoming <= {f.name for f in fields(cls)}:
-                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,**value['fields']})
+                value = dict(value,fields={'robot':None,'observation':None,'navigation':None,'live_nav':None,'overview':None,'hydra_graph':None,**value['fields']})
         if cls is None or not isinstance(value['fields'],dict) or set(value['fields'])!={f.name for f in fields(cls)}:
             raise ValueError('unknown UI DTO/schema fields')
         return cls(**{k:_decode_value(v,depth+1) for k,v in value['fields'].items()})
@@ -98,11 +107,93 @@ def _compact(envelope):
     return replace(envelope,hierarchy=replace(envelope.hierarchy,nodes=nodes),sources=replace(sources,objects=objects))
 
 
+def _json_ascii_upper_bound(value, max_bytes, *, _seen=None, _depth=0):
+    """Return a conservative ASCII JSON size, or None for unknown values.
+
+    String bounds require no escaped copy; the encoder handles escaping once.
+    Unknown, cyclic, and
+    unusually deep values use the original streaming encoder.
+    """
+    if _depth > 100:
+        return None
+    if value is None:
+        return 4
+    if type(value) is bool:
+        return 4 if value else 5
+    if type(value) is int:
+        bits = value.bit_length()
+        digits = 1 if bits == 0 else (bits * 30103 + 99999) // 100000
+        return digits + (1 if value < 0 else 0)
+    if type(value) is float:
+        # JSONEncoder's finite float representation is repr(value). Non-finite
+        # values still reach the serializer and are rejected by allow_nan=False.
+        return len(repr(value))
+    if type(value) is str:
+        factor = 6 if value.isascii() else 12
+        return min(len(value) * factor + 2, max_bytes + 1)
+    if type(value) not in (list, tuple, dict):
+        return None
+
+    if _seen is None:
+        _seen = set()
+    identity = id(value)
+    if identity in _seen:
+        return None
+    _seen.add(identity)
+    try:
+        if type(value) is dict:
+            count = len(value)
+            used = 2 + max(0, count - 1)
+            if used > max_bytes:
+                return max_bytes + 1
+            for key, item in value.items():
+                if type(key) is not str:
+                    return None
+                remaining = max_bytes - used
+                key_size = _json_ascii_upper_bound(
+                    key, remaining, _seen=_seen, _depth=_depth + 1)
+                if key_size is None:
+                    return None
+                used += key_size + 1  # quoted key and colon
+                if used > max_bytes:
+                    return max_bytes + 1
+                item_size = _json_ascii_upper_bound(
+                    item, max_bytes - used, _seen=_seen, _depth=_depth + 1)
+                if item_size is None:
+                    return None
+                used += item_size
+                if used > max_bytes:
+                    return max_bytes + 1
+            return used
+
+        count = len(value)
+        used = 2 + max(0, count - 1)
+        if used > max_bytes:
+            return max_bytes + 1
+        for item in value:
+            item_size = _json_ascii_upper_bound(
+                item, max_bytes - used, _seen=_seen, _depth=_depth + 1)
+            if item_size is None:
+                return None
+            used += item_size
+            if used > max_bytes:
+                return max_bytes + 1
+        return used
+    finally:
+        _seen.remove(identity)
+
+
 def encode_publication(envelope,*,max_bytes=MAX_PUBLICATION_BYTES):
     if not isinstance(envelope,dto.DisplayEnvelope):raise ValueError('typed DisplayEnvelope required')
     if type(max_bytes) is not int or not 0<max_bytes<=MAX_PUBLICATION_BYTES:raise ValueError('UI wire cap must be <=64 MiB')
     packet=dict(wire_version=1,projection=dict(object_history='last32_plus_displayed_evidence',
         object_geometry='centroid_bounds_only',complete_object_history=False),payload=_encode_value(_compact(envelope)))
+    upper_bound = _json_ascii_upper_bound(packet, max_bytes)
+    if upper_bound is not None and upper_bound <= max_bytes:
+        payload = json.dumps(packet, separators=(',', ':'), allow_nan=False).encode()
+        if len(payload) > max_bytes:
+            raise ValueError('UI publication byte cap exceeded; publication dropped')
+        return payload
     # iterencode stops at the byte cap, without constructing an unbounded JSON string.
     encoded=bytearray()
     for chunk in json.JSONEncoder(separators=(',',':'),allow_nan=False).iterencode(packet):
@@ -221,7 +312,7 @@ class UiEndpoint:
 
 class UiProcess:
     """Optional process. Failure is reported locally and never raises into control."""
-    def __init__(self,root,*,python,script,clock_domain,command_handler,assets_root=None,smoke_exit_ms=None,quota=None,publish_hz=None,navigation_provider=None,live_nav_provider=None,overview_provider=None):
+    def __init__(self,root,*,python,script,clock_domain,command_handler,assets_root=None,recording_root=None,smoke_exit_ms=None,quota=None,publish_hz=None,navigation_provider=None,live_nav_provider=None,overview_provider=None):
         if navigation_provider is not None and not callable(navigation_provider):raise ValueError('navigation provider must be callable')
         if live_nav_provider is not None and not callable(live_nav_provider):raise ValueError('live navigation provider must be callable')
         self._navigation_provider=navigation_provider
@@ -236,13 +327,16 @@ class UiProcess:
         self.endpoint=UiEndpoint(self.root,clock_domain=clock_domain)
         self.publisher=dto.DisplayPublisher(clock_domain=clock_domain)
         self.command_handler=command_handler;self.domain=clock_domain;self.assets_root=None if assets_root is None else Path(assets_root)
+        self.recording_root=None if recording_root is None else Path(recording_root)
         self._robot_trail=RobotTrailBuffer()
         from neusymnav.visualization.detector_observation import CommittedObservationReader
         self._observation_reader=None if self.assets_root is None else CommittedObservationReader(self.assets_root,clock_domain=clock_domain)
         self._rgb=None;self._stop=threading.Event();self._lock=threading.Lock();self.status=dict(failed=None,dropped_publications=0,coalesced_publications=0)
         self._publication_wake=threading.Event();self._pending_bundle=None;self._display_bundle=None;self._display_live_nav=None
+        self._closing=False
         command=[str(python),str(script),'--root',str(self.root),'--clock-domain',clock_domain]
         if self.assets_root is not None:command+=['--assets-root',str(self.assets_root)]
+        if self.recording_root is not None:command+=['--recording-root',str(self.recording_root)]
         if smoke_exit_ms is not None:command+=['--smoke-exit-ms',str(smoke_exit_ms)]
         self._diagnostics=bytearray();self._reader=None;self._quota=quota
         self._command_history=deque(maxlen=MAX_COMMAND_HISTORY);self._commands_seen=0
@@ -314,6 +408,8 @@ class UiProcess:
         while not self._stop.is_set():
             self._publication_wake.wait(.02);self._publication_wake.clear()
             if self._stop.is_set():break
+            with self._lock:
+                if self._closing and self._pending_bundle is None:break
             now=time.monotonic_ns()
             if self._last_publication_ns is not None and (now-self._last_publication_ns)*self._publish_hz<1_000_000_000:
                 continue
@@ -468,47 +564,147 @@ class UiProcess:
     def close(self,timeout_s=1.):
         if type(timeout_s) not in (int,float) or not np.isfinite(timeout_s) or timeout_s<0:
             raise ValueError('UI shutdown timeout must be finite and nonnegative')
-        deadline=time.monotonic()+timeout_s;self._stop.set();self._publication_wake.set()
-        from neusymnav.perception.appearance_client import _terminate_process_group
+        deadline=time.monotonic()+timeout_s
+        with self._lock:self._closing=True
+        self._publication_wake.set()
+        self.publication_thread.join(max(0.,deadline-time.monotonic()))
+        target_sequence=None;rendered=False
+        publication_path=self.root/'publication.json'
+        try:
+            latest=self.publisher.read_latest()
+            target_sequence=None if latest is None else latest.publication_sequence
+            if publication_path.exists():
+                envelope=decode_publication(_read(publication_path,MAX_PUBLICATION_BYTES))
+                if target_sequence is not None and envelope.publication_sequence<target_sequence:
+                    self.status['failed']='final UI publication was not written'
+                elif target_sequence is None:
+                    target_sequence=envelope.publication_sequence
+        except (OSError,ValueError,TypeError):
+            self.status['failed']='final UI publication could not be read'
+        rendered_path=self.root/'rendered.json'
+        while target_sequence is not None and time.monotonic()<deadline:
+            if self.process is not None and self.process.poll() is not None:
+                break
+            try:
+                record=_read_json_bytes(_read(rendered_path,4096),4096)
+                rendered=(type(record.get('publication_sequence')) is int and
+                    record['publication_sequence']>=target_sequence)
+            except (OSError,ValueError,TypeError):pass
+            if rendered:break
+            time.sleep(min(.01,max(0.,deadline-time.monotonic())))
+        self._stop.set();self._publication_wake.set()
         if self.process is not None:
-            # Existing bounded group cleanup handles descendants after leader exit.
-            _terminate_process_group(self.process,grace_s=max(0.,deadline-time.monotonic())/2)
+            ready=False
+            try:
+                ready_record=_read_json_bytes(_read(self.root/'ready.json',4096),4096)
+                ready=ready_record.get('desktop')=='run_desktop'
+            except (OSError,ValueError,TypeError):pass
+            if ready:
+                # Ask the Qt child to exit through its event loop so display
+                # readers flush final source/age telemetry before escalation.
+                try:_write_atomic(self.root/'shutdown.json',b'{"schema_version":1,"action":"quit"}')
+                except OSError as exc:self.status['shutdown_request_error']=str(exc)[:160]
+                try:self.process.wait(timeout=max(0.,deadline-time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    from neusymnav.perception.appearance_client import _terminate_process_group
+                    _terminate_process_group(self.process,grace_s=max(0.,deadline-time.monotonic())/2)
+            else:
+                from neusymnav.perception.appearance_client import _terminate_process_group
+                _terminate_process_group(self.process,grace_s=max(0.,deadline-time.monotonic())/2)
         self.thread.join(max(0.,deadline-time.monotonic()))
         self.publication_thread.join(max(0.,deadline-time.monotonic()))
         if self._reader is not None:self._reader.join(max(0.,deadline-time.monotonic()))
         reader_pending=self._reader is not None and self._reader.is_alive()
-        clean=not self.thread.is_alive() and not self.publication_thread.is_alive() and not reader_pending and (self.process is None or self.process.poll() is not None)
-        if clean:
-            if self.process is not None:self.process.stdout.close()
+        process_reaped=self.process is None or self.process.poll() is not None
+        threads_stopped=not self.thread.is_alive() and not self.publication_thread.is_alive() and not reader_pending
+        if process_reaped and self.process is not None:self.process.stdout.close()
+        if process_reaped and threads_stopped:
             with self._finalize_lock:
                 if self._finalizer is None:
                     self._finalizer=threading.Thread(target=self._persist_diagnostics,
                         name='neusymnav-ui-finalize',daemon=True)
                     self._finalizer.start()
             self._finalizer.join(max(0.,deadline-time.monotonic()))
-            clean=not self._finalizer.is_alive() and self._finalizer_error is None
+        clean=(threads_stopped and process_reaped and (target_sequence is None or rendered)
+            and self._finalizer is not None and not self._finalizer.is_alive()
+            and self._finalizer_error is None)
         return dict(clean_shutdown=clean,process_reaped=self.process is None or self.process.poll() is not None,
             command_thread_pending=self.thread.is_alive(),reader_pending=reader_pending,
             publication_thread_pending=self.publication_thread.is_alive(),
             diagnostics_pending=self._finalizer is not None and self._finalizer.is_alive(),
-            diagnostics_error=self._finalizer_error,status=dict(self.status))
+            diagnostics_error=self._finalizer_error,final_publication_sequence=target_sequence,
+            final_publication_rendered=rendered,status=dict(self.status))
 
 
 def main():
     import argparse
+    import signal
     parser=argparse.ArgumentParser();parser.add_argument('--root',required=True);parser.add_argument('--clock-domain',required=True)
-    parser.add_argument('--assets-root');parser.add_argument('--smoke-exit-ms',type=int);args=parser.parse_args()
+    parser.add_argument('--assets-root');parser.add_argument('--recording-root');parser.add_argument('--smoke-exit-ms',type=int);args=parser.parse_args()
     endpoint=UiEndpoint(args.root,clock_domain=args.clock_domain)
     from PyQt5 import QtCore,QtWidgets
     from neusymnav.visualization.desktop import run_desktop
     app=QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    def request_shutdown(_signum,_frame):
+        # Parent cleanup uses SIGTERM after the final publication is acknowledged.
+        # Let Qt close the window and flush async display telemetry before exit.
+        app.quit()
+    signal.signal(signal.SIGTERM,request_shutdown)
+    shutdown_timer=QtCore.QTimer(app)
+    shutdown_timer.setInterval(50)
+    shutdown_timer.timeout.connect(lambda:app.quit() if (Path(args.root)/'shutdown.json').is_file() else None)
+    shutdown_timer.start()
     QtCore.QTimer.singleShot(0,lambda:_write_atomic(Path(args.root)/'ready.json',json.dumps(dict(pid=os.getpid(),desktop='run_desktop',device_pixel_ratio=app.devicePixelRatio())).encode()))
     from neusymnav.visualization.best_view_reader import SelectedBestViewReader
     reader=None if args.assets_root is None else SelectedBestViewReader(args.assets_root,clock_domain=args.clock_domain)
-    from neusymnav.visualization.point_cloud import AsyncCloudReader
-    cloud=None if args.assets_root is None else AsyncCloudReader(args.assets_root)
-    return run_desktop(endpoint.read_latest,endpoint.client,clock_domain=args.clock_domain,
-        smoke_exit_ms=args.smoke_exit_ms,best_view_provider=None if reader is None else reader.read,cloud_reader=cloud)
+    if args.recording_root:
+        from neusymnav.visualization.hydra_assets import AsyncHydraAssetReader
+        cloud=AsyncHydraAssetReader(args.recording_root)
+    else:
+        from neusymnav.visualization.point_cloud import AsyncCloudReader
+        cloud=None if args.assets_root is None else AsyncCloudReader(args.assets_root)
+    def rendered(sequence):
+        record=dict(publication_sequence=sequence, display_cloud_revision=None,
+                    display_cloud_source=None, display_cloud_capture_monotonic_ns=None,
+                    display_cloud_clock_domain=None, display_cloud_points=0,
+                    display_cloud_sources=0, display_cloud_graph_lag_ns=None)
+        latest=None if cloud is None else cloud.latest
+        if latest is not None:
+            record.update(display_cloud_revision=latest.revision,
+                display_cloud_source=latest.last_source.to_dict(),
+                display_cloud_capture_monotonic_ns=latest.last_capture_ns,
+                display_cloud_clock_domain=latest.clock_domain,
+                display_cloud_points=len(latest.points),
+                display_cloud_sources=len(latest.sources))
+        if cloud is not None and cloud.error:
+            record['display_cloud_error']=cloud.error
+        if cloud is not None and hasattr(cloud,'report'):
+            record['hydra_cloud_reader']=cloud.report()
+        envelope=endpoint.read_latest()
+        graph=None if envelope is None else envelope.sources.hydra_graph
+        record['hydra_graph_revision']=None if graph is None else graph.graph_revision
+        record['hydra_graph_source']=None if graph is None else graph.last_source
+        if latest is not None and graph is not None and graph.last_source is not None:
+            record['display_cloud_matches_graph_source']=_matches_graph_source(
+                latest.last_source,graph.last_source)
+            if (latest.clock_domain==graph.last_source.get('clock_domain')
+                    and type(graph.last_source.get('capture_monotonic_ns')) is int):
+                lag_ns=graph.last_source['capture_monotonic_ns']-latest.last_capture_ns
+                if lag_ns>=0:record['display_cloud_graph_lag_ns']=lag_ns
+        _write_atomic(Path(args.root)/'rendered.json',json.dumps(
+            record,separators=(',',':')).encode())
+    exit_code=run_desktop(endpoint.read_latest,endpoint.client,clock_domain=args.clock_domain,
+        smoke_exit_ms=args.smoke_exit_ms,best_view_provider=None if reader is None else reader.read,
+        cloud_reader=cloud,rendered_callback=rendered)
+    final=endpoint.read_latest()
+    if cloud is not None:
+        if final is not None and hasattr(cloud,'flush'):cloud.flush(final,1.0)
+        cloud.close(1.0)
+    # The final publication callback runs before its async display-asset offer.
+    # Rewrite the audit after the reader has shut down so the artifact captures
+    # the actual last completed cloud source and any pending/error state.
+    if final is not None:rendered(final.publication_sequence)
+    return exit_code
 
 
 if __name__=='__main__':raise SystemExit(main())

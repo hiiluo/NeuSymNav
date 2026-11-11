@@ -54,6 +54,18 @@ def test_real_external_process_original_source_empty_complete_batch_and_bounded_
     with pytest.raises(RuntimeError,match='closed'):c.infer(replace(obs,key=FrameKey('episode','primary',1)))
 
 
+def test_explicit_start_preloads_worker_before_first_inference(tmp_path,monkeypatch):
+    c=client(tmp_path,monkeypatch)
+    metadata=c.start()
+    pid=c._wire.process.pid
+    assert metadata['python']=='3.12.test'
+    assert c.is_alive
+    result=c.infer(observation())
+    assert result.source==FrameKey('episode','primary',0)
+    assert c._wire.process.pid==pid
+    assert c.close()['clean_shutdown']
+
+
 @pytest.mark.parametrize('mode',['wrong_source','wrong_geometry','wrong_vocab','bool_version','gt_field','huge_header','truncated'])
 def test_malformed_source_geometry_envelope_and_headers_are_terminal(tmp_path,monkeypatch,mode):
     c=client(tmp_path,monkeypatch,mode)

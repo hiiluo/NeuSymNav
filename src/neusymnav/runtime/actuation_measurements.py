@@ -89,11 +89,15 @@ def validate_actuation_source_proof(proof,command,source,*,modality):
     _text(proof['reason'])
     actions=proof['actions']
     if type(actions) is not list or len(actions)>2:raise ValueError('bounded action list required')
-    deadline=min(command.deadline_monotonic_ns,s['capture_monotonic_ns']+300_000_000)
+    # Mirrors the worker: translation pulses end by source capture + 300 ms
+    # (<= 300 ms long); a pure in-place yaw pulse is bounded to 500 ms.
+    rotation_only=command.linear_mps==0
+    deadline=(min(command.deadline_monotonic_ns,command.issued_monotonic_ns+500_000_000) if rotation_only
+              else min(command.deadline_monotonic_ns,s['capture_monotonic_ns']+300_000_000))
     previous_time=command.issued_monotonic_ns;previous_pose=s['pose_version'];previous_xy=None;previous_yaw=None;distance=0.
     names={'index','action','amount','pre_step_monotonic_ns','post_step_monotonic_ns','pose_version_before','pose_version_after','body_before_xy','body_after_xy','yaw_before_rad','yaw_after_rad'}
     seen=[];nominal_duration=0.
-    pulse_budget=min(.1,max(0.,(deadline-command.issued_monotonic_ns)/1e9))
+    pulse_budget=min(.5 if rotation_only else .3,max(0.,(deadline-command.issued_monotonic_ns)/1e9))
     for i,a in enumerate(actions):
         _closed(a,names)
         if _int(a['index'])!=i:raise ValueError('action index mismatch')
@@ -108,14 +112,14 @@ def validate_actuation_source_proof(proof,command,source,*,modality):
         # timestamp certifies step admission, not real-time simulation duration.
         remaining=max(0.,(deadline-command.issued_monotonic_ns)/1e9)
         if action=='move_forward':
-            if i!=0 or command.linear_mps<=0 or not 0<=amount<=min(.02,command.linear_mps*remaining)+1e-7 or displacement>amount+1e-7 or abs(dyaw)>1e-7:raise ValueError('translation bounds mismatch')
+            if i!=0 or command.linear_mps<=0 or not 0<=amount<=min(.06,command.linear_mps*remaining)+1e-7 or displacement>amount+1e-7 or abs(dyaw)>1e-7:raise ValueError('translation bounds mismatch')
             nominal_duration+=amount/command.linear_mps
             dx,dy=after[0]-before[0],after[1]-before[1]
             forward=dx*math.cos(yb)+dy*math.sin(yb)
             lateral=-dx*math.sin(yb)+dy*math.cos(yb)
             if forward< -1e-7 or abs(lateral)>1e-7:raise ValueError('body moved outside forward segment')
         elif action in ('turn_left','turn_right'):
-            if command.yaw_radps==0 or action!=('turn_left' if command.yaw_radps>0 else 'turn_right') or not 0<=amount<=min(3.,abs(math.degrees(command.yaw_radps))*remaining)+1e-7 or displacement>1e-7 or abs(dyaw)>math.radians(amount)+1e-7:raise ValueError('yaw bounds mismatch')
+            if command.yaw_radps==0 or action!=('turn_left' if command.yaw_radps>0 else 'turn_right') or not 0<=amount<=min(15.,abs(math.degrees(command.yaw_radps))*remaining)+1e-7 or displacement>1e-7 or abs(dyaw)>math.radians(amount)+1e-7:raise ValueError('yaw bounds mismatch')
             nominal_duration+=math.radians(amount)/abs(command.yaw_radps)
             if dyaw*command.yaw_radps < -1e-7:raise ValueError('body yaw sign mismatch')
         else:raise ValueError('unrecognized native action')

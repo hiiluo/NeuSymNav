@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "room_polygon_gt",
+  "scene": "00806",
+  "frame": "canonical_xy_m (x, y); same frame as robot pose / Hydra place positions",
+  "source": "Hand-drawn by the user on docs/results/figures/00806-v8-rooms-vs-gt.png (2026-11-09), digitised by Claude (approx. +/-0.15 m). Areas outside every polygon are unlabeled, not negatives.",
+  "rooms": [
+    {"id": "west_room", "label": "unknown", "color": "cyan",
+     "polygon": [[-14.86, 2.11], [-12.26, 1.90], [-12.14, -2.79], [-14.04, -2.47], [-15.43, -2.34], [-15.50, -1.13], [-15.05, 1.80]]},
+    {"id": "bedroom_1", "label": "bedroom", "color": "purple",
+     "polygon": [[-11.88, 0.52], [-11.00, 1.18], [-8.71, 1.16], [-8.14, 0.39], [-8.08, -4.45], [-9.22, -4.96], [-11.50, -4.89], [-12.01, -3.68], [-12.04, -0.50]]},
+    {"id": "hallway", "label": "hallway", "color": "red",
+     "polygon": [[-7.85, 0.97], [-5.42, 0.97], [-5.42, -0.50], [-7.85, -0.50]]},
+    {"id": "bedroom_2", "label": "bedroom", "color": "green",
+     "polygon": [[-5.55, 0.14], [-3.65, 0.71], [-1.36, 0.65], [-0.92, -0.62], [-0.98, -2.92], [-1.87, -3.43], [-4.91, -3.30], [-5.67, -2.15], [-5.61, -0.50]]},
+    {"id": "bathroom", "label": "bathroom", "color": "yellow",
+     "polygon": [[-6.50, -3.24], [-7.45, -3.68], [-7.70, -4.96], [-6.69, -5.72], [-4.28, -5.78], [-3.65, -5.08], [-3.65, -4.19], [-4.53, -3.55], [-6.31, -3.43]]}
+  ]
+}

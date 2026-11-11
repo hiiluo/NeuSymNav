@@ -1,0 +1,46 @@
+{
+  "name": "baseline-3dsg-v11",
+  "description": "3DSG stack used by live run tour-00806-600s-v11 (09/11/2026): Hydra core and room finder, SLM room labels, detector, sensor worker and the 00806 profile. Frozen on 11/11/2026 as the reference for ObjectNav A/B comparisons. Room segmentation is auxiliary; change these files only with a new lock name.",
+  "not_locked": [
+    "src/neusymnav/navigation/** (B0 and later phases change exploration, approach and STOP)",
+    "src/neusymnav/mapping/**",
+    "src/neusymnav/runtime/** except room_label_ui_entry.py",
+    "src/neusymnav/evaluation/** and tools/** (offline scoring)",
+    "configs other than the ones listed in the groups"
+  ],
+  "groups": {
+    "hydra": [
+      "src/neusymnav/backends/hydra/*.py",
+      "src/neusymnav/backends/hydra/child.sh",
+      "src/neusymnav/contracts/hydra_graph.py",
+      "src/neusymnav/contracts/hydra_evidence.py",
+      "tools/native/hydra_room_stability/room_finder.cpp",
+      "runs/hydra-objectnav/B1-stability-20261107/native/libhydra.so",
+      "runs/hydra-objectnav/B1-stability-20261107/config-root/stable/**/*.yaml",
+      ".runtime/hydra_ws/env.sh"
+    ],
+    "slm_room_labels": [
+      "src/neusymnav/rooms/*.py",
+      "src/neusymnav/contracts/room_semantics.py",
+      "src/neusymnav/contracts/room_label_publication.py",
+      "src/neusymnav/runtime/room_label_ui_entry.py",
+      "configs/room-label-slm.async-debug.local.json",
+      "configs/room-label-slm.experimental.json"
+    ],
+    "perception": [
+      "src/neusymnav/perception/detector.py",
+      "src/neusymnav/perception/detector_client.py",
+      "src/neusymnav/perception/detector_worker.py",
+      "src/neusymnav/perception/yoloe.py",
+      "src/neusymnav/perception/projector.py",
+      "configs/taxonomy-v1.json"
+    ],
+    "sensor": [
+      "src/neusymnav/sensors/habitat_worker.py"
+    ],
+    "profile": [
+      "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+      "runs/tours/00806-tour-r30.json"
+    ]
+  }
+}

@@ -72,7 +72,9 @@ def to_dict(value: Contract) -> dict:
 
 def from_dict(value: dict) -> Contract:
     # Load the fixed registry independent of import order.
-    from . import observations, graphs, navigation, room_pipeline  # noqa: F401
+    from . import (observations, graphs, navigation, room_pipeline, hydra_graph,
+                   hydra_evidence, room_semantics, room_label_publication)  # noqa: F401
+    from ..rooms import context, requests  # noqa: F401
     if not isinstance(value, dict) or set(value) != {'schema_version', 'payload'} or type(value['schema_version']) is not int or value['schema_version'] != SCHEMA_VERSION:
         raise ValueError('unsupported schema_version or envelope')
     try:
