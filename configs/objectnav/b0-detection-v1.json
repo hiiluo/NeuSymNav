@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "b0-detection-v1",
+  "description": "B0 goal confirmation rule per ObjectNav category, chosen on the 6 DEV scenes from the phase-2 detector measurement (YOLOE-26m, OpenVINO GPU, taxonomy-v1, mapping goal-categories-v1). A candidate object is confirmed when >= min_views distinct frames detect the category on it at >= threshold; with vote the category must also be the most frequent goal category detected on that object. Target: <= ~1 wrongly confirmed object per scene. See docs/objectnav/phase2-detector-results.md.",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "categories": {
+    "bed":        {"threshold": 0.50, "min_views": 3, "vote": true,  "dev_instance_recall": 0.94, "dev_wrong_per_scene": 1.33},
+    "chair":      {"threshold": 0.50, "min_views": 2, "vote": false, "dev_instance_recall": 0.68, "dev_wrong_per_scene": 1.00},
+    "plant":      {"threshold": 0.25, "min_views": 1, "vote": false, "dev_instance_recall": 0.16, "dev_wrong_per_scene": 0.17},
+    "sofa":       {"threshold": 0.50, "min_views": 3, "vote": true,  "dev_instance_recall": 0.76, "dev_wrong_per_scene": 2.83},
+    "toilet":     {"threshold": 0.35, "min_views": 2, "vote": false, "dev_instance_recall": 0.69, "dev_wrong_per_scene": 0.00},
+    "tv_monitor": {"threshold": 0.50, "min_views": 2, "vote": false, "dev_instance_recall": 0.62, "dev_wrong_per_scene": 1.00}
+  }
+}
