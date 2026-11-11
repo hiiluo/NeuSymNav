@@ -1,0 +1,248 @@
+{
+  "packages": [
+    {
+      "file": "nlohmann-json3-dev_3.11.3-1_all.deb",
+      "package": "Package: nlohmann-json3-dev",
+      "version": "Version: 3.11.3-1",
+      "architecture": "Architecture: all",
+      "size_bytes": 189676,
+      "sha256": "85e4e95dc4bdc6034d593e1933ee88e085319fee36cae83c178e8ddc1a66e8fd",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "ros-jazzy-gtsam_4.2.0-4noble.20260225.055319_amd64.deb",
+      "package": "Package: ros-jazzy-gtsam",
+      "version": "Version: 4.2.0-4noble.20260225.055319",
+      "architecture": "Architecture: amd64",
+      "size_bytes": 2166244,
+      "sha256": "496ee294ab3d67405bf2786ec3d1cd535703ba7aed1e31a7534a5cf848478435",
+      "origin": "ROS 2 Jazzy packages.ros.org"
+    },
+    {
+      "file": "libamd3_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libamd3",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 27152,
+      "sha256": "557b88b1688b6ebfb058bd6c621daadb62bbb40059a1e33ed3fd3b7bef744f06",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libbtf2_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libbtf2",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 13594,
+      "sha256": "ce8d3be0501db2f6189b0a973d514e985146e1883f35e8c8e80d041ff6b0c950",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libcamd3_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libcamd3",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 23788,
+      "sha256": "40c209739ede6dde19f1d32428e0ff36f1d6ba9c142762946ac486c2b45e78a8",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libccolamd3_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libccolamd3",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 25900,
+      "sha256": "002dc5a486cc312aececd7a92c500941a550cae1c5901e15aae2b43504431c9c",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libceres-dev_2.2.0+dfsg-4.1ubuntu2_amd64.deb",
+      "package": "libceres-dev",
+      "version": "2.2.0+dfsg-4.1ubuntu2",
+      "architecture": "amd64",
+      "size_bytes": 1703022,
+      "sha256": "65b30bc5fdbf5d68923196c1d63aed539067ad1a89d5bf0190eb6c07dc1b819f",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libceres4t64_2.2.0+dfsg-4.1ubuntu2_amd64.deb",
+      "package": "libceres4t64",
+      "version": "2.2.0+dfsg-4.1ubuntu2",
+      "architecture": "amd64",
+      "size_bytes": 1073962,
+      "sha256": "f8af81e60597645584b0f7935cee267751f4a76bb9c6bf229f995ec7404be5ff",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libcholmod5_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libcholmod5",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 666724,
+      "sha256": "5766e1c220c315850680c4f19c6bd12b953a20ef1b30754392ef956bd65df94e",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libcxsparse4_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libcxsparse4",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 75086,
+      "sha256": "1d8a3d16c38979c09d2a968459472073a40debab79695b8c2a17ab0fdde05a27",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libgflags-dev_2.2.2-2build1_amd64.deb",
+      "package": "libgflags-dev",
+      "version": "2.2.2-2build1",
+      "architecture": "amd64",
+      "size_bytes": 109176,
+      "sha256": "16ece17c341cd1558544e342e00ec868e98d9936c1f7280403d6ec784b4c5131",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libgflags2.2_2.2.2-2build1_amd64.deb",
+      "package": "libgflags2.2",
+      "version": "2.2.2-2build1",
+      "architecture": "amd64",
+      "size_bytes": 74528,
+      "sha256": "93acc6837f4759de9f93b20224f94c438f4f1fcd2b710312236378adb023634e",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libgoogle-glog-dev_0.6.0-2.1build1_amd64.deb",
+      "package": "libgoogle-glog-dev",
+      "version": "0.6.0-2.1build1",
+      "architecture": "amd64",
+      "size_bytes": 106692,
+      "sha256": "c9fde499e57ee17b04b552e398cc2acf581f2596486c4063757c4df514cb9274",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libgoogle-glog0v6t64_0.6.0-2.1build1_amd64.deb",
+      "package": "libgoogle-glog0v6t64",
+      "version": "0.6.0-2.1build1",
+      "architecture": "amd64",
+      "size_bytes": 62886,
+      "sha256": "956b26bd3d563e678562ef647d947d46a4029361ee07250188480318e7fb924b",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libgtsam-dev_4.2.0+dfsg-1build1_amd64.deb",
+      "package": "libgtsam-dev",
+      "version": "4.2.0+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 366680,
+      "sha256": "6b8c41b49f2b3dc24820988781af52037727833a650a0eaf4a8298eeb4006db4",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libgtsam4_4.2.0+dfsg-1build1_amd64.deb",
+      "package": "libgtsam4",
+      "version": "4.2.0+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 1318214,
+      "sha256": "5ba30c186c05e2d7ff39d4b2a2e90690ffdac014a1a4cb98d332a8ce38eff226",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libklu2_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libklu2",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 78974,
+      "sha256": "62b08bb498300c3b37ccd357de537539fd778d51879cfcacf4990cf41b079a7f",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libldl3_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libldl3",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 13326,
+      "sha256": "9e0d85b965884211fbff2b63dabb0df5e0de009cdae89ce58845b1c861371602",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libmetis5_5.1.0.dfsg-7build3_amd64.deb",
+      "package": "libmetis5",
+      "version": "5.1.0.dfsg-7build3",
+      "architecture": "amd64",
+      "size_bytes": 180548,
+      "sha256": "ab24cdd5afad4cd794a5b273032730b80685cac08dbcbc8cf07e46cac814ea49",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libparu0_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libparu0",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 50006,
+      "sha256": "d67a7a5c0ea2ec76c35696ca91853ee07537fbbef23465c65d52cc31cbfff1e8",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "librbio4_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "librbio4",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 26498,
+      "sha256": "38c192a7636d017591de0f538c464d2416a442b2c4cbf29accacd9ccfc3a5b96",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libspex2_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libspex2",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 34982,
+      "sha256": "7cad97a85baa942643ee949dac1ac1b7b21916206d8da69bb10f4e70f1fbc28c",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libspqr4_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libspqr4",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 134994,
+      "sha256": "d5192cfafcc9d9eca9162443985b9ed5f84cc6894bc0136e52060b8e556ccfbe",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libsuitesparse-dev_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libsuitesparse-dev",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 1535266,
+      "sha256": "9a4df16ca35d480fdc3935889cb026a27dae8279fcb39ed431c469511ad8f1f6",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libsuitesparse-mongoose3_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libsuitesparse-mongoose3",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 33510,
+      "sha256": "866e72f382795be600a30f13b87d5879938952b4b32f5a9301a21f3b1b89ba98",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libumfpack6_1%3a7.6.1+dfsg-1build1_amd64.deb",
+      "package": "libumfpack6",
+      "version": "1:7.6.1+dfsg-1build1",
+      "architecture": "amd64",
+      "size_bytes": 267576,
+      "sha256": "5f947859dd49e944c6e8ed3d627cfa99da29045ea301d696c88a4a8affbaf483",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    },
+    {
+      "file": "libunwind-dev_1.6.2-3build1.1_amd64.deb",
+      "package": "libunwind-dev",
+      "version": "1.6.2-3build1.1",
+      "architecture": "amd64",
+      "size_bytes": 1906072,
+      "sha256": "ede507c1da4f00f439fffd5e4dd08bda541331385fc949d6b67008a804649e8d",
+      "origin": "Ubuntu 24.04 Noble archive.ubuntu.com"
+    }
+  ],
+  "sysroot": "sysroot"
+}
