@@ -1,5 +1,55 @@
 # Running NeuSymNav
 
+## Movement and exploration revision (2026-11-04)
+
+Use the full Rebuild runner to keep accepted M5 as the room source:
+
+```bash
+bash tools/run_rebuild_rgbd_map_demo.sh 00805 --preflight
+bash tools/run_rebuild_rgbd_map_demo.sh 00805 120
+```
+
+The generated profile limits primary RGB-D to at most1Hz, retains navigation
+cadence and full stride1 room input, enables gain/heading-aware frontier goals
+and one-axis discrete motion, and uses nominal0.20m/s unless the base profile
+explicitly sets another speed. This is still capped at0.20m/s. It keeps all
+original source freshness, collision and footprint gates. Effective navigation
+settings are exported as `worker_runtime.navigation` in `summary.json`.
+
+Controller flags in an explicit JSON profile:
+
+```json
+"controller": {
+  "nominal_speed_mps": 0.2,
+  "discrete_heading_control": true,
+  "gain_aware": true,
+  "allow_fresh_map_lag": false
+}
+```
+
+Direct `Navigator`/kernel defaults preserve legacy parity; the live launcher
+enables the first two modes by default. Explicit false values restore legacy
+ordering/following for comparison. Keep experimental map-lag mode off: its
+native experiment increased deadline expirations despite source-safe checks.
+EGL now selects its default device without inferring software-rendering flags
+from a missing `/dev/dri`; `HABITAT_FORCE_SOFTWARE=1` is an explicit override.
+
+Assess movement using the retained body poses and action proofs in
+`measurements.json`, not command count alone. `control-invocations.json` records
+source-pending and expiration counts. Run completion or a valid M5 polygon does
+not alone prove useful scene coverage; final results and limitations are recorded
+in the movement result report.
+
+For offline latency diagnosis, each run's `measurements.json` trace now includes
+the total `navmap_update` and bounded child spans (`navmap_prepare`,
+`navmap_integrate_raycast`, fresh coverage, snapshot, and tile overview). Each
+control row may include `navigation` with goal ID/XY, up to64 sampled path points
+and the full path size, lookahead, wrapped heading error, and decision reason.
+`summary.json` / measurement resources retain RSS sample timing and support
+records; built-in provider diagnostics retain per-attempt phase, PID and error
+class. Inspect these recorded fields before extending a simulator run. They are
+diagnostics only and do not change motion or freshness policy.
+
 ## Current CUDA checkout: choose a map
 
 The current CUDA checkout has checked local assets/profiles for **00770, 00802,
@@ -23,6 +73,20 @@ are available only where their local assets and generated configs exist.
 The selector keeps existing `configs/demo-MAP.local.json` support on the Intel
 setup; otherwise00770/00802/00861 select the currentGPUprofiles. MainGPU wrappers
 also accept `NEUSYMNAV_DEMO_CONFIG` for an explicit profile.
+
+Room segmentation uses accumulated measured occupancy at native resolution,
+separate from the local motion map. Restart the demo after updating to load the
+change. Runtime summary telemetry `metrics.regions` records input scope/shape,
+raw region count, accepted/rejected updates, native resets and rejection reasons.
+Room geometry is historical and bounded; incomplete/over-budget history becomes
+stale/unavailable. This does not certify functional room labels or full coverage.
+
+Hydra runtime artifacts include bounded forensic diagnostics: per-sample RSS
+timing/attempt/failure metadata (including samples discarded during shutdown),
+source-bound NavMap phase timings, and sampled goal/path/lookahead/heading details
+for control ticks. These fields explain latency and navigation outcomes without
+changing motion or completion gates. A completed artifact with these fields has
+not yet been runtime-validated until a follow-up smoke records and inspects them.
 
 
 ## Local Intel/CPU demo on this machine (2026-10-30)
@@ -59,6 +123,33 @@ inherited per-screen scale multipliers. To choose another zoom explicitly:
 `NEUSYMNAV_UI_SCALE=1.1 bash tools/run_local_demo.sh 600`. Restart the demo
 after changing scale; desktop-wide settings remain unchanged.
 
+## Experimental Intel UHD detector backend (00805)
+
+An optional OpenVINO UHD profile is available on the `Kiet_branch2` worktree.
+It requires the local OpenVINO detector environment, the Intel OpenCL runtime,
+accessible `/dev/dri` render device, and the hash-pinned local IR assets. The
+generated profile is ignored by Git and machine-specific:
+`configs/demo-00805.hydra-openvino.local.json`. Check the profile before a
+bounded run:
+
+```sh
+NEUSYMNAV_HYDRA_DEMO_CONFIG="$PWD/configs/demo-00805.hydra-openvino.local.json" \
+  bash tools/run_hydra_map_demo.sh 00805 --preflight
+NEUSYMNAV_HYDRA_DEMO_CONFIG="$PWD/configs/demo-00805.hydra-openvino.local.json" \
+  bash tools/run_hydra_map_demo.sh 00805 30
+```
+
+The detector loads and warms the static model before the pipeline accepts
+semantic frames. `fallback_policy` is explicit: `torch_cpu` permits fallback
+only when GPU initialization or warm-up fails; `fail` stops startup. Torch CPU
+remains the default for other profiles. The 95-frame replay measured about
+3.7x faster p50 worker round-trip on UHD, but produced materially different
+detections from Torch CPU. The bounded live smoke still failed Hydra map export
+after the Hydra child exited with `-9`; it also recorded expired/zero movement
+commands. Keep this backend experimental and do not increase simulator duration
+until those issues are diagnosed. See the [OpenVINO integration and smoke
+report](results/hydra-branch2-openvino-integration-00805.md).
+
 ## Spatial scene viewer
 
 The lower panel now defaults to **3D Scene**: historical measured RGB-D cloud,
@@ -68,6 +159,44 @@ Use **Focus view → SCENE GRAPH** to enlarge it. Only assigned graph relations
 are connected; unassigned objects remain disconnected. **Graph layout** and
 **Hierarchy** retain the structural views. See [spatial scene controls and data
 limits](spatial-scene-ui.md). Restart the demo after updating UI code.
+
+## Opt-in Rebuild M1–M5 RGB-D room map (profile v1)
+
+This profile sends the primary RGB-D observations to the pinned Rebuild M1–M5
+lane and keeps the existing navigation/control map independent. It is opt-in;
+the baseline and the earlier M4/M5-only runner are unchanged. The wrapper checks
+the M2/M3 and M4 executable hashes and the Rebuild Python source closure before
+writing a generated config under ignored `.runtime/` state.
+
+```sh
+bash tools/run_rebuild_rgbd_map_demo.sh 00805 --preflight
+bash tools/run_rebuild_rgbd_map_demo.sh 00805 30
+```
+
+The runner accepts any safe map identifier; it no longer restricts maps to
+`0080x`. For the default lookup, provide a calibrated local
+`configs/demo-MAP.local.json` profile. A teammate can also pass a profile from
+another location, including a `007xx` map:
+
+```sh
+bash tools/run_rebuild_rgbd_map_demo.sh 00770 --preflight
+bash tools/run_rebuild_rgbd_map_demo.sh --config configs/demo-00770.local.json 180
+```
+
+The first command checks profile resources without starting the simulator, UI
+or native workers; the second runs a bounded capture through the existing local
+demo environment. Each map still needs its own scene asset, RGB-D sensor
+intrinsics/mount, floor datum and valid calibration provenance. If there is no
+`demo-MAP.local.json`, create/provide that profile and pass it with `--config`.
+The Rebuild source checkout can be selected with `NEUSYMNAV_REBUILD_ROOT` when
+it is not adjacent to NeuSymNav.
+
+The profile pins 5 cm M3 resolution, stride 1, metric depth limits 0.1–10 m and
+5 m max range, matching the audited M1–M3 stage default. This does not establish
+parity with a live 3DSG caller or room quality.
+A successful preflight does not establish live M1–M5 correctness. The checked-in
+code does not include per-map local profiles or private scene/calibration assets;
+sharing only NeuSymNav source is insufficient to provision a teammate's map.
 
 ## Choose a local HM3D map
 
@@ -406,6 +535,13 @@ Nếu control bỏ qua vì Pause/chờ source/exception, hoặc hai quan sát h�
 nhau hơn 1 giây, cửa sổ xác nhận thất bại được đặt lại; thời gian thiếu evidence
 không được tính thành thời gian goal bị chặn.
 
+Tốc độ danh định có thể cấu hình trong profile local bằng
+`navigation.controller.nominal_speed_mps`. Mặc định là 0.15 m/s; validator và
+hard limit của MotionGuard đều chặn ở 0.20 m/s. Lệnh vẫn hết hạn theo depth/nav
+source và có horizon tối đa 100 ms; tăng tốc độ danh định không nới kiểm tra
+footprint, obstacle, unknown hay source freshness. Thay đổi profile có hiệu lực
+khi khởi động run mới.
+
 ### Khoảng kiểm tra depth phía trước: 10 cm
 
 Theo yêu cầu người dùng, `MotionGuard` mặc định kiểm tra trước **0.10 m**, thay cho
@@ -434,3 +570,20 @@ Qtchild được phóng thêm1.5× so với scale hệ thống hiện có (`QT_S
 được nhân trong môi trường child). Chữ,nút,ảnh và nội dung vẽ cùng được scale;
 không chỉ tăng kích thước cửa sổ ưu tiên. Qt vẫn giới hạn cửa sổ theo diện tích
 màn hình khả dụng. Restartdemo để nhận zoom mới;host/control không đổi scale.
+
+### Rebuild M1–M5 room pipeline
+
+Use the map-specific calibrated profile and pinned M1–M5 assets:
+
+```bash
+bash tools/run_rebuild_rgbd_map_demo.sh 00805 --preflight
+bash tools/run_rebuild_rgbd_map_demo.sh 00805 180
+```
+
+The generated Rebuild profile removes `workers.region`; accepted M5 polygons are
+the only room regions used by its hierarchy and object-membership projection.
+Object membership remains unavailable when M5 is stale, rejected, or not paired
+with the accepted M3 revision. Other profiles can still use the generic region
+lane for baseline comparison. Each map needs its own calibrated local profile,
+scene/navmesh and matching Rebuild source/binary pins; a map ID alone cannot
+create missing calibration. Preflight is not native runtime validation.

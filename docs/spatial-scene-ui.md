@@ -154,3 +154,30 @@ shows the actual metres/cell. An INCOMPLETE flag exposes a history cap or lost
 update. Latest-update age describes the overview source integration; individual
 cells include historical evidence. This display map is not used for motion
 clearance or room membership. See [validation](results/global-map-view-2026-10-31.md).
+
+### Accumulated room geometry (2026-10-31)
+
+Room segmentation now separately consumes the **raw measured occupancy history
+at native resolution**, rather than the moving local control window. The
+display overview above can still be coarsened independently. Accepted room
+geometry and IDs can therefore remain after the robot leaves their local window.
+Region/floor attributes expose `geometry_input_scope`, source raster extent and
+historical cell evidence; source update age does not mean every cell was just
+observed. Object membership still requires its full footprint in accepted geometry.
+
+Incomplete/missing history or a dense extent beyond one million cells makes the
+room result stale and new membership unavailable. It does not silently crop the
+room map. Control retains the original fresh local snapshot and safety gates.
+Native thresholds remain unchanged: more observed geometry can expose room cuts,
+but the UI does not force a requested room count. Native geometry fixtures and
+current validation are documented in [accumulated-room results](results/accumulated-rooms-2026-10-31.md).
+
+### Rebuild M5 hierarchy
+
+In the Rebuild RGB-D profile, purple `Rebuild M5` outlines and hierarchy links
+come from accepted M5 polygons. Object-to-region membership carries the M5 map
+domain and accepted map/M5 revisions; stale or rejected M5 output is shown as
+unavailable and cannot retain an assigned link. These room outlines and structural
+adjacency do not certify traversability. The legacy control map may show generic
+regions only when running a non-M5 profile. The RoomOwner stability tab and its
+portal/debug overlays were removed.

@@ -26,6 +26,100 @@ def test_real_pipeline_records_delayed_live_result_and_commit(tmp_path):
     assert result['native_runtime_validated'] is False
 
 
+def test_run_measurements_exposes_source_bound_stage_recorder():
+    m = session()
+    obs = source()
+    assert m.capture(obs)
+    assert m.stage(obs, 'navmap_update', 110, 175)
+    artifact = m.finalize(runtime_report={'clean_shutdown': True}, resources=None)
+    records = [row for row in artifact['collector']['trace']['records'] if row['event'] == 'stage']
+    assert len(records) == 1
+    assert records[0]['stage'] == 'navmap_update'
+    assert records[0]['duration_ns'] == 65
+
+
+def test_control_trace_keeps_decision_and_actuator_rejection_details():
+    from neusymnav.contracts import MotionCommand, NavigationDecision
+    m=session();obs=source(stamp=1_000_000_000,modality='depth_only')
+    assert m.capture(obs)
+    decision=NavigationDecision('goal-1',((1.,2.),),.15,0.,7,'tracking')
+    command=MotionCommand(obs.key,7,1_010_000_000,1_110_000_000,DOMAIN,0.,0.,
+        'footprint_not_observed',obs.capture_monotonic_ns)
+    assert m.control(obs,1_020_000_000,dict(executed=False,reason='expired_or_zero',
+        failure_detail='zero_motion_command'),command=command,decision=decision,proof=None,profile='baseline')
+    artifact=m.finalize(runtime_report={'clean_shutdown':True},resources=None)
+    row=next(r for r in artifact['collector']['trace']['records'] if r['event']=='control')
+    assert row['diagnostics']==dict(
+        decision_reason='tracking',decision_linear_mps=.15,decision_yaw_radps=0.,
+        command_reason='footprint_not_observed',command_linear_mps=0.,command_yaw_radps=0.,
+        command_issued_monotonic_ns=1_010_000_000,command_deadline_monotonic_ns=1_110_000_000,
+        failure_detail='zero_motion_command')
+
+
+def test_intentional_zero_command_does_not_count_as_missing_actuation_proof():
+    from neusymnav.contracts import MotionCommand, NavigationDecision
+    m=session();obs=source(stamp=1_000_000_000,modality='depth_only')
+    assert m.capture(obs)
+    decision=NavigationDecision('goal-1',((1.,2.),),.15,0.,7,'tracking')
+    command=MotionCommand(obs.key,7,1_010_000_000,1_010_000_000,DOMAIN,0.,0.,
+        'depth_stale',obs.capture_monotonic_ns)
+    m.control(obs,1_020_000_000,dict(executed=False,reason='expired_or_zero',
+        failure_detail='zero_motion_command'),command=command,decision=decision,proof=None,profile='baseline')
+
+    artifact=m.finalize(runtime_report={'clean_shutdown':True},resources=None)
+
+    assert artifact['actuation']['missing_command_proofs']==0
+
+
+def test_executed_command_without_actuation_proof_is_counted():
+    from neusymnav.contracts import MotionCommand, NavigationDecision
+    m=session();obs=source(stamp=1_000_000_000,modality='depth_only')
+    assert m.capture(obs)
+    decision=NavigationDecision('goal-1',((1.,2.),),.15,0.,7,'tracking')
+    command=MotionCommand(obs.key,7,1_010_000_000,1_110_000_000,DOMAIN,.15,0.,
+        'tracking',obs.capture_monotonic_ns)
+    m.control(obs,1_020_000_000,dict(executed=True,reason='executed'),
+        command=command,decision=decision,proof=None,profile='baseline')
+
+    artifact=m.finalize(runtime_report={'clean_shutdown':True},resources=None)
+
+    assert artifact['actuation']['missing_command_proofs']==1
+
+
+def test_navigation_worker_records_navmap_update_interval(tmp_path):
+    from test_runtime_scheduling import nav_for, wait_for
+    class Mapper:
+        def update(self, obs):
+            time.sleep(.005)
+            return nav_for(obs)
+        def close(self, timeout_s=1.): return dict(clean_shutdown=True)
+    m=session();p,_,_=pipeline(tmp_path,measurements=m,mapper=Mapper())
+    obs=source(0,stamp=1_000_000_000,modality='depth_only')
+    p.submit(obs)
+    wait_for(lambda:p._latest_nav is not None)
+    artifact=m.finalize(runtime_report=p.close(2.),resources=None)
+    rows=[r for r in artifact['collector']['trace']['records']
+          if r['event']=='stage' and r['stage']=='navmap_update']
+    assert len(rows)==1 and rows[0]['duration_ns']>=5_000_000
+
+
+def test_sensor_timing_wiring_records_host_and_worker_intervals():
+    from neusymnav.runtime.launcher import _record_sensor_timing
+    m=session();obs=source();m.capture(obs)
+    class Pipeline: measurements=m
+    timing=dict(host_request_start_ns=100,host_response_received_ns=200,
+        host_decode_start_ns=210,host_decode_end_ns=240,
+        worker_request_received_ns=120,worker_handler_start_ns=130,
+        worker_handler_end_ns=180,
+        worker_stages=[dict(stage='sensor_readback_observations',start_ns=140,end_ns=160)])
+    _record_sensor_timing(Pipeline(),obs,timing,'primary')
+    artifact=m.finalize(runtime_report={'clean_shutdown':True},resources=None)
+    rows=[r for r in artifact['collector']['trace']['records'] if r['event']=='stage']
+    assert {r['stage'] for r in rows}=={
+        'sensor_primary_roundtrip','sensor_primary_decode','sensor_worker_dispatch',
+        'sensor_worker_handler','sensor_readback_observations'}
+
+
 def test_every_control_stop_reason_has_support_without_invented_depth(tmp_path):
     m=session();p,_,_=pipeline(tmp_path,measurements=m)
     assert p.control_step(object())['reason']=='navigation_unavailable'

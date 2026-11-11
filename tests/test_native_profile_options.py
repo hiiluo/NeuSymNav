@@ -72,22 +72,33 @@ def test_real_pipeline_builder_binds_sampling_profile_and_constructor(tmp_path,m
     from neusymnav.runtime.configuration import Configuration
     from neusymnav.perception import detector_client
     from neusymnav.navigation import controller,safety
+    from neusymnav.mapping.occupancy import RobotGeometry
     from neusymnav.contracts import Taxonomy
     asset=tmp_path/'asset';asset.write_bytes(b'fixture')
     data=dict(profile='baseline',mode='live',keyframe_sampling=mode,sensor_config=dict(motion_adapter=adapter),episode=dict(id='episode',primary_sensor_id='rgbd',floor_id='floor'),
               detector={},workers=dict(detector={}))
     cfg=Configuration(tmp_path/'config',data)
-    monkeypatch.setattr(launcher,'_mapper',lambda *args,**kwargs:SimpleNamespace(robot=object()))
+    fake_mapper=SimpleNamespace(
+        robot=RobotGeometry('profile-fixture',.1,1.,.05,.05),
+        floor_z_m=0.,calibration_hash='a'*64,
+    )
+    monkeypatch.setattr(launcher,'_mapper',lambda *args,**kwargs:fake_mapper)
     monkeypatch.setattr(detector_client,'validate_recipe',lambda value:value)
     monkeypatch.setattr(Taxonomy,'load',lambda path:SimpleNamespace(vocabulary_id='v1'))
-    monkeypatch.setattr(controller,'Navigator',lambda *args,**kwargs:SimpleNamespace())
-    monkeypatch.setattr(safety,'MotionGuard',lambda *args,**kwargs:SimpleNamespace())
     observed=[]
     def build(*args,**kwargs):observed.append(kwargs);return SimpleNamespace()
     monkeypatch.setattr(launcher,'Pipeline',build)
     assets=dict(checkpoint=asset,encoder=asset,taxonomy=asset,detector=(asset,asset),region=asset)
     launcher._pipeline(cfg,assets,tmp_path/'out','host_monotonic:fixture',lambda:1)
     kwargs=observed[0]
+    navigator=kwargs['navigator'];guard=kwargs['guard']
+    assert isinstance(navigator,controller.Navigator)
+    assert isinstance(guard,safety.MotionGuard)
+    assert guard.mapper is fake_mapper
+    assert navigator.controller.config.acceleration_mps2==.6
+    assert navigator.controller.config.nominal_speed_mps==.15
+    assert guard.max_depth_age_ns==300_000_000
+    assert guard.command_horizon_ns==100_000_000
     suffix='' if adapter=='strict_3d' else ':motion-planar_fixed_y_v1'
     if mode=='novelty':
         assert 'keyframe_sampling' not in kwargs

@@ -1,0 +1,9 @@
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    Boost_NO_BOOST_CMAKE
+    GTSAM_DIR
+    HYDRA_ENABLE_EVAL
+    HYDRA_ENABLE_PYTHON
+
+

@@ -1,0 +1,14 @@
+# Kaggle GPU host lock. Install with the cu126 PyTorch wheel index enabled.
+numpy==1.26.4
+scipy==1.17.1
+PyYAML==6.0.3
+Pillow==12.3.0
+torch==2.7.1+cu126
+torchvision==0.22.1+cu126
+ultralytics==8.4.24
+opencv-python==4.11.0.86
+requests==2.34.2
+ftfy==6.3.1
+regex==2026.9.29
+tqdm==4.70.1
+matplotlib==3.11.2

@@ -10,13 +10,39 @@ from ..mapping.occupancy import capsule_cells
 
 class MotionGuard:
     def __init__(self, mapper, *, clock_domain: str, max_depth_age_ns=300_000_000,
-                 command_horizon_ns=100_000_000, bootstrap_corridor_m=.1):
-        if not clock_domain.startswith('host_monotonic:'):raise ValueError('guard requires pinned live host domain')
+                 command_horizon_ns=100_000_000, now_ns=None,
+                 offline_replay=False, rotation_horizon_ns=None, pace_to_wall_time=False,
+                 start_unknown_tolerance=0.):
+        if type(offline_replay) is not bool or (offline_replay and not clock_domain.startswith('replay:')):
+            raise ValueError('offline guard mode requires an isolated replay clock')
+        if not (clock_domain.startswith('replay:') if offline_replay else clock_domain.startswith('host_monotonic:')):
+            raise ValueError('guard requires pinned live host domain')
         if not 0<max_depth_age_ns<=300_000_000:raise ValueError('depth TTL cannot exceed 300 ms')
-        if command_horizon_ns<=0 or not math.isfinite(bootstrap_corridor_m) or bootstrap_corridor_m<=0:
+        if command_horizon_ns<=0:
             raise ValueError('invalid guard motion horizon')
+        # Opt-in: in-place yaw of the cylindrical footprint sweeps no new
+        # cells, so a pure-rotation pulse may outlive the depth TTL (it must
+        # still be ISSUED on fresh depth with the current footprint observed
+        # clear). None keeps rotation under the translation rules.
+        if rotation_horizon_ns is not None and (type(rotation_horizon_ns) is not int
+                or not 100_000_000<=rotation_horizon_ns<=500_000_000):
+            raise ValueError('invalid guard rotation horizon')
+        if type(pace_to_wall_time) is not bool:raise ValueError('pace_to_wall_time must be boolean')
         self.mapper=mapper;self.clock_domain=clock_domain;self.max_depth_age_ns=max_depth_age_ns
-        self.command_horizon_ns=command_horizon_ns;self.bootstrap_corridor_m=bootstrap_corridor_m
+        self.command_horizon_ns=command_horizon_ns;self.rotation_horizon_ns=rotation_horizon_ns
+        # Opt-in real-time pacing: a pulse longer than 100 ms is never longer
+        # than the wall time since the previous issued motion command, so the
+        # robot never moves faster than commanded when the loop is slow.
+        self.pace_to_wall_time=pace_to_wall_time
+        self._last_issued_ns=None
+        # Opt-in: UNKNOWN cells inside the robot's own current footprint (no
+        # OCCUPIED cell, at most this fraction) count as FREE for the start
+        # disc only; see navigation/start_footprint.py.
+        from .start_footprint import validate_tolerance
+        self.start_unknown_tolerance=validate_tolerance(start_unknown_tolerance)
+        self.start_unknown_tolerated=0
+        if now_ns is not None and not callable(now_ns):raise ValueError('issue clock must be callable')
+        self._now_ns=now_ns
         self._bound=None;self._watermarks={}
         # Geometry only: no map state, floor support, clearance or verdict.
         # Immutable cell tuples are capped at 64 entries of at most 512 cells.
@@ -28,6 +54,10 @@ class MotionGuard:
             raise ValueError('floor datum mismatch')
         if len(robot_xy)!=2 or not all(math.isfinite(v) for v in (*robot_xy,yaw_rad)):raise ValueError('invalid robot pose')
         if self._bound is not None and nav.episode_id!=self._bound[0].episode_id:self._watermarks.clear()
+        if self.start_unknown_tolerance:
+            # Same disc as the planner and local follower (shared helper).
+            from .start_footprint import tolerate_robot_footprint
+            nav,_cleared=tolerate_robot_footprint(nav,robot_xy,self.mapper.robot,self.start_unknown_tolerance)
         self._bound=(nav,tuple(robot_xy),yaw_rad)
 
     def _stop(self, decision, latest, now_ns, reason):
@@ -62,14 +92,30 @@ class MotionGuard:
         if decision.desired_linear_mps<0:return stop('reverse_motion_unsupported')
         if decision.desired_linear_mps==0 and decision.desired_yaw_radps==0:return stop(decision.reason)
         if abs(decision.desired_linear_mps)>.2 or abs(decision.desired_yaw_radps)>math.radians(30.):return stop('motion_limits_exceeded')
-        duration=self.command_horizon_ns/1e9
-        distance=max(self.bootstrap_corridor_m,decision.desired_linear_mps*duration)
+        # Bound geometry checks by the longest pulse that can still be issued
+        # before either source expires. The issue time is read again after all
+        # checks, so this is an upper bound on the eventual swept distance.
+        rotation_only=decision.desired_linear_mps==0 and self.rotation_horizon_ns is not None
+        if not self.pace_to_wall_time:elapsed_ns=max(self.command_horizon_ns,self.rotation_horizon_ns or 0)
+        elif self._last_issued_ns is None or now_ns<self._last_issued_ns:elapsed_ns=100_000_000
+        else:elapsed_ns=max(100_000_000,now_ns-self._last_issued_ns)
+        if rotation_only:
+            duration_ns=min(self.rotation_horizon_ns,elapsed_ns)
+        else:
+            duration_ns=min(self.command_horizon_ns,elapsed_ns,
+                            self.max_depth_age_ns-age,
+                            self.max_depth_age_ns-nav_age)
+        if duration_ns<=0:return stop('depth_stale')
+        duration=duration_ns/1e9
+        distance=decision.desired_linear_mps*duration
         # Constant v,w differs from its initial tangent by at most
         # integral_0^t |v*w|s ds. Inflating the capsule by this bound contains
         # the complete curved pulse, including simultaneous translation/yaw.
         swept_margin=.5*abs(decision.desired_linear_mps*decision.desired_yaw_radps)*duration**2
         result=self.mapper.bootstrap(latest,robot_xy=robot_xy,yaw_rad=yaw,
-            corridor_m=distance if decision.desired_linear_mps else 0.,swept_margin_m=swept_margin)
+            corridor_m=distance if decision.desired_linear_mps else 0.,swept_margin_m=swept_margin,
+            **({'start_unknown_fraction':self.start_unknown_tolerance} if self.start_unknown_tolerance else {}))
+        if self.start_unknown_tolerance and getattr(result,'start_tolerated',0):self.start_unknown_tolerated+=1
         if not result.ready:return stop(result.reason)
         # Verify the actual swept forward pulse, independent of desired bearing.
         end=(robot_xy[0]+decision.desired_linear_mps*duration*math.cos(yaw),
@@ -80,10 +126,22 @@ class MotionGuard:
             # Intent path also needs observed support; don't trust caller claims.
             points=(robot_xy,)+tuple(decision.path)
             if any(not self._clear(nav,a,b) for a,b in zip(points,points[1:])):return stop('path_segment_blocked')
-        deadline=min(latest.capture_monotonic_ns+self.max_depth_age_ns,
-                     nav.capture_monotonic_ns+self.max_depth_age_ns,now_ns+self.command_horizon_ns)
-        if now_ns>=deadline:return stop('depth_stale')
-        return MotionCommand(latest.key,nav.revision,now_ns,deadline,self.clock_domain,
+        # Geometry checks can take a meaningful part of a 100 ms pulse. Issue
+        # only after they finish; the ORIGINAL observation/map TTL still bounds
+        # the command. Neither capture time nor measured evidence is refreshed.
+        issued=now_ns if self._now_ns is None else self._now_ns()
+        if type(issued) is not int or issued<now_ns:raise ValueError('issue clock moved backwards')
+        if rotation_only:
+            # Issue still requires the source to be within its TTL.
+            if issued>=min(latest.capture_monotonic_ns,nav.capture_monotonic_ns)+self.max_depth_age_ns:
+                return self._stop(decision,latest,issued,'depth_stale')
+            deadline=issued+duration_ns
+        else:
+            deadline=min(latest.capture_monotonic_ns+self.max_depth_age_ns,
+                         nav.capture_monotonic_ns+self.max_depth_age_ns,issued+duration_ns)
+        if issued>=deadline:return self._stop(decision,latest,issued,'depth_stale')
+        self._last_issued_ns=issued
+        return MotionCommand(latest.key,nav.revision,issued,deadline,self.clock_domain,
             decision.desired_linear_mps,decision.desired_yaw_radps,decision.reason,latest.capture_monotonic_ns)
 
     def _clear(self,nav,start,end,*,swept_margin_m=0.):

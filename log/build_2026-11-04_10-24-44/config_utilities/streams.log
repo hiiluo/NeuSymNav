@@ -1,0 +1,26 @@
+[0.035s] Invoking command in '/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/build/config_utilities': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/src/config_utilities/config_utilities -DCMAKE_PREFIX_PATH=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr;/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/sysroot/usr;/opt/ros/jazzy;/usr -DGTSAM_DIR=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr/lib/cmake/GTSAM -DBoost_NO_BOOST_CMAKE=ON -DHYDRA_ENABLE_PYTHON=ON -DHYDRA_ENABLE_EVAL=OFF -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/install/config_utilities
+[0.210s] -- The C compiler identification is GNU 13.3.0
+[0.327s] -- The CXX compiler identification is GNU 13.3.0
+[0.362s] -- Detecting C compiler ABI info
+[0.544s] -- Detecting C compiler ABI info - done
+[0.569s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.569s] -- Detecting C compile features
+[0.570s] -- Detecting C compile features - done
+[0.592s] -- Detecting CXX compiler ABI info
+[0.786s] -- Detecting CXX compiler ABI info - done
+[0.809s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.810s] -- Detecting CXX compile features
+[0.811s] -- Detecting CXX compile features - done
+[1.247s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+[1.646s] -- Configuring done (1.6s)
+[1.683s] -- Generating done (0.0s)
+[1.686s] CMake Warning:
+[1.686s]   Manually-specified variables were not used by the project:
+[1.686s] 
+[1.686s]     Boost_NO_BOOST_CMAKE
+[1.686s]     GTSAM_DIR
+[1.686s]     HYDRA_ENABLE_EVAL
+[1.687s]     HYDRA_ENABLE_PYTHON
+[1.687s] 
+[1.687s] 
+[1.692s] -- Build files have been written to: /home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/build/config_utilities

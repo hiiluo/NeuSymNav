@@ -60,6 +60,17 @@ def test_one_vote_per_frame_and_occupied_wins(tmp_path):
     assert core.log_odds_at(0,1)==pytest.approx(core.free_log_odds)
 
 
+def test_thinned_free_rays_keep_measured_hits_and_only_remove_free_map_evidence(tmp_path):
+    full=mapper(tmp_path/'full',free_ray_stride=1)
+    sparse=mapper(tmp_path/'sparse',free_ray_stride=2)
+    for index in range(3):
+        obs=down(index,size=81)
+        reference=full.update(obs);candidate=sparse.update(obs)
+        assert candidate.origin_xy==reference.origin_xy
+        assert not np.any((candidate.states==GridState.FREE)&(reference.states!=GridState.FREE))
+        assert np.array_equal(candidate.floor_support,reference.floor_support)
+
+
 def test_bootstrap_requires_measured_footprint_and_forward_corridor(tmp_path):
     m=mapper(tmp_path)
     assert m.bootstrap(down(),robot_xy=(0.,0.),yaw_rad=0.,corridor_m=.3).ready

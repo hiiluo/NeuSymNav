@@ -1,0 +1,38 @@
+[0.021s] Invoking command in '/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/build/kimera_rpgo': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/src/kimera_rpgo -DCMAKE_PREFIX_PATH=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr;/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/sysroot/usr;/opt/ros/jazzy;/usr -DGTSAM_DIR=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr/lib/cmake/GTSAM -DBoost_NO_BOOST_CMAKE=ON -DHYDRA_ENABLE_PYTHON=ON -DHYDRA_ENABLE_EVAL=OFF -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/install/kimera_rpgo
+[0.190s] -- The C compiler identification is GNU 13.3.0
+[0.311s] -- The CXX compiler identification is GNU 13.3.0
+[0.345s] -- Detecting C compiler ABI info
+[0.527s] -- Detecting C compiler ABI info - done
+[0.549s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.550s] -- Detecting C compile features
+[0.550s] -- Detecting C compile features - done
+[0.570s] -- Detecting CXX compiler ABI info
+[0.764s] -- Detecting CXX compiler ABI info - done
+[0.792s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.792s] -- Detecting CXX compile features
+[0.793s] -- Detecting CXX compile features - done
+[0.795s] -- Setting build type to 'Release' as none was specified.
+[0.831s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[1.059s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[1.061s] -- Found Threads: TRUE  
+[1.210s] -- Found Boost: /usr/include (found suitable version "1.83.0", minimum required is "1.67") found components: serialization system filesystem thread program_options date_time timer chrono regex atomic 
+[1.227s] -- GTSAM include directory:  /home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr/lib/cmake/GTSAM/../../../include
+[1.247s] CMake Error at CMakeLists.txt:24 (find_package):
+[1.247s]   By not providing "Findnlohmann_json.cmake" in CMAKE_MODULE_PATH this
+[1.247s]   project has asked CMake to find a package configuration file provided by
+[1.247s]   "nlohmann_json", but CMake did not find one.
+[1.248s] 
+[1.248s]   Could not find a package configuration file provided by "nlohmann_json"
+[1.248s]   with any of the following names:
+[1.248s] 
+[1.248s]     nlohmann_jsonConfig.cmake
+[1.248s]     nlohmann_json-config.cmake
+[1.249s] 
+[1.249s]   Add the installation prefix of "nlohmann_json" to CMAKE_PREFIX_PATH or set
+[1.249s]   "nlohmann_json_DIR" to a directory containing one of the above files.  If
+[1.249s]   "nlohmann_json" provides a separate development package or SDK, be sure it
+[1.249s]   has been installed.
+[1.249s] 
+[1.250s] 
+[1.250s] -- Configuring incomplete, errors occurred!
+[1.256s] Invoked command in '/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/build/kimera_rpgo' returned '1': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/src/kimera_rpgo -DCMAKE_PREFIX_PATH=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr;/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/sysroot/usr;/opt/ros/jazzy;/usr -DGTSAM_DIR=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/overlay/usr/lib/cmake/GTSAM -DBoost_NO_BOOST_CMAKE=ON -DHYDRA_ENABLE_PYTHON=ON -DHYDRA_ENABLE_EVAL=OFF -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/install/kimera_rpgo

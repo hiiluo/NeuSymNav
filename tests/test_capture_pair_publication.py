@@ -10,9 +10,9 @@ from test_runtime_places import pose
 
 
 class Mapper:
-    def __init__(self):self.sources=[]
+    def __init__(self):self.sources=[];self.calibrations=[]
     def update(self,obs):
-        self.sources.append(obs.key)
+        self.sources.append(obs.key);self.calibrations.append(obs.calibration_id)
         return nav_for(obs,len(self.sources))
 
 
@@ -183,9 +183,14 @@ def test_pair_preserves_distinct_frame_indices_calibration_and_single_source_map
     try:
         p.submit_sensor_pair(primary,depth,pose(depth))
         wait_for(lambda:p._latest_nav is not None and p._latest_nav.source==depth.key)
-        p.submit(source(1));wait_for(lambda:p._latest_nav.source==source(1).key)
-        assert mapper.sources==[depth.key,source(1).key]
-        assert observer.captures==[primary.key,depth.key,source(1).key]
+        # The unprotected AllFrames queue may replace a pending offer. Wait for
+        # the first semantic transaction to finish before testing a second commit.
+        wait_for(lambda:p.telemetry()['committed']==1)
+        next_primary=replace(source(1),calibration_id='next-primary-calibration')
+        p.submit(next_primary);wait_for(lambda:p._latest_nav.source==next_primary.key)
+        assert mapper.sources==[depth.key,next_primary.key]
+        assert mapper.calibrations==['nav-calibration','next-primary-calibration']
+        assert observer.captures==[primary.key,depth.key,next_primary.key]
         wait_for(lambda:p.telemetry()['committed']==2)
         assert detector.calls==[0,1]
     finally:assert p.close(2)['clean_shutdown']

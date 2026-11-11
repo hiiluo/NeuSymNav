@@ -110,6 +110,27 @@ def test_control_records_depth_age_all_reasons_and_admission_denominators():
     assert len(control) == 3 and control[0]['source']['key']['sensor_id'] == 'nav'
 
 
+def test_stage_timing_records_source_bound_clock_intervals():
+    meter = BoundedMeasurements(context())
+    src = source(sensor='nav')
+    assert meter.try_record_capture(src, width=16, height=8)
+    assert callable(getattr(meter, 'try_record_stage', None))
+    assert meter.try_record_stage(src, stage='navmap_update', start_ns=110, end_ns=175,
+                                  clock_domain='host-boot')
+    assert not meter.try_record_stage(src, stage='navmap_update', start_ns=110, end_ns=175,
+                                      clock_domain='other')
+    assert not meter.try_record_stage(src, stage='unknown_stage', start_ns=110, end_ns=175,
+                                      clock_domain='host-boot')
+    meter.stop()
+    result = meter.finalize()
+    records = [row for row in result['trace']['records'] if row['event'] == 'stage']
+    assert len(records) == 1
+    assert records[0]['source']['key'] == dict(episode_id='episode-1', sensor_id='nav', frame_index=0)
+    assert {k: records[0][k] for k in ('stage', 'start_ns', 'end_ns', 'duration_ns')} == {
+        'stage': 'navmap_update', 'start_ns': 110, 'end_ns': 175, 'duration_ns': 65}
+    assert result['rejected_records'] == 2
+
+
 def test_busy_collector_returns_immediately_and_marks_incomplete():
     meter = BoundedMeasurements(context())
     src = source()

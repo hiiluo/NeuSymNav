@@ -13,8 +13,8 @@ import yaml
 
 MAX_CONFIG_BYTES=256*1024
 SHA=re.compile(r'^[0-9a-f]{64}$')
-TOP={'schema_version','mode','profile','episode','floor','workers','sensor_config','detector',
-     'fixture','appearance_mode','worker','provenance','navigation','budgets','ui','replay','measurements','keyframe_sampling','runtime','long_demo','association'}
+TOP={'schema_version','mode','profile','episode','floor','workers','sensor_config','detector','scene_graph',
+     'fixture','appearance_mode','worker','provenance','navigation','budgets','ui','replay','measurements','keyframe_sampling','keyframe_novelty','runtime','long_demo','association'}
 
 
 class _Loader(yaml.SafeLoader):
@@ -73,6 +73,14 @@ def load_config(path):
     if value['mode'] not in {'live','fixture_cpu_no_models'}:raise ValueError('mode must be live or fixture_cpu_no_models')
     sampling=value.get('keyframe_sampling','novelty')
     if type(sampling) is not str or sampling not in {'novelty','capacity_deferred'}:raise ValueError('invalid keyframe_sampling')
+    if 'keyframe_novelty' in value:
+        # 3DSG keyframe novelty thresholds (scene-graph input density).
+        novelty=value['keyframe_novelty']
+        _mapping(novelty,'keyframe_novelty',{'min_translation_m','min_yaw_deg'},{'min_translation_m','min_yaw_deg'})
+        for key,(low,high) in dict(min_translation_m=(.05,2.),min_yaw_deg=(5.,90.)).items():
+            item=novelty[key]
+            if type(item) not in (int,float) or not math.isfinite(item) or not low<=item<=high:
+                raise ValueError(f'keyframe_novelty.{key} must be in [{low}, {high}]')
     if sampling=='capacity_deferred' and value['mode']!='live':raise ValueError('capacity_deferred sampling requires live mode')
     if value['profile'] not in {'baseline','geometry-only','appearance','rebuild-rgbd-m1-m5-v1'}:raise ValueError('unsupported profile')
     _mapping(value['episode'],'episode',{'id','primary_sensor_id','floor_id'},{'id','primary_sensor_id','floor_id'})
@@ -84,8 +92,53 @@ def load_config(path):
     if not isinstance(floor['datum_source'],str) or not floor['datum_source'].strip():raise ValueError('floor.datum_source is required')
     if not isinstance(floor['calibration_sha256'],str) or not SHA.fullmatch(floor['calibration_sha256']):raise ValueError('floor.calibration_sha256 is required')
     if 'fixture' in value:_mapping(value['fixture'],'fixture',{'detections'},{'detections'})
+    if 'scene_graph' in value:
+        scene_graph=_mapping(value['scene_graph'],'scene_graph',{'backend','hydra'})
+        backend=scene_graph.get('backend','legacy')
+        if type(backend) is not str or backend not in {'legacy','hydra'}:
+            raise ValueError('scene_graph.backend must be legacy or hydra')
+        if backend=='hydra':
+            if value['mode']!='live':raise ValueError('Hydra scene_graph backend requires live mode')
+            workers=value.get('workers',{})
+            region=workers.get('region',{})
+            if 'room_pipeline' in workers or region.get('backend','dude')=='rebuild_m4_m5':
+                raise ValueError('Hydra backend cannot run with legacy Rebuild/M5 room workers')
+            if 'region' in workers:
+                raise ValueError('Hydra backend cannot run with the legacy region worker')
+            if value.get('appearance_mode','off')!='off' or 'association' in value:
+                raise ValueError('Hydra backend cannot run with legacy identity/verification workers')
+            if 'hydra' not in scene_graph or 'hydra' not in workers:
+                raise ValueError('Hydra backend requires scene_graph.hydra and workers.hydra configuration')
+            h=_mapping(scene_graph['hydra'],'scene_graph.hydra',
+                {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration'},
+                {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration'})
+            for key in ('dataset_sha256','labelspace_sha256'):
+                if type(h[key]) is not str or not SHA.fullmatch(h[key]):raise ValueError('scene_graph.hydra.'+key+' must be a SHA-256')
+            if not isinstance(h['config_root'],str) or not h['config_root'].strip():raise ValueError('scene_graph.hydra.config_root is required')
+            config_root=Path(h['config_root']).expanduser()
+            if not config_root.is_absolute():config_root=path.parent/config_root
+            dataset=config_root/'datasets'/'neusymnav.yaml';labelspace=config_root/'label_spaces'/'neusymnav_label_space.yaml'
+            if not dataset.is_file() or not labelspace.is_file():raise ValueError('scene_graph.hydra.config_root lacks the pinned NeuSymNav Hydra configs')
+            if file_sha256(dataset)!=h['dataset_sha256'] or file_sha256(labelspace)!=h['labelspace_sha256']:
+                raise ValueError('scene_graph.hydra config SHA-256 mismatch')
+            h['config_root']=str(config_root.resolve())
+            if not isinstance(h['detector_profile_id'],str) or not h['detector_profile_id'].strip():
+                raise ValueError('scene_graph.hydra.detector_profile_id is required')
+            calibration=_mapping(h['calibration'],'scene_graph.hydra.calibration',
+                {'calibration_id','version','sensor_id','camera_name','K','body_T_camera','pose_version',
+                 'coordinate_convention','camera_convention','depth_convention','provenance'},
+                {'calibration_id','version','sensor_id','camera_name','K','body_T_camera','pose_version',
+                 'coordinate_convention','camera_convention','depth_convention','provenance'})
+            if calibration['sensor_id']!=value['episode']['primary_sensor_id']:
+                raise ValueError('Hydra calibration sensor_id must match episode.primary_sensor_id')
+            for key,shape in (('K',(3,3)),('body_T_camera',(4,4))):
+                matrix=calibration[key]
+                if not isinstance(matrix,(list,tuple)) or len(matrix)!=shape[0] or any(
+                    not isinstance(row,(list,tuple)) or len(row)!=shape[1] or any(
+                        type(item) not in (int,float) or not math.isfinite(item) for item in row)
+                    for row in matrix):raise ValueError('Hydra calibration '+key+' must be a finite '+str(shape[0])+'x'+str(shape[1])+' matrix')
     if 'workers' in value:
-        _mapping(value['workers'],'workers',{'sensor','detector','region','appearance','ui','raycast','room_pipeline'})
+        _mapping(value['workers'],'workers',{'sensor','detector','region','appearance','ui','raycast','room_pipeline','hydra'})
         for name,worker in value['workers'].items():
             if name=='region':
                 _mapping(worker,'workers.'+name,{'python','script','executable','timeout_s','startup_timeout_s','backend','source_root'})
@@ -103,7 +156,8 @@ def load_config(path):
             elif name=='room_pipeline':
                 _mapping(worker,'workers.room_pipeline',
                     {'source_root','m23_binary','m4_binary','ipc_timeout_s','m23_timeout_s','m4_timeout_s',
-                     'resolution_m','backprojection_stride','min_depth_m','max_depth_m','max_range_m'},
+                     'resolution_m','backprojection_stride','min_depth_m','max_depth_m','max_range_m',
+                     'fps_cap_hz','queue_policy'},
                     {'source_root','m23_binary','m4_binary'})
                 source_root=worker['source_root']
                 if not isinstance(source_root,str) or not source_root.strip():
@@ -121,9 +175,15 @@ def load_config(path):
                     _positive(worker['backprojection_stride'],'workers.room_pipeline.backprojection_stride',integer=True)
                 if worker.get('max_depth_m',10.)<=worker.get('min_depth_m',.1):
                     raise ValueError('workers.room_pipeline.max_depth_m must exceed min_depth_m')
+                if 'fps_cap_hz' in worker:_positive(worker['fps_cap_hz'],'workers.room_pipeline.fps_cap_hz',maximum=20.)
+                queue_policy=worker.get('queue_policy','bounded_fifo')
+                if type(queue_policy) is not str or queue_policy not in {'bounded_fifo','latest_wins'}:
+                    raise ValueError('workers.room_pipeline.queue_policy must be bounded_fifo or latest_wins')
+                if queue_policy=='latest_wins' and 'fps_cap_hz' not in worker:
+                    raise ValueError('workers.room_pipeline.queue_policy=latest_wins requires explicit fps_cap_hz')
             else:
-                _mapping(worker,'workers.'+name,{'python','script','executable','timeout_s','startup_timeout_s'})
-    if 'navigation' in value:_mapping(value['navigation'],'navigation',{'robot','mapper'})
+                _mapping(worker,'workers.'+name,{'python','script','executable','setup_script','timeout_s','startup_timeout_s','fps_limit_hz','artifact_quota_bytes'})
+    if 'navigation' in value:_mapping(value['navigation'],'navigation',{'robot','mapper','controller','tour'})
     if 'long_demo' in value:
         long=value['long_demo']
         _mapping(long,'long_demo',{'max_duration_s','payload_format'},{'max_duration_s','payload_format'})
@@ -132,12 +192,26 @@ def load_config(path):
             raise ValueError('long_demo requires live mode and npz_v2 lossless recording')
     if 'runtime' in value:
         runtime=value['runtime']
-        _mapping(runtime,'runtime',{'primary_hz','navigation_hz','control_sample_cap'},
+        _mapping(runtime,'runtime',{'primary_hz','navigation_hz','control_sample_cap','defer_capture_gc','world_navigation_hz','process_priority','gil_switch_interval_ms'},
                  {'primary_hz','navigation_hz','control_sample_cap'})
+        if 'defer_capture_gc' in runtime:
+            if type(runtime['defer_capture_gc']) is not bool:
+                raise ValueError('runtime.defer_capture_gc must be boolean')
+            if runtime['defer_capture_gc'] and value.get('scene_graph',{}).get('backend')!='hydra':
+                raise ValueError('runtime.defer_capture_gc currently requires Hydra backend')
         _positive(runtime['primary_hz'],'runtime.primary_hz',maximum=20)
         # Capture request ceiling, not a throughput claim. Fresh navigation
         # and source-bound actuation still run serially without timer catchup.
         _positive(runtime['navigation_hz'],'runtime.navigation_hz',maximum=30)
+        if 'world_navigation_hz' in runtime:
+            _positive(runtime['world_navigation_hz'],'runtime.world_navigation_hz',maximum=10)
+        if 'gil_switch_interval_ms' in runtime:
+            item=runtime['gil_switch_interval_ms']
+            if type(item) not in (int,float) or not math.isfinite(item) or not .5<=item<=5:
+                raise ValueError('runtime.gil_switch_interval_ms must be in [0.5, 5]')
+        if 'process_priority' in runtime:
+            from .priority import validate_process_priority
+            validate_process_priority(runtime['process_priority'])
         _positive(runtime['control_sample_cap'],'runtime.control_sample_cap',integer=True,maximum=20000)
     if 'budgets' in value:
         _mapping(value['budgets'],'budgets',{'byte_cap','raw_cap','total_cap','shutdown_timeout_s','archive_cap'})
@@ -145,7 +219,7 @@ def load_config(path):
             if type(amount) not in (int,float) or amount<=0 or amount>(32 if 'long_demo' in value else 8)*1024**3 or not math.isfinite(amount):raise ValueError('budget '+name+' must be positive finite and bounded')
             if name!='shutdown_timeout_s' and type(amount) is not int:raise ValueError('byte budgets must be integers')
         if 'archive_cap' in value['budgets'] and not 4096<=value['budgets']['archive_cap']<=value['budgets'].get('raw_cap',2*1024**3)//2:raise ValueError('archive_cap must fit half aggregate raw budget and certificate reserve')
-    if 'ui' in value:_mapping(value['ui'],'ui',{'enabled','smoke_exit_ms','publish_hz'})
+    if 'ui' in value:_mapping(value['ui'],'ui',{'enabled','smoke_exit_ms','publish_hz','room_label_debug'})
     if 'replay' in value:_mapping(value['replay'],'replay',{'allow_incomplete'})
     if value.get('appearance_mode','off') not in {'off','openclip','openai_clip'}:raise ValueError('appearance_mode must be off, openclip or openai_clip')
     if 'association' in value:
@@ -215,7 +289,10 @@ def _validate_nested(value):
     for name,worker in value.get('workers',{}).items():
         for key in ('timeout_s','startup_timeout_s'):
             if key in worker:_positive(worker[key],'workers.'+name+'.'+key,maximum=60)
-        for key in ('python','script','executable'):
+        if name=='hydra':
+            if 'fps_limit_hz' in worker:_positive(worker['fps_limit_hz'],'workers.hydra.fps_limit_hz',maximum=60)
+            if 'artifact_quota_bytes' in worker:_positive(worker['artifact_quota_bytes'],'workers.hydra.artifact_quota_bytes',integer=True,maximum=8*1024**3)
+        for key in ('python','script','executable','setup_script'):
             if key in worker and worker[key] is not None:_mapping(worker[key],'workers.'+name+'.'+key,{'path','sha256'},{'path','sha256'})
     nav=value.get('navigation',{})
     if 'robot' in nav:
@@ -224,19 +301,81 @@ def _validate_nested(value):
         try:RobotGeometry(**robot)
         except (ValueError,TypeError) as exc:raise ValueError('invalid navigation.robot: '+str(exc)) from exc
     if 'mapper' in nav:
-        mapper=nav['mapper'];_mapping(mapper,'navigation.mapper',{'resolution_m','origin_xy','tile_size_cells','height_bin_m','min_depth_m','max_depth_m','sampling_stride','snapshot_radius_m','max_snapshot_cells','max_active_tiles','raycast_workers','raycast_backend'})
+        mapper=nav['mapper'];_mapping(mapper,'navigation.mapper',{'resolution_m','origin_xy','tile_size_cells','height_bin_m','min_depth_m','max_depth_m','sampling_stride','free_ray_stride','snapshot_radius_m','local_retention_s','max_snapshot_cells','max_active_tiles','raycast_workers','raycast_backend','local_sampling_stride','overview_refresh_s'})
         for key,item in mapper.items():
             if key=='raycast_backend':
                 if item not in ('cpu','triton_cuda'):raise ValueError('mapper.raycast_backend must be cpu or triton_cuda')
                 if item=='triton_cuda':
                     if value['mode']!='live':raise ValueError('GPU raycast_backend requires live mode')
                     if 'raycast' not in value.get('workers',{}):raise ValueError('GPU raycast_backend requires workers.raycast')
+            elif key=='local_retention_s':
+                _positive(item,'mapper.local_retention_s',maximum=300)
+            elif key=='overview_refresh_s':
+                # Display/room-history overview refresh period (world thread).
+                if type(item) not in (int,float) or not math.isfinite(item) or not .5<=item<=10:
+                    raise ValueError('mapper.overview_refresh_s must be in [0.5, 10]')
             elif key=='origin_xy':
                 if not isinstance(item,(list,tuple)) or len(item)!=2 or any(type(v) not in (int,float) or not math.isfinite(v) for v in item):raise ValueError('mapper.origin_xy requires two finite coordinates')
-            else:_positive(item,'mapper.'+key,integer=key in {'tile_size_cells','sampling_stride','max_snapshot_cells','max_active_tiles','raycast_workers'},maximum=4 if key=='raycast_workers' else None)
+            else:_positive(item,'mapper.'+key,integer=key in {'tile_size_cells','sampling_stride','free_ray_stride','max_snapshot_cells','max_active_tiles','raycast_workers','local_sampling_stride'},maximum=4 if key in {'free_ray_stride','raycast_workers','local_sampling_stride'} else None)
+        if mapper.get('free_ray_stride',1)>1 and mapper.get('raycast_backend','cpu')!='cpu':
+            raise ValueError('free_ray_stride > 1 requires the CPU raycast backend')
+    if 'controller' in nav:
+        controller=nav['controller'];_mapping(controller,'navigation.controller',{'nominal_speed_mps','discrete_heading_control','gain_aware','allow_fresh_map_lag','acceleration_mps2','hybrid_pulse_control','local_depth_control','world_goal_max_age_ms','world_intent_ttl_ms','pulse_ms','rotation_pulse_ms','start_unknown_tolerance'})
+        if 'world_goal_max_age_ms' in controller:
+            item=controller['world_goal_max_age_ms']
+            if type(item) is not int or not 300<=item<=2000:
+                raise ValueError('navigation.controller.world_goal_max_age_ms must be an int in [300, 2000]')
+        for key,(low,high) in dict(pulse_ms=(100,300),rotation_pulse_ms=(100,500)).items():
+            if key in controller and (type(controller[key]) is not int or not low<=controller[key]<=high):
+                raise ValueError(f'navigation.controller.{key} must be an int in [{low}, {high}]')
+        if 'start_unknown_tolerance' in controller:
+            item=controller['start_unknown_tolerance']
+            if type(item) not in (int,float) or not math.isfinite(item) or not 0<=item<=.3:
+                raise ValueError('navigation.controller.start_unknown_tolerance must be in [0, 0.3]')
+        if controller.get('rotation_pulse_ms',500)<controller.get('pulse_ms',100):
+            raise ValueError('navigation.controller.rotation_pulse_ms must be >= pulse_ms')
+        if 'world_intent_ttl_ms' in controller:
+            item=controller['world_intent_ttl_ms']
+            if type(item) is not int or not 2000<=item<=5000:
+                raise ValueError('navigation.controller.world_intent_ttl_ms must be an int in [2000, 5000]')
+        if 'nominal_speed_mps' in controller:
+            _positive(controller['nominal_speed_mps'],'navigation.controller.nominal_speed_mps',maximum=.2)
+        if 'acceleration_mps2' in controller:
+            _positive(controller['acceleration_mps2'],'navigation.controller.acceleration_mps2',maximum=1.)
+        for key in ('discrete_heading_control','gain_aware','allow_fresh_map_lag','hybrid_pulse_control','local_depth_control'):
+            if key in controller and type(controller[key]) is not bool:
+                raise ValueError('navigation.controller.'+key+' must be boolean')
+        if controller.get('discrete_heading_control') and controller.get('hybrid_pulse_control'):
+            raise ValueError('navigation steering modes are mutually exclusive')
+    if ('world_navigation_hz' in value.get('runtime',{})
+            and not nav.get('controller',{}).get('local_depth_control',False)):
+        raise ValueError('runtime.world_navigation_hz requires local_depth_control')
+    if 'tour' in nav:
+        tour=nav['tour'];_mapping(tour,'navigation.tour',{'path','sha256','reach_m','lookahead_m','stuck_timeout_s','skip_m','relax_m','approach_m','stall_timeout_s','scan_degrees','scan_step_degrees','scan_min_separation_m','scan_step_timeout_s'},{'path','sha256'})
+        if not nav.get('controller',{}).get('local_depth_control',False):
+            raise ValueError('navigation.tour requires local_depth_control')
+        if type(tour['path']) is not str or not tour['path'] or type(tour['sha256']) is not str or len(tour['sha256'])!=64:
+            raise ValueError('navigation.tour requires path and sha256')
+        for key,(low,high) in dict(reach_m=(.1,2.),lookahead_m=(.3,5.),stuck_timeout_s=(1.,120.),skip_m=(.2,5.),relax_m=(0.,1.5),approach_m=(0.,10.),stall_timeout_s=(1.,600.),scan_degrees=(0.,360.),scan_step_degrees=(30.,180.),scan_min_separation_m=(0.,20.),scan_step_timeout_s=(1.,60.)).items():
+            if key in tour and (type(tour[key]) not in (int,float) or not math.isfinite(tour[key]) or not low<=tour[key]<=high):
+                raise ValueError(f'navigation.tour.{key} must be in [{low}, {high}]')
+    if not nav.get('controller',{}).get('local_depth_control',False) and (
+            any(key in nav.get('controller',{}) for key in ('world_goal_max_age_ms','world_intent_ttl_ms','pulse_ms','rotation_pulse_ms','start_unknown_tolerance'))
+            or 'local_sampling_stride' in nav.get('mapper',{})):
+        # Goal-selection age and intent TTL are only safe when every command is
+        # re-planned and guarded on the current local depth frame.
+        raise ValueError('world_goal_max_age_ms, world_intent_ttl_ms, pulse_ms, rotation_pulse_ms and local_sampling_stride require local_depth_control')
     if 'ui' in value:
         ui=value['ui']
         if type(ui.get('enabled',False)) is not bool:raise ValueError('ui.enabled must be boolean')
+        if 'room_label_debug' in ui:
+            from ..rooms.debug_runtime import validate_debug_options
+            validate_debug_options(ui['room_label_debug'])
+            if not ui.get('enabled') or value.get('scene_graph',{}).get('backend')!='hydra':
+                raise ValueError('room_label_debug requires enabled Hydra UI')
+            entry=value.get('workers',{}).get('ui',{}).get('script',{}).get('path','')
+            if Path(entry).resolve()!=Path(__file__).with_name('room_label_ui_entry.py').resolve():
+                raise ValueError('room_label_debug requires its pinned UI worker entry')
         if 'publish_hz' in ui:_positive(ui['publish_hz'],'ui.publish_hz',maximum=20)
         if 'smoke_exit_ms' in ui and ui['smoke_exit_ms'] is not None:_positive(ui['smoke_exit_ms'],'ui.smoke_exit_ms',integer=True,maximum=300000)
     if 'replay' in value and type(value['replay'].get('allow_incomplete',False)) is not bool:raise ValueError('replay.allow_incomplete must be boolean')
@@ -250,8 +389,21 @@ def _validate_nested(value):
             _mapping(sensor[lane],'sensor_config.'+lane,{'sensor_id','rgb_uuid','depth_uuid','resolution_hw','position_xyz','orientation_xyz_rad','hfov_deg','depth_min_m','depth_max_m'})
         if 'floor_datum' in sensor:_mapping(sensor['floor_datum'],'sensor_config.floor_datum',{'source_convention','source_floor_y_m','canonical_floor_z_m','provenance'})
     if 'detector' in value:
-        from ..perception.detector_client import RECIPE_KEYS
-        _mapping(value['detector'],'detector',(RECIPE_KEYS-{'checkpoint_path','checkpoint_sha256','encoder_path','encoder_sha256','taxonomy_path','taxonomy_sha256'})|{'checkpoint','encoder','taxonomy'})
+        from ..perception.detector_client import BASE_RECIPE_KEYS, RECIPE_CONFIG_ASSETS
+        _mapping(value['detector'],'detector',
+            (BASE_RECIPE_KEYS-{'checkpoint_path','checkpoint_sha256','encoder_path','encoder_sha256',
+                               'taxonomy_path','taxonomy_sha256'})
+            | {'backend','fallback_policy'} | RECIPE_CONFIG_ASSETS)
+        backend=value['detector'].get('backend','torch')
+        if type(backend) is not str or backend not in {'torch','openvino_gpu'}:
+            raise ValueError('detector.backend must be torch or openvino_gpu')
+        fallback=value['detector'].get('fallback_policy','torch_cpu' if backend=='openvino_gpu' else 'none')
+        if type(fallback) is not str or (backend=='torch' and fallback!='none') or (backend=='openvino_gpu' and fallback not in {'torch_cpu','fail'}):
+            raise ValueError('detector.fallback_policy is incompatible with detector.backend')
+        if backend=='openvino_gpu' and value['detector'].get('device')!='intel:gpu':
+            raise ValueError('detector.backend=openvino_gpu requires detector.device=intel:gpu')
+        if backend=='torch' and any(name in value['detector'] for name in ('openvino_model','openvino_bin','openvino_metadata')):
+            raise ValueError('OpenVINO IR assets require detector.backend=openvino_gpu')
     if 'worker' in value:
         worker=value['worker'];_mapping(worker,'appearance worker',{'python_path','checkpoint_path','checkpoint_sha256','checkpoint_format','model_name','preprocessing_id','crop_recipe_id','feature_dimension','device','pretrained','state_dict_strict','timeout_s','startup_timeout_s','max_request_bytes','max_response_bytes'})
         backend=value.get('appearance_mode','off')

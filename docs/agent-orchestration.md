@@ -15,13 +15,21 @@ Luna Extra High là lựa chọn mặc định cho task bình thường, dễ th
 
 Main model do người dùng/công cụ cấu hình; Markdown không chuyển model. Nếu runtime xác nhận main là model bị cấm, dừng và báo cần đổi. Nếu không có metadata model, không đoán hay tuyên bố đã đổi. Nếu model được chọn không khả dụng, chọn model được phép phù hợp với độ khó và ghi fallback; nếu không có lựa chọn phù hợp, ghi blocked.
 
-## 2. Phân công theo rủi ro
+## 2. Phân công theo rủi ro và độ khó
 
-- **Luna xhigh:** task thông thường có contract và oracle rõ, như inventory, serialization, fixtures, UI, CLI và tổng hợp evidence.
-- **Terra:** task khó hơn, bao gồm bất định về invariant, thay đổi xuyên module hoặc review cần phân tích sâu; chọn effort theo tình huống.
-- **Sol:** cân nhắc cho task thật sự khó, chẳng hạn race khó tái hiện hoặc bất đồng xuyên module chưa giải quyết bằng evidence; chọn effort theo tình huống.
-- **Main:** chốt public contracts; quản lý dependency/environment; resolve interface conflicts; kiểm tra báo cáo worker; cập nhật integration status. Main có thể tự làm task nhỏ thay vì dispatch.
-- **Nâng cấp:** chuyển evidence từ Luna sang Terra khi độ khó vượt phạm vi phù hợp; cân nhắc Sol nếu vấn đề thật sự khó hoặc vẫn chưa được giải quyết. Không retry vô hạn; effort cao không thay thế reproduction.
+- **Luna (default worker):** Ưu tiên cho task thông thường có contract, input/output và oracle rõ, như inventory, serialization, fixtures, UI, CLI, tests và tổng hợp evidence. Chọn `medium` hoặc `high` cho task đơn giản; sử dụng `xhigh` khi cần suy luận nhiều bước hoặc phân tích phức tạp. Chỉ sử dụng mức effort được runtime hỗ trợ.
+
+- **Terra (advanced worker):** Sử dụng khi task có bất định đáng kể về invariant, thay đổi xuyên module, debugging phức tạp hoặc review đòi hỏi phân tích sâu. Chọn effort theo độ khó và bằng chứng hiện có; không mặc định mức cao nhất.
+
+- **Sol (specialist worker/reviewer):** Chỉ cân nhắc cho task thật sự khó, chẳng hạn race condition khó tái hiện, lỗi kiến trúc xuyên module, hoặc bất đồng kỹ thuật chưa giải quyết được sau khi phân tích evidence. Không sử dụng chỉ vì task quan trọng hoặc dài.
+
+- **Main (orchestrator):** Giữ mục tiêu tổng thể, chốt public contracts, quản lý dependencies/environment, giải quyết interface conflicts, kiểm tra kết quả worker và cập nhật integration status. Main trực tiếp thực hiện task nhỏ khi chi phí delegation lớn hơn lợi ích. Main chịu trách nhiệm kiểm soát số workers, phạm vi và mức effort.
+
+- **Escalation policy:** Chỉ nâng Luna → Terra → Sol khi có lý do kỹ thuật cụ thể, chẳng hạn invariant chưa xác định, failure chưa giải quyết, hoặc vấn đề vượt phạm vi năng lực phù hợp của worker. Khi escalation, chuyển đầy đủ evidence, logs, reproduction, các giả thuyết đã kiểm tra và kết quả trước đó. Không yêu cầu model mới lặp lại toàn bộ công việc từ đầu nếu không cần thiết.
+
+- **Resource efficiency:** Không mặc định `xhigh` cho mọi worker. Không dispatch task quá nhỏ, không tạo reviewer cho mọi thay đổi và không nâng model chỉ vì test thất bại. Ưu tiên reproduction, targeted tests và phân tích nguyên nhân trước khi tăng effort.
+
+- **Fallback:** Nếu model hoặc effort được chọn không khả dụng, dùng phương án được phép và phù hợp với độ khó, đồng thời ghi nhận fallback. Không tự sử dụng model nằm ngoài allowlist hoặc model bị cấm.
 
 ## 3. Song song và ownership
 

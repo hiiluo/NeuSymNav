@@ -237,6 +237,24 @@ def test_proc_scan_discovers_child_spawned_by_non_main_thread():
         thread.join(1)
 
 
+def test_proc_census_tolerates_a_thread_that_exits_during_children_read(tmp_path,monkeypatch):
+    import shutil
+    write_process(tmp_path,10,1,100,2)
+    transient=tmp_path/'10/task/12';transient.mkdir()
+    (transient/'children').write_text('')
+    provider=ProcTreeProvider(root_pid=10,proc_root=tmp_path)
+    original=Path.open;removed=[]
+    def racing_open(path,*args,**kwargs):
+        if path==transient/'children' and not removed:
+            shutil.rmtree(transient);removed.append(True)
+            raise FileNotFoundError(path)
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'open',racing_open)
+    sample=provider()
+    assert sample.rss_bytes==2*1024 and sample.process_count==1
+    assert provider.diagnostics()['failed_attempts']==0
+
+
 def test_unrelated_proc_churn_does_not_invalidate_rooted_sample(tmp_path):
     write_process(tmp_path,10,1,100,2)
     (tmp_path/'99').mkdir()

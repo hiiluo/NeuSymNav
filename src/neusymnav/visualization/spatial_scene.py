@@ -1,9 +1,11 @@
 """Room/Floor anchors above measured objects and historical Z-up RGB-D."""
 import math
+from types import SimpleNamespace
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from .hierarchy_view import hierarchy_rows, hierarchy_links
+from .graph_visibility import GraphVisibility, select_visible_nodes
 
 
 class SpatialSceneWidget(QtWidgets.QWidget):
@@ -17,6 +19,9 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         self.envelope = None
         self.cloud = None
         self.selected = None
+        self.graph_visibility = GraphVisibility.for_preset('rooms_objects')
+        self.visible_graph = None
+        self.room_labels = {}
         self.show_retired = False
         self.height_filter_enabled = True
         self.height_min_m, self.height_max_m = 0., 2.20
@@ -51,6 +56,10 @@ class SpatialSceneWidget(QtWidgets.QWidget):
 
     def _build_nodes(self):
         if self.envelope is None:
+            return
+        hydra_graph = self.envelope.sources.hydra_graph
+        if hydra_graph is not None:
+            self._build_hydra_nodes(hydra_graph)
             return
         from ..regions.geometry import room_center, valid_ring
         envelope = self.envelope
@@ -152,6 +161,52 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         # Fit again when geometry/layers change; user orbit/zoom remain intact.
         self._center = None
 
+    def set_room_labels(self, labels):
+        """Display-only room-label text keyed by current Hydra room node ID."""
+        labels = dict(labels or {})
+        if labels == self.room_labels:
+            return
+        self.room_labels = labels
+        if self.envelope is not None and self.envelope.sources.hydra_graph is not None:
+            center = self._center
+            self._build_hydra_nodes(self.envelope.sources.hydra_graph)
+            self._center = center
+            self._invalidate()
+
+    def _build_hydra_nodes(self, graph):
+        """Use native Hydra XYZ and edges directly in the spatial view."""
+        kinds = {2: 'object', 3: 'place', 4: 'room', 5: 'building'}
+        visible_graph = select_visible_nodes(graph, self.graph_visibility, self.selected)
+        self.visible_graph = visible_graph
+        nodes = {}
+        for native in visible_graph.nodes:
+            kind = kinds.get(native.layer_id, f'layer_{native.layer_id}')
+            if native.position is None:
+                continue
+            position = np.asarray(native.position, dtype=np.float64)
+            if position.shape != (3,) or not np.isfinite(position).all():
+                continue
+            stale = graph.status != 'available'
+            label = (f'{native.name or kind.title()} · {native.native_id}'
+                     if native.layer_id != 3 or self.graph_visibility.show_place_labels else '')
+            if native.layer_id == 4 and native.node_id in self.room_labels:
+                label = f'{self.room_labels[native.node_id]} · {native.native_id}'
+            if stale:
+                label += ' · STALE'
+            row = SimpleNamespace(node_id=native.node_id, kind=kind,
+                                  status='available', stale=stale)
+            attrs = {'native_id': native.native_id, 'layer_id': native.layer_id}
+            nodes[native.node_id] = dict(position=position.copy(), row=row, label=label,
+                                         attrs=attrs, measured_position=position.copy(),
+                                         measured_bounds=None)
+        visible = set(nodes)
+        edges = tuple((edge.source, edge.target, edge.kind) for edge in visible_graph.edges
+                      if edge.source in visible and edge.target in visible)
+        self.nodes, self.edges = nodes, edges
+        self.polygons = self.source_polygons = ()
+        self.hidden_count, self.unassigned_count = visible_graph.counts.filtered_count, 0
+        self._center = None
+
     def set_cloud(self, cloud):
         if (cloud is None or self.envelope is None or cloud.episode_id != self._episode
                 or cloud.clock_domain != self.envelope.clock_domain): return
@@ -159,6 +214,16 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         first = self.cloud is None
         self.cloud = cloud
         if first: self._center = None
+        self._invalidate()
+
+    def set_graph_visibility(self, policy):
+        if not isinstance(policy, GraphVisibility):
+            raise TypeError('policy must be GraphVisibility')
+        if policy == self.graph_visibility:
+            return
+        self.graph_visibility = policy
+        if self.envelope is not None and self.envelope.sources.hydra_graph is not None:
+            self._build_hydra_nodes(self.envelope.sources.hydra_graph)
         self._invalidate()
 
     def select_object(self, node_id):
@@ -198,6 +263,8 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         return None
 
     def visible_cloud(self):
+        if not self.graph_visibility.show_point_cloud:
+            return np.empty((0,3),np.float32), np.empty((0,3),np.uint8)
         if self.cloud is None:
             return np.empty((0,3),np.float32), np.empty((0,3),np.uint8)
         options = (self.height_filter_enabled,self._floor_elevation(),self.height_min_m,self.height_max_m)
@@ -317,17 +384,19 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             painter.drawLine(self._screen_nodes[source],self._screen_nodes[target])
         label_rects=[]
         painter.setFont(QtGui.QFont('DejaVu Sans',9))
-        rank = {'floor':0, 'room':1, 'source_region':2, 'object':3}
+        rank = {'floor':0, 'building':1, 'room':2, 'place':3,
+                'source_region':4, 'object':5}
         ordered = sorted(self.nodes, key=lambda k:(rank.get(self.nodes[k]['row'].kind, 9), k != self.selected,k))
         for key in ordered:
             node=self.nodes[key];row=node['row'];pos=self._screen_nodes[key]
-            color = ('#69baff' if row.kind == 'room' else '#c084fc' if row.kind == 'source_region'
-                     else '#60beb1' if row.kind == 'floor' else '#efb451')
+            color = ('#69baff' if row.kind == 'room' else '#c084fc'
+                     if row.kind in {'source_region', 'building'}
+                     else '#60beb1' if row.kind in {'floor', 'place'} else '#efb451')
             if node['attrs'].get('lifecycle') == 'retired': color='#768294'
             pen=QtGui.QPen(QtGui.QColor('#ffffff' if key==self.selected else '#152437'),2 if key==self.selected else 1)
             if row.kind=='object' and row.status!='assigned': pen.setStyle(QtCore.Qt.DashLine)
             painter.setPen(pen);painter.setBrush(QtGui.QColor(color))
-            radius=7 if row.kind in {'room', 'source_region', 'floor'} or key==self.selected else 5
+            radius=7 if row.kind in {'room', 'source_region', 'floor', 'place', 'building'} or key==self.selected else 5
             painter.drawEllipse(pos,radius,radius)
             if key==self.selected:
                 bounds=np.asarray(node['attrs'].get('bounds',()),dtype=float)
@@ -357,18 +426,33 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             label_rects.append(rect)
         painter.restore()
         painter.setFont(QtGui.QFont('DejaVu Sans',9));painter.setPen(QtGui.QColor('#a6ccec'))
-        graph = 'Waiting for spatial graph' if self.envelope is None else f'Graph object r{self.envelope.hierarchy.object_revision} / map r{self.envelope.hierarchy.map_revision} · measured Objects / Room + Floor anchors'
+        if self.envelope is None:
+            graph = 'Waiting for spatial graph'
+        elif self.envelope.sources.hydra_graph is not None:
+            native = self.envelope.sources.hydra_graph
+            counts = '/'.join(f'L{layer}:{count}' for layer,count in sorted(native.node_counts.items()))
+            graph = f'Hydra native graph r{native.graph_revision} · {counts} · source-bound XYZ'
+            if native.status != 'available': graph += ' · STALE'
+        else:
+            graph = f'Graph object r{self.envelope.hierarchy.object_revision} / map r{self.envelope.hierarchy.map_revision} · measured Objects / Room + Floor anchors'
         painter.drawText(10,19,graph)
         if self.cloud is None:
             cloud='RGB-D cloud unavailable · waiting for committed source assets'
         else:
             age=max(0,self.now_ns-self.cloud.last_capture_ns)/1e9
             visible_count=len(self.visible_cloud()[0])
+            display_lag=''
+            graph=None if self.envelope is None else self.envelope.sources.hydra_graph
+            source=None if graph is None else graph.last_source
+            if source is not None and source.get('clock_domain')==self.cloud.clock_domain:
+                lag_ns=source.get('capture_monotonic_ns',self.cloud.last_capture_ns)-self.cloud.last_capture_ns
+                if type(lag_ns) is int and lag_ns>=0:
+                    display_lag=f' · cloud trails Hydra graph by {lag_ns/1e9:.1f}s'
             cut = ''
             if self.height_filter_enabled:
                 cut = (f' · cutaway {self.height_min_m:.2f}–{self.height_max_m:.2f}m above floor'
                        if self._floor_elevation() is not None else ' · cutaway unavailable: no floor datum')
-            cloud=f'{visible_count:,}/{len(self.cloud.points):,} visible points{cut} · historical RGB-D · latest input {self.cloud.last_source.sensor_id}:{self.cloud.last_source.frame_index} · input age {age:.1f}s (displayed points may be older)'
+            cloud=f'{visible_count:,}/{len(self.cloud.points):,} visible points{cut} · historical RGB-D · latest input {self.cloud.last_source.sensor_id}:{self.cloud.last_source.frame_index} · input age {age:.1f}s (displayed points may be older){display_lag}'
         if self.cloud_error: cloud+=' · cloud read unavailable'
         details=f'{cloud} · {self.unassigned_count} not assigned · {self.hidden_count} hidden/retired · left orbit / Shift-drag zoom / right pan / wheel zoom / double-click fit'
         painter.setPen(QtGui.QColor('#93a3b5'))
@@ -377,7 +461,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
 
     @staticmethod
     def tool_instructions():
-        return ('Teal: Floor; blue: Room; purple: Rebuild M5 region; gold: Object. '
+        return ('Hydra: gold Object, teal Place, blue Room, purple Building; legacy: teal Floor, blue Room, purple Rebuild M5 region, gold Object. '
                 'Objects and selected bounds retain measured XYZ in RGB-D. Room/Floor Z is a hierarchy display '
                 'layout, not physical height. Solid lines: assigned membership. Cyan dashed lines: structural region '
                 'connectivity, not a robot passage certificate. Unknown membership stays disconnected.')
@@ -398,7 +482,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         else:
             close=[(math.hypot(event.x()-p.x(),event.y()-p.y()),k) for k,p in self._screen_nodes.items()]
             if close and min(close)[0]<12:
-                key=min(close)[1];self.setToolTip(self.nodes[key]['row'].label+'\n'+key+'\n'+self.tool_instructions())
+                key=min(close)[1];self.setToolTip(self.nodes[key]['label']+'\n'+key+'\n'+self.tool_instructions())
 
     def mouseReleaseEvent(self,event):
         if event.button()==QtCore.Qt.LeftButton and not event.modifiers() & QtCore.Qt.ShiftModifier and self._press is not None and (event.pos()-self._press).manhattanLength()<4:
