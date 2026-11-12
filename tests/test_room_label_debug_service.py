@@ -1,9 +1,10 @@
 from dataclasses import replace
 from types import MappingProxyType
+from types import SimpleNamespace
 import threading,time
 import pytest
 from neusymnav.contracts.room_semantics import RoomLabelProposal
-from test_room_context import query,candidate
+from test_room_context import ROOM_ID,query,candidate
 from test_hydra_scene_graph_query import _taxonomy
 
 
@@ -28,6 +29,94 @@ class FakeBackend:
         return RoomLabelProposal(req.key.room_id,req.key.graph_revision,req.key.context_hash,'bathroom',(),('O(0)',),'proposed','toilet anchor','a'*64,'b'*64)
     def cancel(self):self.cancels+=1;self.release.set()
     def close(self,timeout_s=3):self.closed=True;self.release.set();return {'clean_shutdown':True}
+
+
+@pytest.mark.parametrize('has_view', [False, True])
+def test_visual_service_only_bypasses_empty_objects_with_admitted_room_view(has_view):
+    from neusymnav.rooms.service import RoomLabelDebugService
+
+    class VisualBackend(FakeBackend):
+        def infer(self, request, *, views):
+            self.calls.append(request)
+            return RoomLabelProposal(request.key.room_id, request.key.graph_revision,
+                request.key.context_hash, 'bathroom', (), (), 'proposed', None, 'a'*64, 'b'*64,
+                tuple(view.view_id for view in views))
+
+    def select(source, room_id):
+        assert source is snapshot
+        assert room_id == ROOM_ID
+        if not has_view:
+            return ()
+        view_id = ('f' if source.graph_revision == 11 else 'e') * 64
+        return (SimpleNamespace(view_id=view_id, manifest=lambda: {'view_id': view_id}),)
+
+    snapshot = graph()
+    metadata = dict(snapshot.native_metadata)
+    metadata['room_label_input'] = {**metadata['room_label_input'], 'semantic_labels': {}}
+    snapshot = replace(snapshot, native_metadata=metadata)
+    backend = VisualBackend()
+    service = RoomLabelDebugService(backend, _taxonomy(), debounce_s=0, room_view_selector=select)
+    try:
+        service.offer(snapshot)
+        wait(lambda: any(row.state in {'complete', 'error'} for row in service.records()))
+        record = service.records()[0]
+        assert record.result is not None, record.error
+        assert record.result.status == ('available' if has_view else 'insufficient_evidence')
+        assert len(backend.calls) == int(has_view)
+        assert record.result.supporting_view_ids == (('e'*64,) if has_view else ())
+        if has_view:
+            for revision in (10, 11):
+                metadata = dict(snapshot.native_metadata)
+                metadata['room_label_input'] = {**metadata['room_label_input'],
+                    'graph_revision': revision, 'snapshot_sha256': f'{revision:064x}'}
+                snapshot = replace(snapshot, graph_revision=revision, native_metadata=metadata)
+                service.offer(snapshot)
+                wait(lambda: any(row.state == 'complete' and row.job.request.key.graph_revision == revision
+                                 for row in service.records()))
+            assert [request.key.graph_revision for request in backend.calls] == [9, 11]
+            assert service.records()[0].result.supporting_view_ids == ('f'*64,)
+    finally:
+        assert service.close(2)['clean_shutdown']
+
+
+def test_vlm_label_survives_new_revisions_and_abstention_until_a_new_label():
+    from neusymnav.rooms.label_overlay import current_room_labels
+    from neusymnav.rooms.service import RoomLabelDebugService
+
+    class VisualBackend(FakeBackend):
+        def infer(self, request, *, views):
+            self.calls.append(request)
+            rev = request.key.graph_revision
+            label = {9: 'bathroom', 10: 'unknown', 11: 'hallway'}[rev]
+            known = label != 'unknown'
+            return RoomLabelProposal(request.key.room_id, rev, request.key.context_hash,
+                label, (), (), 'proposed' if known else 'unknown',
+                'model result', 'a'*64, 'b'*64, (views[0].view_id,) if known else ())
+
+    def select(source, room_id):
+        view_id = f'{source.graph_revision:064x}'
+        return (SimpleNamespace(view_id=view_id, manifest=lambda: {'view_id': view_id}),)
+
+    service = RoomLabelDebugService(VisualBackend(), _taxonomy(), debounce_s=0,
+                                    room_view_selector=select)
+    try:
+        for rev, label in ((9, 'bathroom'), (10, 'bathroom'), (11, 'hallway')):
+            source = graph(rev=rev)
+            service.offer(source)
+            if rev == 10:
+                assert current_room_labels((), source, backend='vlm',
+                    retained=service.retained_vlm_labels(source)) == {ROOM_ID: 'VLM bathroom'}
+            wait(lambda: any(r.state == 'complete' and r.job.request.key.graph_revision == rev
+                             for r in service.records()))
+            assert current_room_labels(service.records(), source, backend='vlm',
+                retained=service.retained_vlm_labels(source)) == {ROOM_ID: f'VLM {label}'}
+        new_run = graph(rev=12, run='new-run')
+        assert service.retained_vlm_labels(new_run) == {}
+        same_scope_without_room = replace(source, graph_revision=12, nodes=())
+        service.offer(same_scope_without_room)
+        assert service.retained_vlm_labels(source) == {}
+    finally:
+        assert service.close(2)['clean_shutdown']
 
 
 def test_source_builder_requires_exact_explicit_semantics_not_node_name():

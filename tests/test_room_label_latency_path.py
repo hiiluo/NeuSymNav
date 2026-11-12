@@ -160,3 +160,25 @@ def test_overlay_shows_only_exact_current_labels():
         assert current_room_labels(svc.records(), None) == {}
     finally:
         assert svc.close(2)['clean_shutdown']
+
+
+def test_vlm_overlay_keeps_backend_name_while_waiting_and_abstaining():
+    from dataclasses import replace
+
+    from neusymnav.contracts.room_semantics import RoomLabelResult
+    from neusymnav.rooms.debug_context import build_debug_jobs
+    from neusymnav.rooms.debug_types import RoomLabelDebugRecord
+    from neusymnav.rooms.label_overlay import current_room_labels
+
+    g1, g2 = graph(rev=1), graph(rev=2)
+    job = build_debug_jobs(g1, _taxonomy(), 0)[0]
+    key = job.request.key
+    running = RoomLabelDebugRecord(job, 'running')
+    result = RoomLabelResult(key.room_id, key.graph_revision, key.context_hash,
+                             'unknown', (), (), 'insufficient_evidence',
+                             'room_geometry_unavailable', None, None)
+    blocked = replace(running, state='complete', result=result)
+    assert current_room_labels((), g1, backend='vlm') == {key.room_id: 'VLM pending'}
+    assert current_room_labels((running,), g1, backend='vlm') == {key.room_id: 'VLM …'}
+    assert current_room_labels((blocked,), g1, backend='vlm') == {key.room_id: 'VLM unknown'}
+    assert current_room_labels((blocked,), g2, backend='vlm') == {key.room_id: 'VLM pending'}

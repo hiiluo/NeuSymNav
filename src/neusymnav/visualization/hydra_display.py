@@ -9,6 +9,7 @@ from ..contracts import GridState, HydraFrame, loads
 from ..mapping.occupancy import capsule_cells
 
 LOOKBACK_BYTES = 64 * 1024**2
+MAX_JOURNAL_LINE_BYTES = 64 * 1024**2
 
 
 def _cross_room_links(graph):
@@ -160,34 +161,54 @@ def object_crop(frame, label, bounds, other_bounds):
 
 
 def read_best_view(journal, graph, native_id):
-    """Search recent accepted RGB-D sources without loading the full journal."""
+    """Search recent accepted RGB-D first, then stream the earlier archive."""
     source = graph.last_source
     metadata = graph.native_metadata
     labels = metadata.get('room_label_input', {}).get('semantic_labels', {})
     boxes = metadata.get('object_bounds', {})
     label, bounds = labels.get(native_id), boxes.get(native_id)
-    if not source or label is None or bounds is None:
+    if (not source or label is None or bounds is None or graph.status != 'available'
+            or graph.stale or graph.replay_required):
         return None
     other_bounds = tuple(box for key, box in boxes.items()
                          if key != native_id and labels.get(key) == label
                          and np.all(np.asarray(box[0]) <= np.asarray(bounds[1]) + .06)
                          and np.all(np.asarray(box[1]) >= np.asarray(bounds[0]) - .06))
-    best = None
-    pending = None
     with journal.open('rb') as stream:
         end = stream.seek(0, 2)
         start = max(0, end - LOOKBACK_BYTES)
-        stream.seek(start)
         if start:
-            stream.readline(end - start)
-        while stream.tell() < end:
-            row = stream.readline(end - stream.tell())
-            if not row.endswith(b'\n'):
-                break
+            stream.seek(start - 1)
+            if stream.read(1) != b'\n':
+                stream.readline(min(end - start, MAX_JOURNAL_LINE_BYTES))
+            start = stream.tell()
+        best = _search_object_views(stream, start, end, end, graph, label, bounds, other_bounds)
+        if best is None and start:
+            # Include the acceptance record for a frame whose start precedes the
+            # cutoff, even if its acceptance falls inside the recent window.
+            best = _search_object_views(stream, 0, end, start, graph, label, bounds, other_bounds)
+    return best
+
+
+def _search_object_views(stream, start, end, latest_start, graph, label, bounds, other_bounds):
+    best = None
+    pending = None
+    source = graph.last_source
+    expected_calibration = ((graph.native_metadata.get('last_transform') or {}).get('calibration_hash')
+                            or source.get('calibration_hash'))
+    world_epoch = graph.native_metadata.get('graph_world_epoch')
+    stream.seek(start)
+    while (offset := stream.tell()) < end:
+        row = stream.readline(min(end - offset, MAX_JOURNAL_LINE_BYTES))
+        if not row.endswith(b'\n'):
+            break
+        try:
             event = json.loads(row)
             if event.get('run_id') != graph.run_id:
                 continue
             if event.get('event') == 'started':
+                if offset >= latest_start:
+                    break
                 pending = event
                 continue
             if (event.get('event') != 'accepted' or event.get('accepted') is not True
@@ -196,7 +217,8 @@ def read_best_view(journal, graph, native_id):
             accepted_source = event['source']
             revision = event['graph_revision']
             started, pending = pending, None
-            if (revision > graph.graph_revision
+            if (type(revision) is not int or not 0 <= revision <= graph.graph_revision
+                    or (world_epoch is not None and accepted_source.get('world_epoch') != world_epoch)
                     or any(accepted_source.get(field) != source.get(field)
                            for field in ('episode_id', 'sensor_id', 'clock_domain', 'labelspace_hash', 'vocabulary_id'))):
                 continue
@@ -210,9 +232,14 @@ def read_best_view(journal, graph, native_id):
                     or frame.capture_monotonic_ns != accepted_source['capture_monotonic_ns']
                     or frame.clock_domain != accepted_source['clock_domain']
                     or frame.labelspace_hash != accepted_source['labelspace_hash']
-                    or frame.source_geometry_hash != accepted_source['source_geometry_hash']):
+                    or frame.source_geometry_hash != accepted_source['source_geometry_hash']
+                    or (expected_calibration is not None and frame.calibration_hash != expected_calibration)
+                    or (accepted_source.get('calibration_hash') is not None
+                        and frame.calibration_hash != accepted_source['calibration_hash'])):
                 continue
-            match = object_crop(frame, label, bounds, other_bounds)
-            if match is not None and (best is None or match[0] >= best[0]):
-                best = (*match, frame.source_key.frame_index, revision)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+        match = object_crop(frame, label, bounds, other_bounds)
+        if match is not None and (best is None or match[0] >= best[0]):
+            best = (*match, frame.source_key.frame_index, revision)
     return best

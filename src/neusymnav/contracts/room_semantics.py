@@ -1,4 +1,4 @@
-"""Versioned text-only room label overlay; never owns geometry or room IDs."""
+"""Versioned room label overlay; never owns geometry or room IDs."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,6 +22,7 @@ class RoomLabelProposal(Contract):
     reason: str | None
     model_sha256: str | None
     prompt_sha256: str | None
+    supporting_view_ids: tuple[str, ...] = ()
 
     def __post_init__(self):
         text(self.room_id, 'room_id')
@@ -34,6 +35,10 @@ class RoomLabelProposal(Contract):
         object.__setattr__(self, 'alternatives', alternatives)
         object.__setattr__(self, 'supporting_object_ids',
                            string_tuple(self.supporting_object_ids, 'supporting_object_ids'))
+        views = string_tuple(self.supporting_view_ids, 'supporting_view_ids')
+        for view in views:
+            digest(view, 'supporting_view_id')
+        object.__setattr__(self, 'supporting_view_ids', views)
         choice(self.status, {'proposed', 'unknown', 'insufficient_evidence', 'unavailable',
                              'timeout', 'invalid_output'}, 'status')
         if self.reason is not None:
@@ -61,6 +66,7 @@ class RoomLabelResult(Contract):
     reason: str | None
     model_sha256: str | None
     prompt_sha256: str | None
+    supporting_view_ids: tuple[str, ...] = ()
 
     def __post_init__(self):
         text(self.room_id, 'room_id')
@@ -73,6 +79,10 @@ class RoomLabelResult(Contract):
         object.__setattr__(self, 'alternatives', alternatives)
         object.__setattr__(self, 'supporting_object_ids', string_tuple(
             self.supporting_object_ids, 'supporting_object_ids'))
+        views = string_tuple(self.supporting_view_ids, 'supporting_view_ids')
+        for view in views:
+            digest(view, 'supporting_view_id')
+        object.__setattr__(self, 'supporting_view_ids', views)
         choice(self.status, {'available', 'unknown', 'insufficient_evidence', 'unavailable',
                              'timeout', 'stale', 'invalid'}, 'status')
         if self.reason is not None:
@@ -83,8 +93,8 @@ class RoomLabelResult(Contract):
             digest(self.model_sha256, 'model_sha256'); digest(self.prompt_sha256, 'prompt_sha256')
 
 
-def validate_room_label(proposal, context) -> RoomLabelResult:
-    """Validate output against current room/context; stale results never attach."""
+def validate_room_label(proposal, context, *, allowed_view_ids=()) -> RoomLabelResult:
+    """Validate against the current room and the exact images sent to inference."""
     from ..rooms.context import RoomContext
     if not isinstance(context, RoomContext):
         raise TypeError('context must be RoomContext')
@@ -92,7 +102,7 @@ def validate_room_label(proposal, context) -> RoomLabelResult:
               'supporting_object_ids', 'status', 'reason', 'model_sha256', 'prompt_sha256')
     if isinstance(proposal, dict):
         try:
-            if set(proposal) != set(fields):
+            if set(proposal) - {'supporting_view_ids'} != set(fields):
                 raise ValueError('proposal fields mismatch')
             proposal = RoomLabelProposal(**proposal)
         except (TypeError, ValueError) as exc:
@@ -112,13 +122,20 @@ def validate_room_label(proposal, context) -> RoomLabelResult:
         return RoomLabelResult(context.room_id, context.geometry_revision,
             context.input_evidence_hash, 'unknown', (), (), 'invalid',
             'supporting_object_not_in_context', proposal.model_sha256, proposal.prompt_sha256)
+    if not set(proposal.supporting_view_ids) <= set(allowed_view_ids):
+        return RoomLabelResult(context.room_id, context.geometry_revision,
+            context.input_evidence_hash, 'unknown', (), (), 'invalid',
+            'supporting_view_not_in_request', proposal.model_sha256, proposal.prompt_sha256)
+    has_visual_support = bool(proposal.supporting_view_ids)
     if proposal.status == 'proposed' and (
-            context.geometry_status != 'available' or not context.objects or context.truncated):
+            context.geometry_status != 'available' or context.truncated
+            or (not context.objects and not has_visual_support)
+            or (has_visual_support and any(item.membership_status != 'assigned' for item in context.objects))):
         return RoomLabelResult(context.room_id, context.geometry_revision,
             context.input_evidence_hash, 'unknown', (), (), 'insufficient_evidence',
             'room_geometry_or_object_context_unavailable_or_truncated', proposal.model_sha256,
             proposal.prompt_sha256)
-    if proposal.status == 'proposed' and not proposal.supporting_object_ids:
+    if proposal.status == 'proposed' and not (proposal.supporting_object_ids or has_visual_support):
         return RoomLabelResult(context.room_id, context.geometry_revision,
             context.input_evidence_hash, 'unknown', (), (), 'invalid',
             'proposed_label_requires_assigned_support', proposal.model_sha256,
@@ -131,7 +148,8 @@ def validate_room_label(proposal, context) -> RoomLabelResult:
                 'supporting_object_membership_not_assigned', proposal.model_sha256,
                 proposal.prompt_sha256)
     if proposal.status in {'unknown', 'insufficient_evidence'} and (
-            proposal.label != 'unknown' or proposal.alternatives or proposal.supporting_object_ids):
+            proposal.label != 'unknown' or proposal.alternatives or proposal.supporting_object_ids
+            or has_visual_support):
         return RoomLabelResult(context.room_id, context.geometry_revision,
             context.input_evidence_hash, 'unknown', (), (), 'invalid',
             'abstention_must_be_unknown_without_claims', proposal.model_sha256,
@@ -145,4 +163,4 @@ def validate_room_label(proposal, context) -> RoomLabelResult:
     return RoomLabelResult(proposal.room_id, proposal.geometry_revision,
         proposal.input_evidence_hash, proposal.label, proposal.alternatives,
         proposal.supporting_object_ids, status, proposal.reason,
-        proposal.model_sha256, proposal.prompt_sha256)
+        proposal.model_sha256, proposal.prompt_sha256, proposal.supporting_view_ids)

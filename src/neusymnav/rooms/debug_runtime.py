@@ -34,6 +34,18 @@ def create_debug_service(options,*,artifact_root=None):
         data=json.loads(Path(options['taxonomy_path']).read_text())
         if data.get('schema_version')!=1:raise ValueError('unsupported debug taxonomy')
         taxonomy=Taxonomy(data['vocabulary_id'],tuple(data['categories']),data.get('aliases',{}),data['provenance'])
+        if config.mmproj_path or config.mmproj_sha256:
+            if artifact_root is None:
+                raise ValueError('room VLM needs the run artifact directory')
+            from .room_views import select_room_views
+            from .vlm_backend import RoomVlmBackend
+            journal = Path(artifact_root).parent.parent / 'hydra' / 'journal.jsonl'
+
+            def room_view_selector(graph, room_id):
+                return select_room_views(journal, graph, room_id, method='kss', limit=2)
+
+            return RoomLabelDebugService(RoomVlmBackend(config), taxonomy,
+                artifact_root=artifact_root, room_view_selector=room_view_selector)
         from .persistent_backend import PersistentRoomLabelBackend
         return RoomLabelDebugService(PersistentRoomLabelBackend(config),taxonomy,artifact_root=artifact_root)
     except Exception as exc:return UnavailableRoomLabelService(f'{type(exc).__name__}: {exc}')

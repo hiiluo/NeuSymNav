@@ -1031,16 +1031,20 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self._room_label_tab_changed()
 
     def _apply_room_labels(self, hydra_graph):
-        """Show exact-revision SLM labels on room nodes; display only."""
+        """Show semantic labels on room nodes."""
         if self._room_label_service is None or getattr(self, '_room_label_graph', None) is not hydra_graph:
             return
         try:
             from ..rooms.label_overlay import current_room_labels
-            version = self._room_label_service.status().get('version')
+            status = self._room_label_service.status()
+            version = status.get('version')
             key = (id(hydra_graph), version)
             if version is not None and key == self._room_label_display_key:
                 return
-            labels = current_room_labels(self._room_label_service.records(), hydra_graph)
+            retained_labels = getattr(self._room_label_service, 'retained_vlm_labels', None)
+            labels = current_room_labels(self._room_label_service.records(), hydra_graph,
+                backend=status.get('label_backend'),
+                retained=retained_labels(hydra_graph) if callable(retained_labels) else None)
             self._room_label_display_key = key
         except Exception:
             labels = {}
@@ -1568,12 +1572,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 _, pixels, frame_index, revision = result
                 self.best_view.setPixmap(QtGui.QPixmap.fromImage(_qimage_rgb(pixels)).scaled(
                     self.best_view.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
-                self.best_view_caption.setText(f'Best recent view · frame {frame_index} · accepted at Hydra r{revision}')
+                self.best_view_caption.setText(f'Best matched view · frame {frame_index} · accepted at Hydra r{revision}')
             else:
                 pending = any(work is not None and work[0] == node.node_id
                               for work in (self._object_future, self._object_request))
-                self.best_view.setText('Searching recent RGB-D frames…' if pending else
-                                       'No matching recent RGB-D view' if node.layer_id == 2 else 'Select an object')
+                self.best_view.setText('Searching recorded RGB-D frames…' if pending else
+                                       'No verified RGB-D crop for this object' if node.layer_id == 2 else 'Select an object')
                 self.best_view_caption.clear()
             source=graph.last_source or {};transform=graph.native_metadata.get('last_transform') or {}
             lines=[f'Native node: {node.native_id}',f'Layer: {node.layer_id}',f'Name: {node.name or "unknown"}',

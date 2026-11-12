@@ -80,9 +80,10 @@ class PersistentRoomLabelBackend:
         if closed:
             result = self._failure(request, 'unavailable', 'room_label_backend_closed')
             return self._finish(result, metrics, started_ns)
-        if request.inference_block_reason:
+        block_reason = self._inference_block_reason(request)
+        if block_reason:
             result = self._failure(request, 'insufficient_evidence',
-                request.inference_block_reason)
+                block_reason)
             return self._finish(result, metrics, started_ns)
         if not self.config.enabled:
             result = self._failure(request, 'unavailable', 'model_runtime_disabled')
@@ -137,6 +138,9 @@ class PersistentRoomLabelBackend:
         finally:
             self._infer_lock.release()
         return self._finish(result, metrics, started_ns, process=process)
+
+    def _inference_block_reason(self, request):
+        return request.inference_block_reason
 
     def warm(self) -> dict:
         """Start the server and prefill the static compact prefix once.
@@ -326,6 +330,8 @@ class PersistentRoomLabelBackend:
             '--threads-batch', str(self.config.effective_threads), '--ctx-size',
             str(self.config.context_tokens), '--parallel', '1', *self.config.offload_args,
             '--no-webui', '--chat-template-kwargs', '{"enable_thinking":false}']
+        if 'mmproj' in assets:
+            command.extend(['--mmproj', str(assets['mmproj'])])
         env = dict(os.environ)
         env['HF_HUB_OFFLINE'] = '1'
         self._check_active(generation, deadline)
@@ -442,9 +448,12 @@ class PersistentRoomLabelBackend:
         config = self.config
         assets = {}
         signatures = {}
-        for label, path_value, expected in (
+        entries = [
                 ('model', config.model_path, config.model_sha256),
-                ('runtime', config.runtime_binary_path, config.runtime_sha256)):
+                ('runtime', config.runtime_binary_path, config.runtime_sha256)]
+        if config.mmproj_path is not None or config.mmproj_sha256 is not None:
+            entries.append(('mmproj', config.mmproj_path, config.mmproj_sha256))
+        for label, path_value, expected in entries:
             if not path_value or not expected:
                 raise _BackendUnavailable(f'{label}_asset_not_configured')
             path = Path(path_value)
@@ -486,9 +495,10 @@ class PersistentRoomLabelBackend:
     def _asset_signature_changes(self, signatures):
         if not isinstance(signatures, dict):
             return 'model'
-        for label in ('model', 'runtime'):
-            path_value = (self.config.model_path if label == 'model'
-                else self.config.runtime_binary_path)
+        paths = {'model': self.config.model_path, 'runtime': self.config.runtime_binary_path}
+        if self.config.mmproj_path is not None or self.config.mmproj_sha256 is not None:
+            paths['mmproj'] = self.config.mmproj_path
+        for label, path_value in paths.items():
             if not path_value:
                 return label
             try:

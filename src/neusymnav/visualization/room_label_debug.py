@@ -49,6 +49,7 @@ def _result_signature(record: RoomLabelDebugRecord) -> tuple | None:
         return None
     return (result.room_id, result.geometry_revision, result.input_evidence_hash,
             result.label, tuple(result.alternatives), tuple(result.supporting_object_ids),
+            tuple(result.supporting_view_ids),
             result.status, result.reason, result.model_sha256, result.prompt_sha256)
 
 
@@ -534,6 +535,7 @@ class RoomLabelDebugWidget(QtWidgets.QWidget):
             lines.extend([
                 f'reason: {result.reason or "none"}',
                 f'alternatives: {", ".join(result.alternatives) if result.alternatives else "none"}',
+                f'supporting_view_ids: {", ".join(result.supporting_view_ids) or "none"}',
             ])
         lines.append('supporting_object_ids:')
         supports = () if result is None else result.supporting_object_ids

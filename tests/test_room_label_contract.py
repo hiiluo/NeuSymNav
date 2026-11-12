@@ -66,6 +66,27 @@ def test_proposed_label_requires_nonempty_support_from_assigned_members():
     assert result.reason == 'proposed_label_requires_assigned_support'
 
 
+def test_visual_support_requires_exact_admitted_images_and_current_geometry():
+    view_id = 'e' * 64
+    empty = context(objects=[])
+    visual = proposal(empty, supporting_object_ids=(), supporting_view_ids=(view_id,))
+    assert validate_room_label(visual, empty).status == 'invalid'
+    result = validate_room_label(visual, empty, allowed_view_ids=(view_id,))
+    assert result.status == 'available'
+    assert result.supporting_view_ids == (view_id,)
+    assert not result.supporting_object_ids
+    unavailable = context(objects=[], geometry_status='unavailable')
+    assert validate_room_label(visual, unavailable, allowed_view_ids=(view_id,)).status == 'insufficient_evidence'
+    assert validate_room_label(visual, context(objects=[], geometry_revision=6),
+                               allowed_view_ids=(view_id,)).status == 'stale'
+
+
+def test_legacy_room_label_wire_without_view_ids_decodes():
+    legacy = proposal(context()).to_dict()
+    legacy['payload']['fields'].pop('supporting_view_ids', None)
+    assert RoomLabelProposal.from_dict(legacy).supporting_view_ids == ()
+
+
 def test_proposed_label_cannot_use_ambiguous_membership_as_support():
     row = RoomObjectContext('O(1)', 'chair', 3, 'ambiguous', 'not_recorded', 0, ())
     ctx = RoomContext('ep','run','R(0)',5,'a'*64,'available','ambiguous','b'*64,

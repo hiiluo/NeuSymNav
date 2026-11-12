@@ -37,7 +37,10 @@ def _decode(value):
         if cls is None or not isinstance(value['fields'], dict):
             raise ValueError('unknown contract type')
         names = {f.name for f in fields(cls)}
-        if set(value['fields']) != names:
+        actual = set(value['fields'])
+        legacy_room_label = (value['type'] in {'RoomLabelProposal', 'RoomLabelResult'}
+                             and actual == names - {'supporting_view_ids'})
+        if actual != names and not legacy_room_label:
             raise ValueError('contract fields do not match schema')
         return cls(**{k: _decode(v) for k, v in value['fields'].items()})
     if set(value) == {'ndarray'}:

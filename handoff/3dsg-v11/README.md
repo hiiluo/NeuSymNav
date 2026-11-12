@@ -62,6 +62,36 @@ Với máy không có GPU, dùng profile CPU và cài Habitat headless với Mes
 
 Để bật Qwen trên GPU, build `llama-server` từ commit llama.cpp đã ghim vào thư mục riêng với `-DGGML_VULKAN=ON`. Kiểm tra `llama-server --list-devices` để xác nhận `Vulkan0` là GPU muốn dùng. Chạy lại installer với các tham số đã dùng, thêm `--slm-vulkan-runtime /đường/dẫn/llama-server`. Installer ghim hash cho runtime Vulkan và ghi cấu hình SLM riêng cho profile CUDA.
 
+### Gán nhãn phòng bằng Qwen3-VL
+
+Profile VLM dùng Qwen3-VL-2B-Instruct GGUF và projector tương ứng. File cấu
+hình gán nhãn phòng ghim `mmproj_path` và `mmproj_sha256` cùng model và runtime
+như cấu hình SLM. Có projector thì UI dùng Qwen3-VL, tự chọn tối đa hai ảnh
+RGB từ các frame Hydra đã chấp nhận. Ảnh phải có đủ depth quy được về phòng,
+và nhãn có thể dựa vào ảnh khi danh sách vật thể còn trống.
+
+Ví dụ chạy profile local đã chuẩn bị cho 00770 từ thư mục gốc. Chọn hậu tố
+`cpu` hoặc `gpu` theo profile mong muốn.
+
+```bash
+NEUSYMNAV_HYDRA_DEMO_CONFIG="$PWD/configs/demo-00770.hydra-vlm.gpu.local.json" \
+  bash tools/run_hydra_map_demo.sh 00770 300
+```
+
+Chạy đối chiếu ba cách cấp bằng chứng trên một run đã có `ui/publication.json`
+và `hydra/journal.jsonl`.
+
+```bash
+.venv/bin/python tools/evaluate_room_vlm.py \
+  --run runs/<recorded-run> \
+  --config configs/room-label-vlm.cpu.local.json \
+  --out-dir runs/<evaluation-output>
+```
+
+Benchmark dùng chung model và độ phân giải ảnh, lưu JPEG chính xác đã gửi
+cùng nhãn, thời gian và provenance. Có thể truyền `--reference-json` với nhãn
+đánh giá theo room ID đầy đủ. Nhãn đánh giá chỉ dùng để chấm kết quả.
+
 ```bash
 # CPU
 NEUSYMNAV_HYDRA_DEMO_CONFIG="$PWD/configs/demo-00806.hydra-tour-slm.experimental.local.json" \

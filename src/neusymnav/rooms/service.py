@@ -1,4 +1,4 @@
-"""UI-process-only asynchronous SLM orchestration; control never waits here."""
+"""UI-process-only asynchronous room labeling."""
 from collections import OrderedDict
 from dataclasses import replace,fields,is_dataclass
 from pathlib import Path
@@ -17,11 +17,11 @@ _CACHEABLE_RESULTS=frozenset({'available','unknown','insufficient_evidence'})
 
 
 def semantic_key(request):
-    """Identity of what the model actually saw for one room.
+    """Identity of the text evidence for one room.
 
     Hydra's display snapshot hash changes whenever any node anywhere moves, so
     it cannot decide whether a room needs a new label. The model input is only
-    this room's object rows, so equal rows give an equal question.
+    this room's object rows. The visual path adds its ordered image IDs.
     """
     k=request.key;c=request.context
     return (k.episode_id,k.run_id,k.world_epoch,k.room_id,c.geometry_status,c.truncated,
@@ -43,16 +43,20 @@ def _identity(g):
 
 
 class RoomLabelDebugService:
-    def __init__(self,backend,taxonomy,*,artifact_root=None,now_ns=time.monotonic_ns,debounce_s=3.):
+    def __init__(self,backend,taxonomy,*,artifact_root=None,now_ns=time.monotonic_ns,
+                 debounce_s=3.,room_view_selector=None):
         if not 0<=debounce_s<=60:raise ValueError('invalid debug debounce')
         self.backend=backend;self.taxonomy=taxonomy;self._now=now_ns;self._debounce_ns=int(debounce_s*1e9)
+        self._room_view_selector = room_view_selector
         self._cv=threading.Condition();self._latest=None;self._offered_ns=0;self._closed=False
         self._generation=0;self._processed=None;self._pending=OrderedDict();self._history=OrderedDict();self._history_bytes=0
         self._active=None;self._infer_thread=None;self._finished=None;self._last_room='';self._dispatch_times={}
         self._scope=None;self._reset=False;self._version=0
         self._semantic=OrderedDict();self._reuse_index={};self._last_write_ns=None
+        self._last_vlm_labels = {}
         self._status={'offered_graphs':0,'coalesced_graphs':0,'completed':0,'cancelled':0,'evicted':0,'error':None,'experimental':True,
-            'semantic_cache_hits':0,'model_inferences':0,'warmup':None}
+            'semantic_cache_hits':0,'model_inferences':0,'warmup':None,
+            'label_backend':'vlm' if room_view_selector is not None else 'slm'}
         self._root=None if artifact_root is None else Path(artifact_root)
         if self._root:self._root.mkdir(parents=True,exist_ok=True)
         self._worker=threading.Thread(target=self._run,name='room-label-debug-manager',daemon=True);self._worker.start()
@@ -81,7 +85,12 @@ class RoomLabelDebugService:
             if scope!=self._scope:
                 self._generation+=1;self._reset=self._reset or self._scope is not None or self._active is not None;self._processed=None;self._pending.clear();self._history.clear();self._history_bytes=0;self._dispatch_times.clear();self._last_room=''
                 self._semantic.clear();self._reuse_index.clear()
+                self._last_vlm_labels.clear()
                 self._scope=scope
+            if self._last_vlm_labels and graph.status == 'available' and not graph.stale and not graph.replay_required:
+                room_ids = {node.node_id for node in graph.nodes if node.layer_id == 4}
+                self._last_vlm_labels = {room: label for room, label in self._last_vlm_labels.items()
+                                         if room in room_ids}
             self._status['coalesced_graphs']+=len(self._pending);self._pending.clear();self._processed=None
             self._latest=graph;self._offered_ns=self._now();self._status['offered_graphs']+=1;self._version+=1;self._cv.notify_all()
             return True
@@ -96,6 +105,17 @@ class RoomLabelDebugService:
     def status(self):
         with self._cv:return {**self._status,'pending':len(self._pending),'in_flight':int(self._active is not None),'history':len(self._history),'history_bytes':self._history_bytes,'version':self._version,'closed':self._closed,'world_epoch':None if self._latest is None else self._latest.native_metadata.get('graph_world_epoch')}
 
+    def retained_vlm_labels(self, graph):
+        """Return previously classified labels for display within the current graph scope."""
+        if graph is None:
+            return {}
+        scope = (graph.episode_id, graph.run_id, graph.native_metadata.get('graph_world_epoch'))
+        with self._cv:
+            if scope != self._scope:
+                return {}
+            return {room: label for room, label in self._last_vlm_labels.items()
+                    if label.geometry_revision <= graph.graph_revision}
+
     def _append(self,record):
         size=len(json.dumps(_plain(record),ensure_ascii=True,separators=(',',':')).encode())
         if size>MAX_RECORD_BYTES:self._status['error']='source record exceeds debug byte cap';self._status['evicted']+=1;return
@@ -106,11 +126,48 @@ class RoomLabelDebugService:
             _,(_,oldsize)=self._history.popitem(last=False);self._history_bytes-=oldsize;self._status['evicted']+=1
         self._version+=1
 
-    def _infer(self,record,generation):
+    def _infer(self,record,generation,source_graph):
         try:
-            proposal=self.backend.infer(record.job.request)
-            result=validate_room_label(proposal,record.job.request.context)
-            metrics=dict(getattr(self.backend,'last_metrics',{}))
+            request = record.job.request
+            views = ()
+            if self._room_view_selector is None:
+                proposal = self.backend.infer(request)
+                metrics = dict(getattr(self.backend, 'last_metrics', {}))
+            else:
+                started = self._now()
+                views = self._room_view_selector(source_graph, request.key.room_id)
+                selection_ms = (self._now() - started) / 1e6
+                key = (*semantic_key(request), tuple(view.view_id for view in views))
+                with self._cv:
+                    if self._closed or generation != self._generation:
+                        if not self._closed:
+                            self._finished = (record, generation)
+                            self._cv.notify_all()
+                        return
+                    cached = self._semantic.get(key)
+                if cached is not None:
+                    source, source_id, source_revision = cached
+                    status = 'proposed' if source.status == 'available' else source.status
+                    proposal = RoomLabelProposal(request.key.room_id, request.key.graph_revision,
+                        request.key.context_hash, source.label, source.alternatives,
+                        source.supporting_object_ids, status, source.reason, source.model_sha256,
+                        source.prompt_sha256, source.supporting_view_ids)
+                    metrics = {'semantic_cache': 'hit', 'reused_from_request_id': source_id,
+                               'reused_from_revision': source_revision, 'model_called': False}
+                elif not views and (request.inference_block_reason
+                                  or record.evidence_quality['only_generic_objects']):
+                    reason = request.inference_block_reason or 'non_discriminating_object_context'
+                    proposal = RoomLabelProposal(request.key.room_id, request.key.graph_revision,
+                        request.key.context_hash, 'unknown', (), (), 'insufficient_evidence', reason, None, None)
+                    metrics = {'model_called': False}
+                else:
+                    proposal = self.backend.infer(request, views=views)
+                    metrics = dict(getattr(self.backend, 'last_metrics', {}))
+                    metrics['model_called'] = True
+                metrics.update(label_backend='vlm', room_view_selection_ms=selection_ms,
+                               room_views=[view.manifest() for view in views])
+            result = validate_room_label(proposal, request.context,
+                                         allowed_view_ids=tuple(view.view_id for view in views))
             completed=replace(record,state='complete',result=result,completed_ns=self._now(),backend_metrics=metrics)
         except Exception as exc:
             completed=replace(record,state='error',completed_ns=self._now(),error=f'{type(exc).__name__}: {exc}'[:512])
@@ -122,6 +179,19 @@ class RoomLabelDebugService:
         result=record.result
         if result is None or result.status not in _CACHEABLE_RESULTS or result.model_sha256 is None:return
         key=semantic_key(record.job.request)
+        if self._room_view_selector is not None:
+            # A cached answer for old evidence must not replace a later model result.
+            if record.backend_metrics.get('semantic_cache') == 'hit':
+                return
+            graph = self._latest
+            previous = self._last_vlm_labels.get(result.room_id)
+            if (result.status == 'available' and graph is not None
+                    and result.geometry_revision <= graph.graph_revision
+                    and (previous is None or result.geometry_revision >= previous.geometry_revision)
+                    and any(node.layer_id == 4 and node.node_id == result.room_id for node in graph.nodes)):
+                self._last_vlm_labels[result.room_id] = result
+            views = record.backend_metrics.get('room_views', ())
+            key = (*key, tuple(view['view_id'] for view in views))
         self._semantic[key]=(result,record.job.request.request_id,record.job.request.key.graph_revision)
         self._semantic.move_to_end(key)
         while len(self._semantic)>MAX_SEMANTIC_CACHE:self._semantic.popitem(last=False)
@@ -169,7 +239,9 @@ class RoomLabelDebugService:
                 if self._finished is not None:
                     record,oldgen=self._finished;self._finished=None;self._active=None
                     if oldgen==gen:
-                        self._append(record);self._status['completed']+=1;self._status['model_inferences']+=1
+                        self._append(record);self._status['completed']+=1
+                        self._status['model_inferences'] += int(record.backend_metrics.get('model_called', True))
+                        self._status['semantic_cache_hits'] += int(record.backend_metrics.get('semantic_cache') == 'hit')
                         self._remember(record)
                     else:self._status['cancelled']+=1
                 active=self._active
@@ -199,16 +271,20 @@ class RoomLabelDebugService:
                     key=next((k for k in eligible if k>self._last_room),eligible[0]);job=self._pending.pop(key)
                     stamp=self._now();self._last_room=key;self._dispatch_times[key]=stamp;gen=self._generation
                     quality=assess_evidence_quality(job.request.context)
-                    record=RoomLabelDebugRecord(job,'running',started_ns=stamp,evidence_quality=quality)
+                    record=RoomLabelDebugRecord(job,'running',started_ns=stamp,evidence_quality=quality,
+                        backend_metrics={'label_backend':self._status['label_backend']})
                     blocked=job.request.inference_block_reason
-                    if quality['only_generic_objects']:blocked='non_discriminating_object_context'
+                    if self._room_view_selector is not None and blocked == 'no_semantic_objects':
+                        blocked = None
+                    if self._room_view_selector is None and quality['only_generic_objects']:
+                        blocked='non_discriminating_object_context'
                     if blocked:
                         q=job.request;proposal=RoomLabelProposal(q.key.room_id,q.key.graph_revision,q.key.context_hash,'unknown',(),(),'insufficient_evidence',blocked,None,None)
                         self._append(replace(record,state='complete',completed_ns=self._now(),result=validate_room_label(proposal,q.context)))
                         self._status['completed']+=1
                     else:
                         self._active=(record,gen);self._version+=1
-                        self._infer_thread=threading.Thread(target=self._infer,args=(record,gen),name='room-label-debug-infer',daemon=True);self._infer_thread.start()
+                        self._infer_thread=threading.Thread(target=self._infer,args=(record,gen,graph),name='room-label-debug-infer',daemon=True);self._infer_thread.start()
                 version=self._version
             now=self._now()
             if version!=written and (self._last_write_ns is None or now-self._last_write_ns>=WRITE_INTERVAL_NS):

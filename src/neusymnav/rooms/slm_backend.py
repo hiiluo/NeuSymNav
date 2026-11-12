@@ -60,17 +60,19 @@ class RoomSlmBackendConfig:
     # reproducibility; compact-v2 is the low-latency live policy.
     prompt_policy: str = 'json-v1'
     gpu_device: str | None = None
+    mmproj_path: str | None = None
+    mmproj_sha256: str | None = None
 
     def __post_init__(self):
         if type(self.enabled) is not bool:
             raise ValueError('enabled must be bool')
         text(self.model_id, 'model_id')
         for name in ('model_revision', 'model_path', 'model_license', 'runtime_binary_path',
-                     'runtime_commit'):
+                     'runtime_commit', 'mmproj_path'):
             value = getattr(self, name)
             if value is not None:
                 text(value, name)
-        for name in ('model_sha256', 'runtime_sha256', 'tokenizer_sha256', 'chat_template_sha256'):
+        for name in ('model_sha256', 'runtime_sha256', 'tokenizer_sha256', 'chat_template_sha256', 'mmproj_sha256'):
             value = getattr(self, name)
             if value is not None:
                 digest(value, name)
@@ -132,6 +134,9 @@ class RoomSlmBackendConfig:
         payload = {item.name: getattr(self, item.name) for item in fields(self)}
         if self.gpu_device is None:
             del payload['gpu_device']
+        if self.mmproj_path is None and self.mmproj_sha256 is None:
+            del payload['mmproj_path']
+            del payload['mmproj_sha256']
         if payload['cpu_affinity'] is not None:
             payload['cpu_affinity'] = list(payload['cpu_affinity'])
         encoded = json.dumps(payload, sort_keys=True, separators=(',', ':'))

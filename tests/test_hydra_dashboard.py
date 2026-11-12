@@ -39,6 +39,26 @@ def test_object_crop_excludes_equal_class_pixels_outside_native_bounds():
                        (((0, 0, .9), (7, 9, 1.1)),)) is None
 
 
+def test_object_best_view_falls_back_to_archived_frame(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from neusymnav.visualization import hydra_display
+    from test_room_views import frame, graph, write_journal
+
+    older = frame(0, 0, 40)
+    recent = frame(1, 5, 80)
+    journal = tmp_path / 'journal.jsonl'
+    write_journal(journal, [(older, 1), (recent, 2)])
+    metadata = {'room_label_input': {'semantic_labels': {'O(0)': 0}},
+                'object_bounds': {'O(0)': ((-1., -1., .9), (1., 1., 1.1))}}
+    snapshot = replace(graph(), native_metadata=metadata)
+    monkeypatch.setattr(hydra_display, 'LOOKBACK_BYTES', journal.stat().st_size // 2)
+    match = hydra_display.read_best_view(journal, snapshot, 'O(0)')
+    assert match is not None
+    assert match[2:] == (0, 1)
+    assert np.all(match[1] == 40)
+    assert hydra_display.read_best_view(journal, snapshot, 'O(1)') is None
+
+
 def test_dashboard_draws_room_outlines_and_click_loads_crop(tmp_path, monkeypatch):
     from dataclasses import replace
 
