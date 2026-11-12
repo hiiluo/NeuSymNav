@@ -147,6 +147,10 @@ class AsyncHydraAssetReader:
     """Single background reader with one replaceable pending graph snapshot."""
     def __init__(self, recording_root):
         self.reader = HydraAssetReader(recording_root)
+        root = self.reader.root
+        self.object_journal = (root.parent.parent / 'hydra' / 'journal.jsonl'
+                               if (root.parent.name, root.name) == ('keyframes', 'recording')
+                               else None)
         self.pending = Queue(maxsize=1)
         self.stop = Event()
         self.idle = Event();self.idle.set()

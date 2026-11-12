@@ -6,6 +6,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from .hierarchy_view import hierarchy_rows, hierarchy_links
 from .graph_visibility import GraphVisibility, select_visible_nodes
+from .hydra_display import node_label
 
 
 class SpatialSceneWidget(QtWidgets.QWidget):
@@ -22,6 +23,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         self.graph_visibility = GraphVisibility.for_preset('rooms_objects')
         self.visible_graph = None
         self.room_labels = {}
+        self.room_passages = ()
         self.show_retired = False
         self.height_filter_enabled = True
         self.height_min_m, self.height_max_m = 0., 2.20
@@ -43,7 +45,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         self.cloud_error = None
         self.setToolTip('Left drag: orbit · Shift-left drag: zoom · right drag: pan · wheel: zoom · double-click: fit · click object: evidence')
 
-    def set_envelope(self, envelope):
+    def set_envelope(self, envelope, *, room_passages=()):
         if (self._episode,self._domain) != (envelope.hierarchy.episode_id,envelope.clock_domain):
             self.cloud = None; self.selected = None; self._center = None
             self.yaw, self.pitch, self.zoom = .55, .95, 1.
@@ -51,6 +53,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             self._episode = envelope.hierarchy.episode_id
             self._domain = envelope.clock_domain
         self.envelope = envelope
+        self.room_passages = room_passages
         self._build_nodes()
         self._invalidate()
 
@@ -174,10 +177,23 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             self._invalidate()
 
     def _build_hydra_nodes(self, graph):
-        """Use native Hydra XYZ and edges directly in the spatial view."""
+        """Keep measured XY and object XYZ, and lift rooms onto a display plane."""
         kinds = {2: 'object', 3: 'place', 4: 'room', 5: 'building'}
-        visible_graph = select_visible_nodes(graph, self.graph_visibility, self.selected)
+        visible_graph = select_visible_nodes(graph, self.graph_visibility, self.selected,
+                                             room_passages=self.room_passages)
         self.visible_graph = visible_graph
+        nav = self.envelope.sources.live_nav or self.envelope.sources.nav
+        baseline = 0. if nav is None else nav.floor_z_m
+        room_z = max((node.position[2] for node in graph.nodes
+                      if node.layer_id == 2 and node.position is not None), default=baseline) + .65
+        room_z = max(room_z, baseline + 1.3)
+        assigned = {edge.source for edge in visible_graph.edges if edge.kind == 'derived_room_membership'}
+        layers = {node.node_id: node.layer_id for node in visible_graph.nodes}
+        for edge in visible_graph.edges:
+            if layers[edge.source] == 2 and layers[edge.target] == 4:
+                assigned.add(edge.source)
+            if layers[edge.target] == 2 and layers[edge.source] == 4:
+                assigned.add(edge.target)
         nodes = {}
         for native in visible_graph.nodes:
             kind = kinds.get(native.layer_id, f'layer_{native.layer_id}')
@@ -187,16 +203,18 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             if position.shape != (3,) or not np.isfinite(position).all():
                 continue
             stale = graph.status != 'available'
-            label = (f'{native.name or kind.title()} · {native.native_id}'
+            label = (node_label(graph, native, self.room_labels)
                      if native.layer_id != 3 or self.graph_visibility.show_place_labels else '')
-            if native.layer_id == 4 and native.node_id in self.room_labels:
-                label = f'{self.room_labels[native.node_id]} · {native.native_id}'
-            if stale:
+            if stale and label:
                 label += ' · STALE'
             row = SimpleNamespace(node_id=native.node_id, kind=kind,
-                                  status='available', stale=stale)
+                                  status=('assigned' if native.node_id in assigned else 'unassigned')
+                                  if kind == 'object' else 'available', stale=stale)
             attrs = {'native_id': native.native_id, 'layer_id': native.layer_id}
-            nodes[native.node_id] = dict(position=position.copy(), row=row, label=label,
+            anchor = position.copy()
+            if native.layer_id == 4:
+                anchor[2] = room_z
+            nodes[native.node_id] = dict(position=anchor, row=row, label=label,
                                          attrs=attrs, measured_position=position.copy(),
                                          measured_bounds=None)
         visible = set(nodes)
@@ -376,7 +394,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
             painter.drawPolyline(QtGui.QPolygonF([QtCore.QPointF(*p) for p in np.vstack((points,points[0]))]))
         self._screen_nodes = {k:QtCore.QPointF(*project(n['position'])[0]) for k,n in self.nodes.items()}
         for source,target,kind in self.edges:
-            adjacency = kind == 'region_adjacent_to'
+            adjacency = kind in {'region_adjacent_to', 'observed_room_passage'}
             pen = QtGui.QPen(QtGui.QColor('#5adce8' if adjacency else '#8aa4bb'),
                             1.8 if adjacency else 1.3,
                             QtCore.Qt.DashLine if adjacency else QtCore.Qt.SolidLine)
@@ -407,7 +425,10 @@ class SpatialSceneWidget(QtWidgets.QWidget):
                         for bit in (1,2,4):
                             b=a^bit
                             if a<b:painter.drawLine(QtCore.QPointF(*screen[a]),QtCore.QPointF(*screen[b]))
-            label=node['label']+(' · '+row.status if row.kind=='object' and row.status!='assigned' else '')
+            label=node['label']+(' · '+row.status if row.kind=='object' and row.status!='assigned'
+                                 and 'native_id' not in node['attrs'] else '')
+            if not label:
+                continue
             metrics=painter.fontMetrics();width=min(245,metrics.horizontalAdvance(label)+8)
             height=metrics.height()+4
             candidates = [QtCore.QRectF(x,y,width,height) for x,y in (
@@ -419,7 +440,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
                 if key != self.selected:
                     continue
                 rect = candidates[0]
-            if row.kind == 'object' and key != self.selected and len(label_rects)>=24:
+            if row.kind == 'object' and key != self.selected and len(label_rects)>=24 and 'native_id' not in node['attrs']:
                 continue
             painter.fillRect(rect,QtGui.QColor(12,20,33,200));painter.setPen(QtGui.QColor('#e3edf7'))
             painter.drawText(rect.adjusted(3,0,-3,0),QtCore.Qt.AlignVCenter,metrics.elidedText(label,QtCore.Qt.ElideRight,int(width)-6))
@@ -431,7 +452,7 @@ class SpatialSceneWidget(QtWidgets.QWidget):
         elif self.envelope.sources.hydra_graph is not None:
             native = self.envelope.sources.hydra_graph
             counts = '/'.join(f'L{layer}:{count}' for layer,count in sorted(native.node_counts.items()))
-            graph = f'Hydra native graph r{native.graph_revision} · {counts} · source-bound XYZ'
+            graph = f'Hydra graph r{native.graph_revision} · {counts} · rooms raised for display'
             if native.status != 'available': graph += ' · STALE'
         else:
             graph = f'Graph object r{self.envelope.hierarchy.object_revision} / map r{self.envelope.hierarchy.map_revision} · measured Objects / Room + Floor anchors'
@@ -463,8 +484,8 @@ class SpatialSceneWidget(QtWidgets.QWidget):
     def tool_instructions():
         return ('Hydra: gold Object, teal Place, blue Room, purple Building; legacy: teal Floor, blue Room, purple Rebuild M5 region, gold Object. '
                 'Objects and selected bounds retain measured XYZ in RGB-D. Room/Floor Z is a hierarchy display '
-                'layout, not physical height. Solid lines: assigned membership. Cyan dashed lines: structural region '
-                'connectivity, not a robot passage certificate. Unknown membership stays disconnected.')
+                'layout. Solid lines: assigned membership. Cyan dashes: observed direct room passages in Hydra, '
+                'structural region links in legacy views. Movement still requires fresh depth and the motion guard.')
 
     def mousePressEvent(self,event):
         self._drag=self._press=event.pos()

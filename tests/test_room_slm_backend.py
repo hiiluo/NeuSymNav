@@ -46,6 +46,14 @@ def request():
     return make_room_label_request(query([candidate('O(0)', 'toilet')]), {}, support())[0]
 
 
+def test_gpu_offload_is_explicit_and_bound_to_model_manifest(tmp_path):
+    cpu = config(tmp_path)
+    gpu = config(tmp_path, gpu_device='Vulkan0')
+    assert cpu.offload_args == ['--n-gpu-layers', '0']
+    assert gpu.offload_args == ['--device', 'Vulkan0', '--n-gpu-layers', 'all']
+    assert gpu.model_manifest_hash != cpu.model_manifest_hash
+
+
 def test_missing_model_and_runtime_fail_closed_without_launch(tmp_path):
     missing = config(tmp_path, model_path=str(tmp_path/'absent.gguf'))
     service = LlamaCppRoomLabelBackend(missing)

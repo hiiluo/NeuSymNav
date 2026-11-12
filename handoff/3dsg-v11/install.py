@@ -34,6 +34,8 @@ TEMPLATES = HERE / 'templates'
 PLACEHOLDERS = ('@REPO@', '@NSN_HOME@', '@HABITAT_DATA@', '@HABITAT_ENV@')
 PROFILE = 'configs/demo-00806.hydra-tour-slm.experimental.local.json'
 SLM = 'configs/room-label-slm.async-debug.local.json'
+GPU_PROFILE = 'configs/demo-00806.hydra-tour-slm.cuda.local.json'
+GPU_SLM = 'configs/room-label-slm.vulkan.local.json'
 TOUR = 'runs/tours/00806-tour-r30.json'
 HYDRA_ROOT = 'runs/hydra-objectnav/B1-stability-20261107/config-root/stable'
 HYDRA_DATASET = HYDRA_ROOT + '/datasets/neusymnav.yaml'
@@ -112,10 +114,19 @@ def pin_profile(data, report, values, backend):
     return data
 
 
-def install(values, out_root, *, backend='openvino_gpu', force=False, report=None):
+def install(values, out_root, *, backend='openvino_gpu', force=False, report=None,
+            slm_vulkan_runtime=None):
     report = report or Report()
     out_root = Path(out_root)
     written = []
+    def write(rel, text):
+        target = out_root / rel
+        if target.exists() and not force and target.read_text() != text:
+            raise SystemExit('%s exists and differs; rerun with --force to replace it' % target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        written.append(str(target))
+
     for rel in ORDER:
         src = TEMPLATES / (rel + '.template')
         text = render(src.read_text(), values)
@@ -136,12 +147,21 @@ def install(values, out_root, *, backend='openvino_gpu', force=False, report=Non
             text = json.dumps(data, indent=2) + '\n'
         elif rel == PROFILE:
             text = json.dumps(pin_profile(json.loads(text), report, values, backend), indent=2) + '\n'
-        target = out_root / rel
-        if target.exists() and not force and target.read_text() != text:
-            raise SystemExit('%s exists and differs; rerun with --force to replace it' % target)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-        written.append(str(target))
+        write(rel, text)
+    if backend == 'torch':
+        gpu_profile = json.loads((out_root / PROFILE).read_text())
+        gpu_profile['detector']['device'] = 'cuda:0'
+        if slm_vulkan_runtime is not None:
+            gpu_slm = json.loads((out_root / SLM).read_text())
+            gpu_slm.update(runtime_binary_path=str(slm_vulkan_runtime), gpu_device='Vulkan0')
+            gpu_slm['runtime_sha256'] = report.pin(
+                'slm.vulkan_runtime', gpu_slm['runtime_binary_path'], gpu_slm['runtime_sha256'])
+            slm_text = json.dumps(gpu_slm, indent=2) + '\n'
+            write(GPU_SLM, slm_text)
+            gpu_profile['ui']['room_label_debug'].update(
+                config_path=str(Path(values['@REPO@']) / GPU_SLM),
+                config_sha256=hashlib.sha256(slm_text.encode()).hexdigest())
+        write(GPU_PROFILE, json.dumps(gpu_profile, indent=2) + '\n')
     return written, report
 
 
@@ -157,13 +177,19 @@ def main(argv=None):
                     help='conda env with habitat_sim 0.3.3 (bin/python is pinned)')
     ap.add_argument('--out-root', type=Path, help='write here instead of --repo (checks only)')
     ap.add_argument('--detector-backend', choices=('openvino_gpu', 'torch'), default='openvino_gpu')
+    ap.add_argument('--slm-vulkan-runtime', type=Path,
+                    help='optional pinned llama-server Vulkan build for the CUDA profile')
     ap.add_argument('--force', action='store_true')
     a = ap.parse_args(argv)
+    if a.slm_vulkan_runtime is not None and a.detector_backend != 'torch':
+        ap.error('--slm-vulkan-runtime requires --detector-backend torch')
     repo = a.repo.resolve()
     values = {'@REPO@': str(repo), '@NSN_HOME@': str((a.nsn_home or repo).resolve()),
               '@HABITAT_DATA@': str(a.habitat_data.resolve()), '@HABITAT_ENV@': str(a.habitat_env)}
     out_root = (a.out_root or repo).resolve()
-    written, report = install(values, out_root, backend=a.detector_backend, force=a.force)
+    written, report = install(values, out_root, backend=a.detector_backend, force=a.force,
+                              slm_vulkan_runtime=a.slm_vulkan_runtime.resolve()
+                              if a.slm_vulkan_runtime is not None else None)
     if out_root == repo:
         ws = repo / '.runtime/hydra_ws'
         for src in (HERE / 'hydra_ws').rglob('*'):

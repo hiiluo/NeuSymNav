@@ -324,7 +324,7 @@ class PersistentRoomLabelBackend:
         command = [str(runtime_path), '--model', str(model_path), '--host', '127.0.0.1',
             '--port', str(port), '--threads', str(self.config.effective_threads),
             '--threads-batch', str(self.config.effective_threads), '--ctx-size',
-            str(self.config.context_tokens), '--parallel', '1', '--n-gpu-layers', '0',
+            str(self.config.context_tokens), '--parallel', '1', *self.config.offload_args,
             '--no-webui', '--chat-template-kwargs', '{"enable_thinking":false}']
         env = dict(os.environ)
         env['HF_HUB_OFFLINE'] = '1'

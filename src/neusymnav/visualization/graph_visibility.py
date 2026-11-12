@@ -51,7 +51,7 @@ class GraphVisibility:
     def for_preset(cls, name: str) -> 'GraphVisibility':
         if name not in _PRESETS:
             raise ValueError(f'unknown Hydra visibility preset: {name}')
-        return cls(name, _PRESETS[name])
+        return cls(name, _PRESETS[name], show_derived_membership=name == 'rooms_objects')
 
     def with_layer(self, layer_id: int, visible: bool) -> 'GraphVisibility':
         if type(layer_id) is not int or layer_id not in range(8):
@@ -92,12 +92,13 @@ def select_visible_nodes(
     graph: HydraGraphProjection,
     policy: GraphVisibility,
     selected_id: str | None = None,
+    *,
+    room_passages: tuple[tuple[str, str], ...] = (),
 ) -> VisibleGraph:
     """Return a bounded projection with object/room priority over places.
 
-    Native edges are included only when both endpoints survive display policy.
-    When places are hidden, an optional derived object-to-room edge may be
-    emitted from a complete parent chain; it is explicitly not a native edge.
+    Include native edges between visible endpoints, except room adjacency.
+    The room overlay uses measured passages and resolved object parent chains.
     """
     if not isinstance(graph, HydraGraphProjection):
         raise TypeError('graph must be HydraGraphProjection')
@@ -130,11 +131,17 @@ def select_visible_nodes(
         ordered = [selected] + [node for node in ordered if node.node_id != selected_id]
     visible_nodes = tuple(ordered[:DISPLAY_NODE_BUDGET])
     visible_ids = {node.node_id for node in visible_nodes}
+    visible_rooms = {node.node_id for node in visible_nodes if node.layer_id == 4}
 
     visible_edges = [edge for edge in graph.edges
-                     if edge.source in visible_ids and edge.target in visible_ids]
+                     if edge.source in visible_ids and edge.target in visible_ids
+                     and not (edge.source in visible_rooms and edge.target in visible_rooms)]
     if policy.show_derived_membership:
-        visible_edges.extend(_derived_membership_edges(graph, visible_nodes, visible_ids))
+        existing = {frozenset((edge.source, edge.target)) for edge in visible_edges}
+        visible_edges.extend(edge for edge in _derived_membership_edges(graph, visible_nodes, visible_ids)
+                             if frozenset((edge.source, edge.target)) not in existing)
+    visible_edges.extend(HydraDisplayEdge(a, b, 'observed_room_passage')
+                         for a, b in room_passages if a in visible_rooms and b in visible_rooms)
 
     shown_by_layer = {layer: sum(node.layer_id == layer for node in visible_nodes)
                       for layer in range(8)}
@@ -163,14 +170,14 @@ def _derived_membership_edges(
             continue
         current = by_id.get(node.parent_id) if node.parent_id is not None else None
         seen = {node.node_id}
-        skipped_hidden_parent = False
         while current is not None and current.node_id not in seen:
             seen.add(current.node_id)
-            if current.node_id in visible_ids:
-                if skipped_hidden_parent and current.layer_id == 4:
+            if current.layer_id == 4:
+                if current.node_id in visible_ids:
                     edges.append(HydraDisplayEdge(node.node_id, current.node_id,
                                                   'derived_room_membership'))
                 break
-            skipped_hidden_parent = True
+            if current.layer_id != 3:
+                break
             current = by_id.get(current.parent_id) if current.parent_id is not None else None
     return edges

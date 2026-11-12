@@ -141,7 +141,8 @@ class NavMapper:
                  free_ray_stride: int=1,
                  snapshot_radius_m: float=8., max_snapshot_cells: int=1_000_000,
                  tile_archive_dir=None, max_active_tiles: int | None=None, raycast_workers: int=1,
-                 raycast_backend=None, local_retention_s: float | None=None):
+                 raycast_backend=None, local_retention_s: float | None=None,
+                 preserve_known_overview: bool=False):
         if not isinstance(robot,RobotGeometry) or not floor_datum_source or not math.isfinite(floor_z_m):
             raise ValueError('explicit geometry and calibrated floor datum required')
         if len(calibration_hash)!=64 or any(c not in '0123456789abcdef' for c in calibration_hash):
@@ -155,6 +156,7 @@ class NavMapper:
         self.robot=robot;self.floor_z_m=float(floor_z_m);self.floor_datum_source=floor_datum_source
         self.calibration_hash=calibration_hash;self.snapshot_radius_m=snapshot_radius_m
         self.local_retention_s=local_retention_s
+        self._preserve_known_overview = preserve_known_overview
         self._raycast_backend=raycast_backend;self._closed=False
         self._core=OccupancyMapper(GridSpec(resolution_m,tile_size_cells,*origin_xy,floor_z_m),
             robot_height_m=robot.height_m,height_bin_m=height_bin_m,min_depth_m=min_depth_m,
@@ -336,7 +338,8 @@ class NavMapper:
             finally:record_stage('navmap_overview_snapshot',started)
             started=time.monotonic_ns()
             try:updated=update_tiles(self._overview_tiles,nav,self._core.grid,
-                overview_cells,self._core.free_threshold,self._core.occupied_threshold)
+                overview_cells,self._core.free_threshold,self._core.occupied_threshold,
+                preserve_known=self._preserve_known_overview)
             finally:record_stage('navmap_tile_overview',started)
             if self._overview_incomplete: updated=replace(updated,complete=False)
             self._overview_tiles=updated
@@ -349,7 +352,9 @@ class NavMapper:
         return self._overview_tiles
 
     def room_input_tiles(self):
-        """Exact immutable measured history; dense room assembly is off this lane."""
+        """Return exact legacy room evidence when the mapper supplies it."""
+        if self._preserve_known_overview:
+            return None
         return self._overview_tiles
 
     def _coverage_from_votes(self,obs,votes):

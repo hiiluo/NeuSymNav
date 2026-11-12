@@ -132,6 +132,14 @@ class HydraGraphAdapter:
         provenance = MappingProxyType(dict(input_prefix_sha256=prefix,
             graph_revision=revision, last_source=None if last_source is None else dict(last_source)))
         metadata=dict(native_metadata or {})
+        bounds = {}
+        for raw in raw_nodes:
+            box = raw.get('object_bounds')
+            if raw['layer_id'] == 2 and isinstance(box, (tuple, list)) and len(box) == 2:
+                lower, upper = map(_position, box)
+                if lower is not None and upper is not None and all(a <= b for a, b in zip(lower, upper)):
+                    bounds[raw['native_id']] = (lower, upper)
+        metadata['object_bounds'] = MappingProxyType(bounds)
         # Explicit semantics from this very summary, never reconstructed from display names.
         semantic={raw['native_id']:raw.get('semantic_label') for raw in raw_nodes if raw['layer_id']==2}
         semantic={key:value if type(value) is int and 0<=value<2**32 else None for key,value in semantic.items()}

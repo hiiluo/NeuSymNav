@@ -49,6 +49,30 @@ Tài liệu nên đọc: `docs/results/realtime-navigation-tour-2026-11-09.md` (
    ```
    Không đặt `NEUSYMNAV_BASELINE_LOCK`: các asset trên máy bạn có sha khác máy gốc nên kiểm tra khoá sẽ từ chối chạy.
 
+## Chọn CPU hoặc GPU NVIDIA
+
+Chạy bước cài đặt với `--detector-backend torch` để tạo cả hai profile. Hai profile dùng chung model và dataset trong `local-assets`.
+
+| Profile | YOLOE | Qwen SLM | Hydra, raycast và điều hướng |
+| --- | --- | --- | --- |
+| `demo-00806.hydra-tour-slm.experimental.local.json` | Torch CPU | llama-server CPU | CPU |
+| `demo-00806.hydra-tour-slm.cuda.local.json` | Torch CUDA `cuda:0` | CPU mặc định, hoặc Vulkan khi có runtime riêng | CPU |
+
+Với máy không có GPU, dùng profile CPU và cài Habitat headless với Mesa EGL có thiết bị dựng hình phần mềm. Giá trị `gpu_device_id=-1` cho phép EGL chọn thiết bị khả dụng. Nó có thể dùng GPU để dựng RGB-D trên máy có GPU.
+
+Để bật Qwen trên GPU, build `llama-server` từ commit llama.cpp đã ghim vào thư mục riêng với `-DGGML_VULKAN=ON`. Kiểm tra `llama-server --list-devices` để xác nhận `Vulkan0` là GPU muốn dùng. Chạy lại installer với các tham số đã dùng, thêm `--slm-vulkan-runtime /đường/dẫn/llama-server`. Installer ghim hash cho runtime Vulkan và ghi cấu hình SLM riêng cho profile CUDA.
+
+```bash
+# CPU
+NEUSYMNAV_HYDRA_DEMO_CONFIG="$PWD/configs/demo-00806.hydra-tour-slm.experimental.local.json" \
+  bash tools/run_hydra_map_demo.sh 00806 300
+# GPU NVIDIA
+NEUSYMNAV_HYDRA_DEMO_CONFIG="$PWD/configs/demo-00806.hydra-tour-slm.cuda.local.json" \
+  bash tools/run_hydra_map_demo.sh 00806 300
+```
+
+Thay `300` bằng `--preflight` để kiểm tra cấu hình. Profile CUDA cần PyTorch có CUDA và thiết bị `cuda:0` khả dụng.
+
 ## Lưu ý
 
 - Tour navmesh trong profile là dữ liệu đặc quyền của simulator, dùng để đánh giá 3DSG; **không** phải kết quả ObjectNav.

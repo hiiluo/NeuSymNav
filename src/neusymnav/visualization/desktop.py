@@ -11,6 +11,7 @@ import math
 import sys
 from dataclasses import replace
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from time import monotonic_ns
 from typing import Sequence
 
@@ -23,6 +24,7 @@ from .hierarchy_view import hierarchy_rows, resolve_object_selection, resolve_ve
 from .scene_graph import SceneGraphWidget
 from .spatial_scene import SpatialSceneWidget
 from .graph_visibility import GraphVisibility
+from .hydra_display import read_best_view, room_outlines, room_passages
 from .publisher import DisplayEnvelope, DisplayPublisher, UiCommandStatus, UiControlClient
 
 
@@ -43,6 +45,10 @@ class MapWidget(QtWidgets.QWidget):
         self._map_image: QtGui.QImage | None = None
         self._map_revision: int | None = None
         self._regions: tuple[np.ndarray, ...] = ()
+        self._outline_key = self._outline_scope = None
+        self._outline_executor = self._outline_future = self._outline_pending = None
+        self._hydra_outline = ()
+        self._outline_revision = None
         self._stale = False
         self._robot = None
         self._navigation = None
@@ -89,9 +95,55 @@ class MapWidget(QtWidgets.QWidget):
         self._robot = robot if nav is not None else None
         self._navigation = getattr(envelope.sources, "navigation", None)
         self._regions = tuple(regions)
+        graph = getattr(envelope.sources, 'hydra_graph', None)
+        source = None if graph is None else graph.last_source
+        if nav is None or graph is None or source is None or (
+                graph.episode_id, source.get('clock_domain')) != (nav.episode_id, nav.clock_domain):
+            self._outline_scope = self._outline_key = self._outline_pending = None
+            self._outline_revision = None
+            self._hydra_outline = ()
+        else:
+            scope = (graph.episode_id, graph.run_id, nav.clock_domain)
+            if scope != self._outline_scope:
+                self._outline_scope = scope
+                self._outline_revision = None
+                self._hydra_outline = ()
+            map_source = self._overview.source_nav if self._overview is not None else nav
+            key = (scope, graph.graph_revision, graph.input_prefix_sha256, map_source.revision,
+                   map_source.capture_monotonic_ns, raster.origin_xy, raster.resolution_m, raster.states.shape)
+            if key != self._outline_key:
+                self._outline_key = key
+                self._outline_pending = (key, graph, raster)
+            stale = graph.status != 'available'
         self._stale = stale
+        self._poll_room_outline()
         self._layout_map()
         self.update()
+
+    def _poll_room_outline(self):
+        if self._outline_future is not None:
+            key, future = self._outline_future
+            if not future.done():
+                return
+            self._outline_future = None
+            if key[0] == self._outline_scope:
+                try:
+                    self._hydra_outline = future.result()
+                except (ValueError, TypeError, ImportError):
+                    self._hydra_outline = ()
+                self._outline_revision = key[1]
+                self.update()
+        if self._outline_pending is not None:
+            key, graph, raster = self._outline_pending
+            self._outline_pending = None
+            if self._outline_executor is None:
+                self._outline_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='hydra-room-outline')
+            self._outline_future = (key, self._outline_executor.submit(room_outlines, graph, raster))
+
+    def close_room_outlines(self):
+        self._outline_pending = self._outline_scope = None
+        if self._outline_executor is not None:
+            self._outline_executor.shutdown(wait=False, cancel_futures=True)
 
     def _viewport_rect(self):
         return QtCore.QRectF(self.rect().adjusted(8, 8, -8, -8))
@@ -229,6 +281,15 @@ class MapWidget(QtWidgets.QWidget):
             ) for x, y in polygon]
             if len(points) >= 3:
                 painter.drawPolygon(QtGui.QPolygonF(points))
+        if self._hydra_outline:
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.setPen(QtGui.QPen(QtGui.QColor('#f4b942'), 2.2,
+                                     QtCore.Qt.DashLine if self._stale else QtCore.Qt.SolidLine))
+            outline = QtGui.QPainterPath()
+            for start, end in self._hydra_outline:
+                outline.moveTo(self._world_to_pixel(start))
+                outline.lineTo(self._world_to_pixel(end))
+            painter.drawPath(outline)
         self._draw_rect = draw_rect
         painter.restore()
         self._draw_navigation(painter)
@@ -241,6 +302,9 @@ class MapWidget(QtWidgets.QWidget):
         nav = self._nav
         if nav is None:
             return self.status_text
+        rooms = (f'Hydra room outlines r{self._outline_revision}' if self._outline_revision is not None
+                 else 'Hydra room outlines pending' if self._outline_scope is not None
+                 else f'room outlines map r{self._room_map_revision}')
         if self._overview is not None:
             overview = self._overview
             source = overview.source_nav
@@ -249,11 +313,11 @@ class MapWidget(QtWidgets.QWidget):
             return (f'Accumulated map r{source.revision} · latest update {age} · historical cells'
                     f' · {overview.resolution_m:.3g} m/cell · local r{nav.revision}'
                     + (' · INCOMPLETE overview' if not overview.complete else '')
-                    + f' · room outlines r{self._room_map_revision}' + (' · STALE' if self._stale else ''))
+                    + f' · {rooms}' + (' · STALE' if self._stale else ''))
         age = (f"{(self._now_ns-nav.capture_monotonic_ns)/1e6:.0f} ms old"
                if nav.clock_domain == self._clock_domain and self._now_ns >= nav.capture_monotonic_ns else "age unavailable")
         return (f"Map r{nav.revision} · {nav.source.sensor_id}:{nav.source.frame_index} · {age}"
-                f" · room outlines map r{self._room_map_revision}" + (" · STALE" if self._stale else ""))
+                f" · {rooms}" + (" · STALE" if self._stale else ""))
 
     def _world_to_pixel(self, xy):
         nav, rect = self._raster_source, self._draw_rect
@@ -350,6 +414,7 @@ class MapWidget(QtWidgets.QWidget):
             else:
                 path.lineTo(point)
         painter.setPen(QtGui.QPen(color, 1.3))
+        painter.setBrush(QtCore.Qt.NoBrush)
         painter.drawPath(path)
         camera = self._robot.camera
         if camera is not None:
@@ -551,10 +616,16 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self._control = control_client
         self._best_view_provider = best_view_provider
         self._cloud_reader = cloud_reader
+        self._object_journal = getattr(cloud_reader, 'object_journal', None)
+        self._object_executor = (ThreadPoolExecutor(max_workers=1, thread_name_prefix='hydra-object-view')
+                                 if self._object_journal is not None else None)
+        self._object_future = self._object_request = self._object_result = None
+        self._hydra_layout = False
         if rendered_callback is not None and not callable(rendered_callback):
             raise ValueError("rendered_callback must be callable")
         self._rendered_callback = rendered_callback
         self._room_label_service = room_label_service
+        self._room_label_display_key = None
         self.room_label_debug = None
         self._last_cloud_request_ns = None
         self._graph_popup = None
@@ -906,7 +977,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         legend.setObjectName("subtitle")
         graph_content.addWidget(legend)
         self.graph_legend=legend
-        select_row = QtWidgets.QHBoxLayout()
+        self.object_search = QtWidgets.QWidget()
+        select_row = QtWidgets.QHBoxLayout(self.object_search)
+        select_row.setContentsMargins(0, 0, 0, 0)
         self.object_id_input = QtWidgets.QLineEdit()
         self.object_id_input.setPlaceholderText("Object ID or alias…")
         self.object_id_input.setObjectName("objectIdInput")
@@ -914,7 +987,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
         select_button.clicked.connect(self._select_from_input)
         select_row.addWidget(self.object_id_input, 1)
         select_row.addWidget(select_button)
-        evidence_layout.addLayout(select_row)
+        evidence_layout.addWidget(self.object_search)
         self.object_details = QtWidgets.QLabel("No selected object")
         self.object_details.setObjectName("objectDetails")
         self.object_details.setWordWrap(True)
@@ -954,9 +1027,8 @@ class DashboardWindow(QtWidgets.QMainWindow):
         details.toggled.connect(lambda opened: details.setArrowType(QtCore.Qt.DownArrow if opened else QtCore.Qt.RightArrow))
         layout.addWidget(self.telemetry)
         self.setCentralWidget(central)
-        if self.room_label_debug is not None:
-            self.scene_tabs.currentChanged.connect(self._room_label_tab_changed)
-            self._room_label_tab_changed()
+        self.scene_tabs.currentChanged.connect(self._room_label_tab_changed)
+        self._room_label_tab_changed()
 
     def _apply_room_labels(self, hydra_graph):
         """Show exact-revision SLM labels on room nodes; display only."""
@@ -964,7 +1036,12 @@ class DashboardWindow(QtWidgets.QMainWindow):
             return
         try:
             from ..rooms.label_overlay import current_room_labels
+            version = self._room_label_service.status().get('version')
+            key = (id(hydra_graph), version)
+            if version is not None and key == self._room_label_display_key:
+                return
             labels = current_room_labels(self._room_label_service.records(), hydra_graph)
+            self._room_label_display_key = key
         except Exception:
             labels = {}
         try:
@@ -975,9 +1052,13 @@ class DashboardWindow(QtWidgets.QMainWindow):
             pass
 
     def _room_label_tab_changed(self, *_):
-        debug=self.room_label_debug is not None and self.scene_tabs.currentWidget() is self.room_label_debug
+        tab = self.scene_tabs.currentWidget()
+        debug = tab is self.room_label_debug
         self.graph_split.widget(1).setVisible(not debug)
-        self.cloud_menu_button.setVisible(not debug)
+        self.cloud_menu_button.setVisible(tab is self.spatial_view)
+        self.graph_controls['Top'].setVisible(tab is self.spatial_view)
+        for label in ('−', '+', 'Fit'):
+            self.graph_controls[label].setVisible(tab is not self.hierarchy)
         self.graph_legend.setVisible(not debug)
 
     def refresh(self) -> None:
@@ -992,6 +1073,7 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 except Exception:pass
         elif envelope is None and self._envelope is None:
             self.telemetry.setText("Waiting for display publication · RGB/map/graph unavailable")
+        self.map_view._poll_room_outline()
         self.map_view._now_ns = self._now_ns()
         self.map_view._clock_domain = self._clock_domain or (None if self._envelope is None else self._envelope.clock_domain)
         self.map_view.update()
@@ -1007,12 +1089,19 @@ class DashboardWindow(QtWidgets.QMainWindow):
             self.spatial_view.set_cloud(self._cloud_reader.latest)
             self.spatial_view.cloud_error = self._cloud_reader.error
         self.spatial_view.update()
-        self._refresh_observation_age()
+        self._poll_object_view()
+        if self._room_label_service is not None:
+            self._apply_room_labels(getattr(self, '_room_label_graph', None))
+        if not self._hydra_layout:
+            self._refresh_observation_age()
         self._refresh_rgb_age()
         self._refresh_telemetry()
         self._refresh_command_status()
 
     def _render_envelope(self, envelope: DisplayEnvelope) -> None:
+        hydra_graph = envelope.sources.hydra_graph
+        hydra = hydra_graph is not None or ':scene-graph-hydra' in (envelope.metrics.actual_profile or '')
+        self._set_backend_layout(hydra)
         self.map_view.set_snapshot(getattr(envelope.sources, "live_nav", None) or envelope.sources.nav, envelope)
         self.room_map_view.set_publication(envelope.sources.room_pipeline)
         self.room_map_revision_combo.setEnabled(
@@ -1032,32 +1121,47 @@ class DashboardWindow(QtWidgets.QMainWindow):
             age = envelope.metrics.source_age_ns.get("rgb")
             age_label = "age unavailable" if age is None else f"source age {age / 1e6:.1f} ms"
             self.rgb_caption.setText(f"RGB · {frame.source.sensor_id}:{frame.source.frame_index} · {age_label}")
-        self._render_observation()
-        self.graph_view.set_envelope(envelope)
-        hydra_graph=envelope.sources.hydra_graph
+        if not hydra:
+            self._render_observation()
+        passages = room_passages(hydra_graph, envelope.sources.live_nav or envelope.sources.nav)
+        self.graph_view.set_envelope(envelope, room_passages=passages)
         if self.room_label_debug is not None:self.room_label_debug.offer_graph(hydra_graph)
         self._room_label_graph = hydra_graph
         self._apply_room_labels(hydra_graph)
-        if self._room_label_service is not None and hydra_graph is not None:
-            # The service attaches reused answers to this revision off-thread
-            # within ~50 ms; re-read once so labels do not blink per revision.
-            QtCore.QTimer.singleShot(250, lambda graph=hydra_graph: self._apply_room_labels(graph))
         self.hydra_layer_filter.setEnabled(hydra_graph is not None)
         self.hydra_visibility_button.setEnabled(hydra_graph is not None)
         self.graph_view.set_graph_visibility(self.graph_visibility)
-        if hydra_graph is not None and envelope.sources.room_pipeline is None:
-            self.room_map_view.status_text='Rebuild M3/M5 unavailable · active scene-graph backend is Hydra'
-        self.spatial_view.set_envelope(envelope)
+        self.spatial_view.set_envelope(envelope, room_passages=passages)
         self.spatial_view.set_graph_visibility(self.graph_visibility)
         self._render_hierarchy(envelope)
-        if self._selected_object_id is None:
-            first=(next((node.node_id for node in hydra_graph.nodes if node.layer_id==2),None)
-                   if hydra_graph is not None else
-                   next((node_id for node_id,node in envelope.hierarchy.nodes.items() if node.kind=="object"),None))
+        if self._selected_object_id is None and not hydra:
+            first=next((node_id for node_id,node in envelope.hierarchy.nodes.items() if node.kind=="object"),None)
             if first is not None:
                 self._selected_object_id = first
         self._render_selected_object()
         self._refresh_telemetry()
+
+    def _set_backend_layout(self, hydra):
+        if self._hydra_layout == hydra:
+            return
+        self._hydra_layout = hydra
+        if hydra:
+            self._default_map_legend = self.map_legend.text()
+            self.image_tabs.removeTab(self.image_tabs.indexOf(self.observation_page))
+            self.map_tabs.removeTab(self.map_tabs.indexOf(self.room_map_view))
+            self.map_legend.setText(self._default_map_legend.split("<font color='#76c9f4'>")[0]
+                                    + "<font color='#f4b942'>━ Room outlines (Hydra projection)</font>")
+            self.scene_tabs.setCurrentWidget(self.spatial_view)
+            self._default_graph_legend = self.graph_legend.text()
+            self.graph_legend.setText('Blue: Room (raised for display) · Gold: Object · '
+                                      'Solid: room membership · Cyan dashes: observed direct passage')
+        else:
+            self.image_tabs.insertTab(0, self.observation_page, 'Detector observation')
+            self.map_tabs.addTab(self.room_map_view, 'Rebuild M3/M5')
+            self.map_legend.setText(self._default_map_legend)
+            self.graph_legend.setText(self._default_graph_legend)
+        for widget in (self.boxes_toggle, self.masks_toggle, self.room_map_revision_combo, self.object_search):
+            widget.setVisible(not hydra)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -1208,6 +1312,10 @@ class DashboardWindow(QtWidgets.QMainWindow):
         self.focus_panel(self.focus_selector.currentText())
 
     def closeEvent(self, event) -> None:
+        self._refresh_timer.stop()
+        self.map_view.close_room_outlines()
+        if self._object_executor is not None:
+            self._object_executor.shutdown(wait=False, cancel_futures=True)
         if self.room_label_debug is not None:self.room_label_debug.close()
         if self._graph_popup is not None:
             self._graph_popup.close()
@@ -1331,10 +1439,17 @@ class DashboardWindow(QtWidgets.QMainWindow):
             raise RuntimeError("no hierarchy publication is available")
         if object_id.startswith('hydra:'):
             graph=self._envelope.sources.hydra_graph
-            if graph is None or not any(node.node_id==object_id for node in graph.nodes):
+            node = None if graph is None else next((item for item in graph.nodes if item.node_id == object_id), None)
+            if node is None:
                 raise KeyError('selected Hydra native ID is absent from the current graph revision')
             self._selected_object_id=object_id;self._selection_was_alias=False
-            self.graph_view.select_object(object_id);self._render_selected_object()
+            self._object_result = None
+            self._object_request = ((object_id, graph, node.native_id)
+                                    if self._object_executor is not None and node.layer_id == 2 else None)
+            self.graph_view.select_object(object_id)
+            self.spatial_view.select_object(object_id)
+            self._poll_object_view()
+            self._render_selected_object()
             return object_id
         canonical, was_alias = resolve_object_selection(self._envelope, object_id)
         self._selection_was_alias = was_alias
@@ -1346,6 +1461,24 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 self.hierarchy.setCurrentItem(selected)
                 break
         return canonical
+
+    def _poll_object_view(self):
+        if self._object_future is not None:
+            selected, future = self._object_future
+            if not future.done():
+                return
+            self._object_future = None
+            if selected == self._selected_object_id and self._object_request is None:
+                try:
+                    self._object_result = (selected, future.result())
+                except (ValueError, TypeError, KeyError, OSError):
+                    self._object_result = (selected, None)
+                self._render_selected_object()
+        if self._object_request is not None:
+            selected, graph, native_id = self._object_request
+            self._object_request = None
+            self._object_future = (selected, self._object_executor.submit(
+                read_best_view, self._object_journal, graph, native_id))
 
     @staticmethod
     def _find_item(item: QtWidgets.QTreeWidgetItem, node_id: str) -> QtWidgets.QTreeWidgetItem | None:
@@ -1423,14 +1556,25 @@ class DashboardWindow(QtWidgets.QMainWindow):
         graph=self._envelope.sources.hydra_graph
         if graph is not None and self._selected_object_id.startswith('hydra:'):
             node=next((item for item in graph.nodes if item.node_id==self._selected_object_id),None)
+            self.best_view.setPixmap(QtGui.QPixmap())
             if node is None:
                 self.object_details.setText('Selection unavailable · native node was removed in this graph revision')
-                self.best_view.setText('Best view unavailable · Hydra does not publish legacy verification evidence')
-                self.best_view_caption.setText('Native Hydra node · no legacy best-view evidence')
+                self.best_view.setText('Selected node is no longer present')
+                self.best_view_caption.clear()
                 return
-            self.best_view.setPixmap(QtGui.QPixmap())
-            self.best_view.setText('Best view unavailable · Hydra does not publish legacy verification evidence')
-            self.best_view_caption.setText('Native Hydra node · no legacy best-view evidence')
+            result = (self._object_result[1] if self._object_result is not None
+                      and self._object_result[0] == node.node_id else None)
+            if result is not None:
+                _, pixels, frame_index, revision = result
+                self.best_view.setPixmap(QtGui.QPixmap.fromImage(_qimage_rgb(pixels)).scaled(
+                    self.best_view.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+                self.best_view_caption.setText(f'Best recent view · frame {frame_index} · accepted at Hydra r{revision}')
+            else:
+                pending = any(work is not None and work[0] == node.node_id
+                              for work in (self._object_future, self._object_request))
+                self.best_view.setText('Searching recent RGB-D frames…' if pending else
+                                       'No matching recent RGB-D view' if node.layer_id == 2 else 'Select an object')
+                self.best_view_caption.clear()
             source=graph.last_source or {};transform=graph.native_metadata.get('last_transform') or {}
             lines=[f'Native node: {node.native_id}',f'Layer: {node.layer_id}',f'Name: {node.name or "unknown"}',
                 f'Parent: {node.parent_id or "none"}',f'Position: {node.position or "unavailable"}',
@@ -1517,8 +1661,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
         else:
             entity_label=f"OBJECTS  {count('object')}     /     ROOMS  {count('region')}"
             visibility_label=f"GRAPH HIDDEN {hidden}"
+        rebuild = '' if self._hydra_layout else f"REBUILD M3/M5  {room_label}     /     "
         self.overview.setText(f"RGB  {rgb_label}     /     MAP  {map_label}     /     "
-                              f"{entity_label}     /     REBUILD M3/M5  {room_label}     /     "
+                              f"{entity_label}     /     {rebuild}"
                               f"DROPS  {metrics.dropped_count}     /     {visibility_label}")
         stale_region = any(n.kind == "region" and n.attributes.get("stale") for n in envelope.hierarchy.nodes.values())
         badge = ("STALE PUBLICATION" if output_age > 300_000_000 else
@@ -1538,8 +1683,9 @@ class DashboardWindow(QtWidgets.QMainWindow):
                 return "unavailable"
             return f"{frame(value.source)} · capture {value.capture_monotonic_ns} ns · {value.clock_domain}"
         observation = envelope.sources.observation
-        origins = (f"Display map: {origin(nav)} · RGB: {origin(envelope.sources.rgb)} · "
-                   f"detector: {origin(None if observation is None else observation.image)}")
+        origins = f"Display map: {origin(nav)} · RGB: {origin(envelope.sources.rgb)}"
+        if not self._hydra_layout:
+            origins += f" · detector: {origin(None if observation is None else observation.image)}"
         if room is not None:
             room_map=room.latest_map
             binding=('unavailable' if room.accepted_map_revision is None else

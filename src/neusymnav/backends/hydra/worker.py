@@ -66,6 +66,11 @@ def _graph_summary(graph, *, graph_revision: int, input_prefix_sha256: str) -> d
             parent=node.get_parent() if callable(getattr(node,'get_parent',None)) else None
             nodes.append(dict(native_id=native_id,layer_id=layer_id,name=label,semantic_label=semantic_label,position=position,
                               parent_native_id=None))
+            box = getattr(attributes, 'bounding_box', None) if layer_id == 2 else None
+            if box is not None and box.is_valid():
+                corners = np.asarray(box.corners(), dtype=np.float64)
+                if corners.shape == (8, 3) and np.isfinite(corners).all():
+                    nodes[-1]['object_bounds'] = [corners.min(axis=0).tolist(), corners.max(axis=0).tolist()]
             parents.append(parent)
             if len(nodes)>MAX_GRAPH_NODES:raise ValueError('Spark-DSG node summary exceeds 100000 nodes')
         for edge in layer.edges:

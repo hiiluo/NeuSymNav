@@ -87,6 +87,17 @@ def test_templates_round_trip_and_repin(tmp_path, monkeypatch):
     prof = json.loads((repo / inst.PROFILE).read_text())
     assert prof['detector']['backend'] == 'torch' and 'openvino_model' not in prof['detector']
     assert 'detector.openvino_model' not in {w for w, _, _ in report.rows}
+    cpu_profile = (repo / inst.PROFILE).read_bytes()
+    cpu_slm = (repo / inst.SLM).read_bytes()
+    runtime = write(repo / 'llama-server-vulkan', 'vulkan runtime')
+    inst.install(values, repo, backend='torch', force=True, slm_vulkan_runtime=runtime)
+    gpu = json.loads((repo / inst.GPU_PROFILE).read_text())
+    slm = json.loads((repo / inst.GPU_SLM).read_text())
+    assert gpu['detector']['device'] == 'cuda:0'
+    assert gpu['ui']['room_label_debug']['config_sha256'] == sha(repo / inst.GPU_SLM)
+    assert slm['gpu_device'] == 'Vulkan0' and slm['runtime_sha256'] == sha(runtime)
+    assert (repo / inst.PROFILE).read_bytes() == cpu_profile
+    assert (repo / inst.SLM).read_bytes() == cpu_slm
 
 
 def test_render_refuses_unresolved_placeholders():

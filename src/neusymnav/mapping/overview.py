@@ -1,7 +1,7 @@
-"""Bounded immutable measured tiles; coarsened overviews are display-only.
+"""Bounded immutable measured tiles for occupancy overviews.
 
-The room lane consumes the exact raw tile history through room_map, not the
-coarsened raster returned by build_overview. Control retains its local map.
+The legacy room lane consumes exact raw tiles through room_map. The coarsened
+raster and the optional last-known-state history are display-only.
 """
 from dataclasses import dataclass
 import math
@@ -48,8 +48,9 @@ class OverviewTiles:
     complete: bool = True
 
 
-def update_tiles(previous, nav, grid, cells, free_threshold, occupied_threshold, *, max_tiles=4096):
-    """Apply every dirty canonical cell, preserving previous immutable tiles."""
+def update_tiles(previous, nav, grid, cells, free_threshold, occupied_threshold, *,
+                 max_tiles=4096, preserve_known=False):
+    """Merge dirty cells into immutable tiles for the next overview publication."""
     size=grid.tile_size_cells
     max_tiles=min(max_tiles, (16*1024*1024)//(size*size))
     tiles={} if previous is None else dict(previous.tiles)
@@ -59,6 +60,10 @@ def update_tiles(previous, nav, grid, cells, free_threshold, occupied_threshold,
     occupied=(planar>=occupied_threshold)|np.any(height[:,1:]>=occupied_threshold,axis=1)
     free=(planar<=free_threshold)&np.all(height[:,1:]<=free_threshold,axis=1)&cells.floor_supported&~occupied
     values=np.full(len(rows),-1,np.int8); values[free]=0; values[occupied]=100
+    if preserve_known:
+        # An incomplete observation of a rolling cell supplies no new display state.
+        known = free | occupied
+        rows, cols, values = rows[known], cols[known], values[known]
     keys=np.column_stack((rows//size,cols//size))
     if len(keys):
         order=np.lexsort((keys[:,1],keys[:,0]))

@@ -59,6 +59,7 @@ class RoomSlmBackendConfig:
     # json-v1 keeps the original verbose prompt/JSON grammar for offline
     # reproducibility; compact-v2 is the low-latency live policy.
     prompt_policy: str = 'json-v1'
+    gpu_device: str | None = None
 
     def __post_init__(self):
         if type(self.enabled) is not bool:
@@ -93,6 +94,10 @@ class RoomSlmBackendConfig:
             object.__setattr__(self, 'cpu_affinity', cpus)
         if self.prompt_policy not in PROMPT_POLICIES:
             raise ValueError(f'prompt_policy must be one of {sorted(PROMPT_POLICIES)}')
+        if self.gpu_device is not None:
+            text(self.gpu_device, 'gpu_device')
+            if self.gpu_device.lower() == 'none' or ',' in self.gpu_device:
+                raise ValueError('gpu_device must name one accelerator')
         integer(self.context_tokens, 'context_tokens', minimum=1)
         integer(self.max_input_tokens, 'max_input_tokens', minimum=1)
         integer(self.max_output_tokens, 'max_output_tokens', minimum=1)
@@ -117,8 +122,16 @@ class RoomSlmBackendConfig:
         return max(1, min(self.threads, available))
 
     @property
+    def offload_args(self) -> list[str]:
+        if self.gpu_device is None:
+            return ['--n-gpu-layers', '0']
+        return ['--device', self.gpu_device, '--n-gpu-layers', 'all']
+
+    @property
     def model_manifest_hash(self) -> str:
         payload = {item.name: getattr(self, item.name) for item in fields(self)}
+        if self.gpu_device is None:
+            del payload['gpu_device']
         if payload['cpu_affinity'] is not None:
             payload['cpu_affinity'] = list(payload['cpu_affinity'])
         encoded = json.dumps(payload, sort_keys=True, separators=(',', ':'))
@@ -227,7 +240,7 @@ class LlamaCppRoomLabelBackend:
         command = [str(runtime_path), '--model', str(model_path), '--host', '127.0.0.1',
             '--port', str(port), '--threads', str(config.effective_threads),
             '--threads-batch', str(config.effective_threads), '--ctx-size', str(config.context_tokens),
-            '--parallel', '1', '--n-gpu-layers', '0', '--no-webui',
+            '--parallel', '1', *config.offload_args, '--no-webui',
             '--chat-template-kwargs', '{"enable_thinking":false}']
         env = dict(os.environ)
         env['HF_HUB_OFFLINE'] = '1'

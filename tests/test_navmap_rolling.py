@@ -1,6 +1,7 @@
 """Regression coverage for the optional bounded rolling NavMap policy."""
-from dataclasses import replace
+from dataclasses import asdict, replace
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from neusymnav.contracts import FrameKey, GridState, Observation
 from neusymnav.mapping._raycast_kernel import RaycastVotes
 from neusymnav.mapping.occupancy import NavMapper, RobotGeometry
+from neusymnav.mapping.overview import build_overview
 from neusymnav.contracts import NavigationDecision
 from neusymnav.navigation.safety import MotionGuard
 from neusymnav.mapping.rolling import RollingWindow
@@ -132,6 +134,51 @@ def test_partial_plane_and_height_refresh_cannot_revive_expired_floor(tmp_path):
     assert not nav.floor_support[row, col]
     assert mapper._core.log_odds_at(0, 0) == pytest.approx(-.4)
     assert mapper._core.log_odds_at(0, 0, height_bin=1) == pytest.approx(-.4)
+
+
+@pytest.mark.parametrize("backend", ["hydra", "legacy"])
+def test_rolling_demo_overview_distinguishes_missing_evidence_from_map_changes(tmp_path, backend):
+    from neusymnav.runtime.launcher import _mapper as make_runtime_mapper
+
+    config = SimpleNamespace(data={
+        "floor": {"z_m": 3., "datum_source": "scene-calibration:v1", "calibration_sha256": "a" * 64},
+        "navigation": {
+            "robot": asdict(_geometry()),
+            "mapper": {"resolution_m": .1, "snapshot_radius_m": .2, "local_retention_s": 10.},
+        },
+        "scene_graph": {"backend": backend},
+    })
+    mapper = make_runtime_mapper(config, tmp_path)
+    votes = {"cells": []}
+    mapper._core._raycast_collector = _fake_collector(votes)
+    historical_free = GridState.FREE if backend == "hydra" else GridState.UNKNOWN
+    historical_occupied = GridState.OCCUPIED if backend == "hydra" else GridState.UNKNOWN
+    sequence = [
+        (1, "full", GridState.UNKNOWN, GridState.UNKNOWN),
+        (2, "full", GridState.FREE, GridState.FREE),
+        (12, None, GridState.UNKNOWN, GridState.FREE),
+        (13, "floor_height", GridState.UNKNOWN, historical_free),
+        (14, "occupied", GridState.OCCUPIED, GridState.OCCUPIED),
+        (25, "floor_height", GridState.UNKNOWN, historical_occupied),
+        (26, "full", GridState.UNKNOWN, historical_occupied),
+        (27, "full", GridState.FREE, GridState.FREE),
+    ]
+    for index, (seconds, evidence, expected_nav, expected_display) in enumerate(sequence):
+        votes["cells"] = [] if evidence is None else [(0, 0, evidence)]
+        nav = mapper.update(_observation(index, stamp=seconds * 1_000_000_000))
+        assert nav.states[_cell(nav)] == expected_nav
+        overview = build_overview(mapper.overview_tiles())
+        assert overview.states[0, 0] == expected_display, seconds
+        assert overview.source_nav is nav
+
+    expected_room_input = None if backend == "hydra" else mapper.overview_tiles()
+    assert mapper.room_input_tiles() is expected_room_input
+    mapper.reset("next")
+    votes["cells"] = [(0, 0, "floor_height")]
+    nav = mapper.update(_observation(0, stamp=28_000_000_000, episode="next"))
+    overview = build_overview(mapper.overview_tiles())
+    assert overview.source_nav is nav
+    assert np.all(overview.states == GridState.UNKNOWN)
 
 
 def test_zero_capture_timestamp_is_valid_and_expires_from_distinct_sentinel(tmp_path):

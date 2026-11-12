@@ -6,6 +6,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from .hierarchy_view import hierarchy_rows, hierarchy_links
 from .graph_visibility import GraphVisibility, select_visible_nodes
+from .hydra_display import node_label
 
 
 COLORS = {"floor": "#60beb1", "room": "#69baff", "object": "#e1a65b"}
@@ -30,6 +31,7 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
         self.node_items = {}
         self._hydra_layer_filter = None
         self.room_labels = {}
+        self.room_passages = ()
         self.graph_visibility = GraphVisibility.for_preset('rooms_objects')
         self.visible_graph = None
         self._selected_id = None
@@ -37,8 +39,9 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
         self._selecting = False
         self.scene().selectionChanged.connect(self._selection_changed)
 
-    def set_envelope(self, envelope):
+    def set_envelope(self, envelope, *, room_passages=()):
         self._envelope=envelope
+        self.room_passages = room_passages
         if envelope.sources.hydra_graph is not None:
             self._set_hydra_graph(envelope.sources.hydra_graph)
             return
@@ -177,23 +180,22 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
     def _set_hydra_graph(self, graph):
         if self._episode!=graph.episode_id:
             self._manual_view=False;self._episode=graph.episode_id
-        visible = select_visible_nodes(graph, self.graph_visibility, self._selected_id)
+        visible = select_visible_nodes(graph, self.graph_visibility, self._selected_id,
+                                       room_passages=self.room_passages)
         self.visible_graph = visible
         center=self.mapToScene(self.viewport().rect().center());self._selecting=True
         try:
             self.scene().clear();self.node_items={}
             selected_nodes=list(visible.nodes)
-            layers=sorted({node.layer_id for node in selected_nodes})
-            ids={node.node_id for node in selected_nodes}
+            rank = {5: 0, 4: 1, 3: 2, 2: 3}
+            layers=sorted({node.layer_id for node in selected_nodes}, key=lambda layer: rank.get(layer, 4))
             columns={layer:[node for node in selected_nodes if node.layer_id==layer] for layer in layers}
             positions={};labels={};font=QtGui.QFont('Sans Serif',9);metrics=QtGui.QFontMetrics(font)
             for layer,nodes in columns.items():
                 for index,node in enumerate(nodes):
                     positions[node.node_id]=QtCore.QPointF((index-(len(nodes)-1)/2)*230,35+layers.index(layer)*120)
-                    label=(f'{node.name or "Place"} · {node.native_id}'
+                    label=(node_label(graph, node, self.room_labels)
                            if layer != 3 or self.graph_visibility.show_place_labels else '')
-                    if layer==4 and node.node_id in self.room_labels:
-                        label=f'{self.room_labels[node.node_id]} · {node.native_id}'
                     if graph.status!='available' and label:label+=' · STALE'
                     labels[node.node_id]=label[:80]
             for edge in visible.edges:
@@ -201,10 +203,12 @@ class SceneGraphWidget(QtWidgets.QGraphicsView):
                 path=QtGui.QPainterPath(a);mid=(a.y()+b.y())/2
                 path.cubicTo(a.x(),mid,b.x(),mid,b.x(),b.y())
                 derived=edge.kind=='derived_room_membership'
-                pen=QtGui.QPen(QtGui.QColor('#c084fc' if derived else '#8aa4bb'),
-                    1.5,QtCore.Qt.DashLine if derived else QtCore.Qt.SolidLine)
+                passage=edge.kind=='observed_room_passage'
+                pen=QtGui.QPen(QtGui.QColor('#5adce8' if passage else '#8aa4bb'),
+                    1.5,QtCore.Qt.DashLine if passage else QtCore.Qt.SolidLine)
                 item=self.scene().addPath(path,pen)
-                item.setToolTip('Derived room membership from native parent chain; not a native edge'
+                item.setToolTip('Direct room passage · measured floor and footprint clearance' if passage else
+                    'Room membership from native parent chain'
                     if derived else 'Native Spark-DSG '+edge.kind+' edge')
                 item.setZValue(-1)
             for node in selected_nodes:

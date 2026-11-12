@@ -351,8 +351,12 @@ def _mapper(config,root,*,raycast_backend=None):
     selected=options.pop('raycast_backend','cpu')
     if selected=='triton_cuda' and raycast_backend is None:raise ValueError('GPU raycast worker not initialized')
     if 'tile_archive_dir' in options:raise ValueError('mapper tile archive is assigned inside run root')
+    preserve_known_overview = (
+        d.get('scene_graph', {}).get('backend') == 'hydra' and 'local_retention_s' in options
+    )
     return NavMapper(robot=robot,floor_z_m=floor['z_m'],floor_datum_source=floor['datum_source'],
-        calibration_hash=floor['calibration_sha256'],tile_archive_dir=root/'tiles',raycast_backend=raycast_backend,**options)
+        calibration_hash=floor['calibration_sha256'],tile_archive_dir=root/'tiles',raycast_backend=raycast_backend,
+        preserve_known_overview=preserve_known_overview,**options)
 
 
 def _runtime_mapper(config,root,domain,*,raycast_backend=None,offline_replay_control=False):
@@ -639,7 +643,8 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
                 fps_limit_hz=hydra_worker.get('fps_limit_hz'),
                 artifact_quota_bytes=hydra_worker.get('artifact_quota_bytes',2*1024**3))
             return HydraGraphRuntime(session,calibration=calibration,taxonomy=taxonomy,
-                detector_profile_id=scene_config['detector_profile_id'])
+                detector_profile_id=scene_config['detector_profile_id'],
+                display_robot=None if mapper is None else mapper.robot)
     pipeline=Pipeline(root,episode_id=e['id'],primary_sensor_id=e['primary_sensor_id'],clock_domain=domain,
         floor_id=e['floor_id'],owner_factory=None if hydra_runtime_factory else owner,detector_factory=detector,
         verifier_factory=None if hydra_runtime_factory else lambda owner:VerificationOwner(owner,clock_domain=domain,now_ns=now_ns,root=root/'verification'),

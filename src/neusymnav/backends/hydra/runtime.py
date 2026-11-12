@@ -21,7 +21,7 @@ class HydraGraphRuntime:
     """Turn an already-produced detector batch into a nonblocking session offer."""
 
     def __init__(self, session, *, calibration: HydraCalibration, taxonomy: Taxonomy,
-                 detector_profile_id: str):
+                 detector_profile_id: str, display_robot=None):
         if not isinstance(calibration, HydraCalibration):
             raise TypeError('calibration must be HydraCalibration')
         if not isinstance(taxonomy, Taxonomy):
@@ -33,6 +33,8 @@ class HydraGraphRuntime:
         self.taxonomy = taxonomy
         self.detector_profile_id = detector_profile_id
         self.rasterizer = HydraLabelRasterizer(taxonomy)
+        self._category_by_label = {label: name for name, label in self.rasterizer.class_to_label.items()}
+        self._display_robot = display_robot
 
     def offer(self, observation: Observation, batch: DetectionBatch):
         semantic = self.rasterizer.rasterize(observation, batch)
@@ -78,6 +80,14 @@ class HydraGraphRuntime:
             'graph_asset_sha256','graph_asset_bytes','node_counts','edge_count','last_transform')}
         if getattr(snapshot, 'room_stability', None) is not None:
             metadata['room_stability'] = snapshot.room_stability
+        metadata['object_categories'] = {node['native_id']: self._category_by_label[node['semantic_label']]
+            for node in summary['nodes'] if node['layer_id'] == 2
+            and node.get('semantic_label') in self._category_by_label}
+        if self._display_robot is not None:
+            metadata['display_robot'] = {
+                name: getattr(self._display_robot, name)
+                for name in ('geometry_id', 'radius_m', 'height_m', 'margin_m')
+            }
         return HydraGraphAdapter.project(summary,episode_id=self.session.episode_id,
             run_id=self.session.run_id,stale=snapshot.stale,
             replay_required=snapshot.replay_required,failure_reason=snapshot.failure_reason,
