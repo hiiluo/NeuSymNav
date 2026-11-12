@@ -17,7 +17,7 @@ Branch `objectnav`, built on tag `baseline-3dsg-v11`. Decisions agreed on 11/11/
 
 ## Metric definitions (habitat-lab ObjectNav)
 
-- DTG: geodesic distance to the nearest goal **view point**.
+- DTG: geodesic distance to the nearest goal **view point**. Since 13/11/2026 the view points are first snapped onto the scorer's (runtime basis) navmesh, rule `snap-to-scorer-navmesh-v1`: snap kept when it moves ≤ 0.05 m sideways and ≤ 0.3 m vertically, else the raw point. Reason: the stored view points sit 0.05–0.15 m below that navmesh, which added the height gap to every DTG (`footprint-vs-viewpoint-results.md`). Summaries from before carry `schema_version` ≤ 2 and are not comparable.
 - Success: STOP called and DTG < 0.1 m (strict).
 - SPL = success × l / max(p, l); **l = DTG at the episode start computed on the same navmesh** (habitat-lab `_start_end_episode_distance`), p = travelled path length. The episode's stored `info.geodesic_distance` is kept for reference only. This corrects the earlier note "SPL uses the stored value": the stored values are 1–4 % longer than our navmesh geodesics.
 - SoftSPL = max(0, 1 − d_end / l) × l / max(p, l).
