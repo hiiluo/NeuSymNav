@@ -50,6 +50,7 @@ def numba_available() -> bool:
 def _collect_votes_impl(
     endpoints_world: np.ndarray,
     has_return: np.ndarray,
+    trace_free: np.ndarray,
     camera_origin_world: np.ndarray,
     resolution_m: float,
     origin_x_m: float,
@@ -63,6 +64,7 @@ def _collect_votes_impl(
     rows: int,
     cols: int,
     height_bin_count: int,
+    bounded: bool,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     planar_free = np.zeros((rows, cols), dtype=np.bool_)
     planar_hit = np.zeros((rows, cols), dtype=np.bool_)
@@ -82,7 +84,8 @@ def _collect_votes_impl(
         end_col = math.floor((end_x - origin_x_m) / resolution_m)
         local_end_row = end_row - min_row
         local_end_col = end_col - min_col
-        if has_return[ray_index] and abs(endpoint_height) <= height_bin_m:
+        if (has_return[ray_index] and abs(endpoint_height) <= height_bin_m
+                and 0 <= local_end_row < rows and 0 <= local_end_col < cols):
             floor_hit[local_end_row, local_end_col] = True
 
         obstacle_hit = has_return[ray_index] and height_bin_m <= endpoint_height <= robot_height_m
@@ -92,11 +95,60 @@ def _collect_votes_impl(
             if 0.0 <= endpoint_height <= robot_height_m:
                 endpoint_bin = min(endpoint_bin, height_bin_count - 1)
 
+        if (obstacle_hit and 0 <= endpoint_bin < height_bin_count
+                and 0 <= local_end_row < rows and 0 <= local_end_col < cols):
+            height_hit[local_end_row, local_end_col, endpoint_bin] = True
+            planar_hit[local_end_row, local_end_col] = True
+
+        # Keep endpoint and floor evidence for every ray. Only the interpolated
+        # free-space traversal can be sampled more sparsely.
+        if not trace_free[ray_index]:
+            continue
+
         delta_x = end_x - camera_origin_world[0]
         delta_y = end_y - camera_origin_world[1]
         delta_z = end_z - camera_origin_world[2]
         distance = math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z)
         sample_count = max(1, math.ceil(distance / ray_step_m))
+
+        first_step = 0
+        end_step = sample_count + 1
+        if bounded:
+            # Restrict work, NEVER resample or truncate the physical ray. Use
+            # original integer sample indices/fractions. Expand each slab by a
+            # cell/bin plus two samples for floating faces and pending-voxel
+            # flush. Outside samples cannot vote in this output window.
+            enter = 0.0
+            leave = 1.0
+            for axis in range(3):
+                if axis == 0:
+                    start = camera_origin_world[0]
+                    delta = delta_x
+                    lower = origin_x_m + (min_col - 1) * resolution_m
+                    upper = origin_x_m + (min_col + cols + 1) * resolution_m
+                elif axis == 1:
+                    start = camera_origin_world[1]
+                    delta = delta_y
+                    lower = floor_y_m
+                    upper = floor_y_m + (height_bin_count + 1) * height_bin_m
+                else:
+                    start = camera_origin_world[2]
+                    delta = delta_z
+                    lower = origin_z_m + (min_row - 1) * resolution_m
+                    upper = origin_z_m + (min_row + rows + 1) * resolution_m
+                if delta == 0.0:
+                    if start < lower or start > upper:
+                        enter = 2.0
+                        break
+                else:
+                    a = (lower - start) / delta
+                    b = (upper - start) / delta
+                    enter = max(enter, min(a, b))
+                    leave = min(leave, max(a, b))
+            if enter > leave:
+                continue
+            first_step = max(0, int(math.floor(enter * sample_count)) - 2)
+            end_step = min(sample_count + 1, int(math.ceil(leave * sample_count)) + 3)
 
         pending = False
         pending_row = 0
@@ -105,7 +157,7 @@ def _collect_votes_impl(
         previous_row = 0
         previous_col = 0
         previous_height = 0
-        for step in range(sample_count + 1):
+        for step in range(first_step, end_step):
             fraction = step / sample_count
             point_x = camera_origin_world[0] + delta_x * fraction
             point_y = camera_origin_world[1] + delta_y * fraction
@@ -131,8 +183,9 @@ def _collect_votes_impl(
                 if pending and 1 <= pending_height < height_bin_count:
                     local_row = pending_row - min_row
                     local_col = pending_col - min_col
-                    height_free[local_row, local_col, pending_height] = True
-                    planar_free[local_row, local_col] = True
+                    if 0 <= local_row < rows and 0 <= local_col < cols:
+                        height_free[local_row, local_col, pending_height] = True
+                        planar_free[local_row, local_col] = True
                 pending = True
                 pending_row = row
                 pending_col = col
@@ -141,14 +194,33 @@ def _collect_votes_impl(
             previous_col = col
             previous_height = height
 
-        if obstacle_hit and 0 <= endpoint_bin < height_bin_count:
-            height_hit[local_end_row, local_end_col, endpoint_bin] = True
-            planar_hit[local_end_row, local_end_col] = True
-
     return planar_free, planar_hit, floor_hit, height_free, height_hit
 
 
 _numba_collect_votes = njit(cache=False, nogil=True)(_collect_votes_impl) if njit is not None else None
+
+
+def warmup_raycast_kernel() -> bool:
+    """Compile the exact CPU raycast signature without integrating fake data."""
+    dispatcher = _numba_collect_votes
+    if dispatcher is None:
+        return False
+    from ._log_odds_kernel import warmup_log_odds_kernel
+
+    warmup_log_odds_kernel()
+    from ._retention_kernel import warmup_maintenance_kernel
+    warmup_maintenance_kernel()
+    from numba import types
+    signature = (
+        types.float64[:, ::1], types.boolean[::1], types.boolean[::1], types.float64[::1],
+        *(types.float64 for _ in range(7)),
+        *(types.int64 for _ in range(5)), types.boolean,
+    )
+    if signature not in dispatcher.signatures:
+        dispatcher.compile(signature)
+    if signature not in dispatcher.signatures:
+        raise RuntimeError('Numba raycast warmup did not register its signature')
+    return True
 
 
 def collect_ray_votes(
@@ -156,6 +228,7 @@ def collect_ray_votes(
     camera_origin_world: np.ndarray,
     *,
     has_return: np.ndarray | None = None,
+    trace_free: np.ndarray | None = None,
     resolution_m: float,
     origin_x_m: float,
     origin_z_m: float,
@@ -165,6 +238,7 @@ def collect_ray_votes(
     ray_step_m: float,
     backend: Backend = "auto",
     workers: int = 1,
+    grid_bounds: tuple[int, int, int, int] | None = None,
 ) -> RaycastVotes:
     """Rasterize world-space ray endpoints into per-frame occupancy votes.
 
@@ -175,10 +249,20 @@ def collect_ray_votes(
     unchanged for the duration of the call; the native kernel releases the GIL
     and writes only task-local output arrays.
 
+    ``grid_bounds=(min_row,min_col,end_row,end_col)`` optionally computes only
+    that half-open output window, exactly equivalent to cropping full votes.
+    Every physical ray keeps its original sample count and endpoint semantics.
+
     The ``python`` backend needs only NumPy. ``numba`` requires Numba and compiles
     lazily on its first call; ``auto`` uses Numba when it is available and falls
     back to Python otherwise.
     """
+    if grid_bounds is not None:
+        if (not isinstance(grid_bounds, tuple) or len(grid_bounds) != 4
+                or any(type(v) is not int for v in grid_bounds)
+                or grid_bounds[0] >= grid_bounds[2] or grid_bounds[1] >= grid_bounds[3]
+                or any(abs(v) > 2**52 for v in grid_bounds)):
+            raise ValueError("grid bounds require four ordered finite integer cell edges")
     if type(workers) is not int or not 1 <= workers <= 4:
         raise ValueError("raycast workers must be an integer from 1 to 4")
     endpoints = np.ascontiguousarray(endpoints_world, dtype=np.float64)
@@ -193,6 +277,13 @@ def collect_ray_votes(
         if returns.shape != (endpoints.shape[0],) or returns.dtype != np.bool_:
             raise ValueError("has_return must be bool[N]")
         returns = np.ascontiguousarray(returns)
+    if trace_free is None:
+        free_trace = np.ones(endpoints.shape[0], dtype=np.bool_)
+    else:
+        free_trace = np.asarray(trace_free)
+        if free_trace.shape != (endpoints.shape[0],) or free_trace.dtype != np.bool_:
+            raise ValueError("trace_free must be bool[N]")
+        free_trace = np.ascontiguousarray(free_trace)
 
     camera_origin = np.ascontiguousarray(camera_origin_world, dtype=np.float64)
     if camera_origin.shape != (3,) or not np.isfinite(camera_origin).all():
@@ -219,7 +310,11 @@ def collect_ray_votes(
         raise RuntimeError("Numba is not installed; use backend='python' or 'auto'")
 
     height_bin_count = math.ceil(robot_height_m / height_bin_m)
-    if endpoints.shape[0] == 0:
+    if grid_bounds is not None:
+        bounded_cells=(grid_bounds[2]-grid_bounds[0])*(grid_bounds[3]-grid_bounds[1])
+        if bounded_cells > 1_000_000 or bounded_cells*(3+2*height_bin_count) > 128*1024**2:
+            raise MemoryError('bounded vote output exceeds cell or byte budget')
+    if endpoints.shape[0] == 0 and grid_bounds is None:
         empty_planar = np.zeros((0, 0), dtype=np.bool_)
         empty_height = np.zeros((0, 0, height_bin_count), dtype=np.bool_)
         return RaycastVotes(
@@ -234,16 +329,19 @@ def collect_ray_votes(
 
     # Include the camera origin and every endpoint. Linear interpolation cannot
     # leave these row/column bounds, including for negative world coordinates.
-    min_z = min(float(endpoints[:, 2].min()), float(camera_origin[2]))
-    max_z = max(float(endpoints[:, 2].max()), float(camera_origin[2]))
-    min_x = min(float(endpoints[:, 0].min()), float(camera_origin[0]))
-    max_x = max(float(endpoints[:, 0].max()), float(camera_origin[0]))
+    min_z = min(float(endpoints[:, 2].min()), float(camera_origin[2])) if len(endpoints) else float(camera_origin[2])
+    max_z = max(float(endpoints[:, 2].max()), float(camera_origin[2])) if len(endpoints) else float(camera_origin[2])
+    min_x = min(float(endpoints[:, 0].min()), float(camera_origin[0])) if len(endpoints) else float(camera_origin[0])
+    max_x = max(float(endpoints[:, 0].max()), float(camera_origin[0])) if len(endpoints) else float(camera_origin[0])
     # Retain one guard cell because endpoint + delta * 1.0 can round across a
     # grid boundary even when the stored endpoint lies exactly on that boundary.
     min_row = math.floor((min_z - origin_z_m) / resolution_m) - 1
     max_row = math.floor((max_z - origin_z_m) / resolution_m) + 1
     min_col = math.floor((min_x - origin_x_m) / resolution_m) - 1
     max_col = math.floor((max_x - origin_x_m) / resolution_m) + 1
+    if grid_bounds is not None:
+        min_row, min_col, end_row, end_col = grid_bounds
+        max_row, max_col = end_row - 1, end_col - 1
     rows = max_row - min_row + 1
     cols = max_col - min_col + 1
 
@@ -251,14 +349,15 @@ def collect_ray_votes(
     kernel = _numba_collect_votes if use_numba else _collect_votes_impl
     arguments = (camera_origin, resolution_m, origin_x_m, origin_z_m, floor_y_m,
                  robot_height_m, height_bin_m, ray_step_m, min_row, min_col,
-                 rows, cols, height_bin_count)
+                 rows, cols, height_bin_count, grid_bounds is not None)
     # Disjoint task-local masks: no concurrent writes to a shared NumPy array.
     # Leave half of the existing128MiB vote budget for reduction temporaries.
     parallel_bytes = workers * rows * cols * (3 + 2 * height_bin_count)
     if workers > 1 and use_numba and len(endpoints) >= 256 and parallel_bytes <= 64 * 1024**2:
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='raycast-votes') as pool:
             jobs = [pool.submit(kernel, endpoints[len(endpoints)*i//workers:len(endpoints)*(i+1)//workers],
-                                returns[len(endpoints)*i//workers:len(endpoints)*(i+1)//workers], *arguments)
+                                returns[len(endpoints)*i//workers:len(endpoints)*(i+1)//workers],
+                                free_trace[len(endpoints)*i//workers:len(endpoints)*(i+1)//workers], *arguments)
                     for i in range(workers)]
             masks = jobs[0].result()
             for job in jobs[1:]:
@@ -267,7 +366,7 @@ def collect_ray_votes(
         # Apply occupied-wins AFTER union across chunks, exactly as serial.
         planar_free, planar_hit, floor_hit, height_free, height_hit = masks
     else:
-        planar_free, planar_hit, floor_hit, height_free, height_hit = kernel(endpoints, returns, *arguments)
+        planar_free, planar_hit, floor_hit, height_free, height_hit = kernel(endpoints, returns, free_trace, *arguments)
     np.logical_and(planar_free, np.logical_not(planar_hit), out=planar_free)
     np.logical_and(height_free, np.logical_not(height_hit), out=height_free)
     return RaycastVotes(

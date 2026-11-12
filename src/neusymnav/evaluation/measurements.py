@@ -18,8 +18,9 @@ from ..runtime.measurements import (
     MeasurementContext, MeasurementSource, BoundedMeasurements,
     MAX_INTEGER, MAX_SAMPLES, TRACE_RECORD_CHARGE, CAPTURE_RECORD_CHARGE,
     CONTEXT_CHARGE, DISTRIBUTION_SAMPLE_CHARGE, MAX_TRACE_BYTES,
-    _integer, _text, _hash,
+    TIMING_STAGES, _integer, _text, _hash, _navigation_diagnostics, _navigation_binding,
 )
+from ..runtime.resources import MAX_RESOURCE_DIAGNOSTIC_RECORDS
 from .metrics import measured, unavailable, ratio
 
 
@@ -60,6 +61,50 @@ def _source(value,context):
     if s.key.episode_id!=context.episode_id or s.key.sensor_id not in context.sensor_ids or s.clock_domain!=context.clock_domain:
         raise ValueError('measurement source execution mismatch')
     return s
+
+
+_CONTROL_DIAGNOSTIC_FIELDS={'decision_reason','decision_linear_mps','decision_yaw_radps',
+    'command_reason','command_linear_mps','command_yaw_radps',
+    'command_issued_monotonic_ns','command_deadline_monotonic_ns','failure_detail'}
+
+
+def _control_diagnostics(value):
+    _closed(value,_CONTROL_DIAGNOSTIC_FIELDS,'control diagnostics')
+    for name in ('decision_reason','command_reason'):
+        if value[name] is not None:_text(value[name],name)
+    for name in ('decision_linear_mps','decision_yaw_radps','command_linear_mps','command_yaw_radps'):
+        number=value[name]
+        if number is not None and (type(number) not in (int,float) or abs(number)>1e3 or not math.isfinite(number)):
+            raise ValueError(name+' must be a bounded finite number or null')
+    for name in ('command_issued_monotonic_ns','command_deadline_monotonic_ns'):
+        if value[name] is not None:_integer(value[name],name)
+    issued=value['command_issued_monotonic_ns'];deadline=value['command_deadline_monotonic_ns']
+    if (issued is None)!=(deadline is None) or (issued is not None and deadline<issued):
+        raise ValueError('control command deadline/order mismatch')
+    decision_fields=(value['decision_reason'],value['decision_linear_mps'],value['decision_yaw_radps'])
+    command_fields=(value['command_reason'],value['command_linear_mps'],value['command_yaw_radps'],issued,deadline)
+    if any(item is None for item in decision_fields)!=all(item is None for item in decision_fields):
+        raise ValueError('partial control decision diagnostics')
+    if any(item is None for item in command_fields)!=all(item is None for item in command_fields):
+        raise ValueError('partial control command diagnostics')
+    failure=value['failure_detail']
+    if failure is not None and failure not in ('deadline_expired','zero_motion_command'):
+        raise ValueError('unknown actuator failure detail')
+
+
+def _control_navigation(value):
+    fields={'schema_version','goal_id','goal_xy','path_point_count','path_sample_xy',
+        'path_sample_truncated','lookahead_xy','heading_error_rad','decision_reason'}
+    if type(value) is not dict:raise ValueError('navigation object required')
+    version=value.get('schema_version')
+    if type(version) is not int or version not in (1,2):
+        raise ValueError('unsupported control navigation diagnostics schema')
+    _closed(value,fields if version==1 else fields|{'control_map_scope','world_intent'},'control navigation diagnostics schema')
+    if type(value['schema_version']) is not int or value['schema_version'] not in (1,2):
+        raise ValueError('unsupported control navigation diagnostics schema')
+    try:normalized=_navigation_diagnostics({key:item for key,item in value.items() if key!='schema_version'})
+    except OverflowError as exc:raise ValueError('invalid control navigation diagnostics') from exc
+    if normalized!=value:raise ValueError('noncanonical control navigation diagnostics')
 
 
 def _collector(value,context,*,export_overflow=False):
@@ -107,9 +152,12 @@ def _collector(value,context,*,export_overflow=False):
     for record in records:
         if type(record) is not dict or type(record.get('event')) is not str:raise ValueError('closed trace record required')
         event=record['event']
-        fields={'capture':{'width','height'},'detector_return':{'now_ns','origin','revision'},'object_commit':{'now_ns','origin','revision'},'control':{'now_ns','reason','map_revision','depth_age_ns'},'admission':{'outcome'}}
+        fields={'capture':{'width','height'},'detector_return':{'now_ns','origin','revision'},'object_commit':{'now_ns','origin','revision'},'control':{'now_ns','reason','map_revision','depth_age_ns'},'admission':{'outcome'},'stage':{'stage','start_ns','end_ns','duration_ns'}}
         if event not in fields:raise ValueError('unknown trace event')
-        _closed(record,{'event','source'}|fields[event],'trace event')
+        optional_control_fields=({'diagnostics','navigation'}&set(record)) if event=='control' else set()
+        _closed(record,{'event','source'}|fields[event]|optional_control_fields,'trace event')
+        if 'diagnostics' in record:_control_diagnostics(record['diagnostics'])
+        if 'navigation' in record:_control_navigation(record['navigation'])
         source=None if record['source'] is None else _source(record['source'],context)
         if source is None and event!='control':raise ValueError('trace event requires source')
         if event=='capture':
@@ -121,6 +169,14 @@ def _collector(value,context,*,export_overflow=False):
         if missing:
             if full:raise ValueError('trace source absent from captures')
             unbound+=1
+        if event=='stage':
+            _text(record['stage'],'timing stage')
+            if record['stage'] not in TIMING_STAGES:raise ValueError('unknown timing stage')
+            start=_integer(record['start_ns'],'stage start')
+            end=_integer(record['end_ns'],'stage end')
+            duration=_integer(record['duration_ns'],'stage duration')
+            if end<start or duration!=end-start:raise ValueError('timing stage duration mismatch')
+            continue
         # Validate scalar fields even when the capture trace was dropped.
         if event in ('detector_return','object_commit'):
             _integer(record['now_ns'],'result time')
@@ -137,6 +193,11 @@ def _collector(value,context,*,export_overflow=False):
             age=None if source is None else record['now_ns']-source.capture_monotonic_ns
             if age is not None:_integer(age,'depth age')
             if type(record['depth_age_ns']) is not type(age) or record['depth_age_ns']!=age:raise ValueError('control depth age mismatch')
+            navigation=record.get('navigation')
+            if navigation is not None and navigation['schema_version']==2:
+                _navigation_binding(navigation,source,record['now_ns'],context,captures.get,record.get('diagnostics'))
+                if len(json.dumps(record,ensure_ascii=True,allow_nan=False).encode())>TRACE_RECORD_CHARGE:
+                    raise ValueError('v2 control record exceeds charged byte quota')
             if not missing:meter.try_record_control(source,now_ns=record['now_ns'],clock_domain=context.clock_domain,reason=record['reason'],map_revision=record['map_revision'])
             controls.append(record)
         else:
@@ -226,6 +287,105 @@ def trace_metrics(value,inspection):
     return result
 
 
+def analyze_control_stages(value, inspection):
+    """Summarize source-bound stage intervals without treating them as additive.
+
+    Whole-trace percentiles are emitted only for a complete retained trace.
+    Partial artifacts retain observed support/max for diagnosis, while missing
+    stage records remain explicitly unavailable rather than zero-cost stages.
+    """
+    collector = value['collector']
+    trace_info = inspection['trace']
+    trace_complete = bool(trace_info['trace_complete'] and collector['complete']
+                          and not collector['rejected_records']
+                          and not collector['contention_dropped']
+                          and not collector['counter_saturated'])
+    captures = trace_info['captures']
+    records = [record for record in collector['trace']['records']
+               if record.get('event') == 'stage']
+    grouped = {}
+    capture_times = {}
+    for record in records:
+        source = _source(record['source'], inspection['context'])
+        capture = captures.get(source.key)
+        # inspect_measurements already validates complete-trace binding. Keep
+        # partial unbound stage records visible in support, but don't assign a
+        # fabricated capture-time window to them.
+        capture_ns = None if capture is None else capture.capture_monotonic_ns
+        stage = record['stage']
+        grouped.setdefault(stage, []).append(record)
+        capture_times[id(record)] = capture_ns
+
+    def summarize(rows, *, complete):
+        durations = sorted(record['duration_ns'] for record in rows)
+        support = len(durations)
+        if support:
+            p50 = _percentile_ns(durations, .50) / 1e6 if complete else None
+            p95 = _percentile_ns(durations, .95) / 1e6 if complete else None
+            maximum = durations[-1] / 1e6
+            status = 'available' if complete else 'incomplete'
+        else:
+            p50 = p95 = maximum = None
+            status = 'unavailable'
+        sources = {json.dumps(record['source']['key'], sort_keys=True, separators=(',', ':'))
+                   for record in rows if record.get('source') is not None}
+        return {'status': status, 'support': support, 'source_count': len(sources),
+                'p50_ms': p50, 'p95_ms': p95, 'max_ms': maximum}
+
+    stages = {name: summarize(rows, complete=trace_complete)
+              for name, rows in sorted(grouped.items())}
+    declared = {record['stage'] for record in records}
+    absent = sorted(TIMING_STAGES - declared)
+    for name in absent:
+        stages[name] = {'status': 'unavailable', 'support': 0, 'source_count': 0,
+                        'p50_ms': None, 'p95_ms': None, 'max_ms': None,
+                        'reason': 'no retained stage records; absence does not establish zero duration'}
+
+    dated = [(capture_times[id(record)], record) for record in records
+             if capture_times[id(record)] is not None]
+    dated.sort(key=lambda item: (item[0], item[1]['start_ns'], item[1]['stage']))
+    midpoint = None
+    if dated:
+        distinct_captures = sorted({capture_ns for capture_ns, _ in dated})
+        midpoint = distinct_captures[len(distinct_captures) // 2]
+    windows = {}
+    for name, predicate in (
+        ('first_half', lambda stamp: midpoint is not None and stamp < midpoint),
+        ('second_half', lambda stamp: midpoint is not None and stamp >= midpoint),
+    ):
+        rows = [record for stamp, record in dated if predicate(stamp)]
+        window_groups = {}
+        for record in rows:
+            window_groups.setdefault(record['stage'], []).append(record)
+        windows[name] = {stage: summarize(window_rows, complete=trace_complete)
+                         for stage, window_rows in sorted(window_groups.items())}
+
+    return {
+        'schema_version': 1,
+        'artifact_sha256': inspection['artifact_sha256'],
+        'trace_complete': trace_complete,
+        'retained_stage_records': len(records),
+        'unbound_stage_records': sum(capture_times[id(record)] is None for record in records),
+        'stages': stages,
+        'windows': windows,
+        'window_split_capture_monotonic_ns': midpoint,
+        'composition_note': ('Stage durations overlap and may be nested; do not sum them as total latency. '
+                             'Observed stage intervals are attribution evidence, not a causal counterfactual.'),
+    }
+
+
+def _percentile_ns(sorted_values, fraction):
+    if not sorted_values:
+        return None
+    position = (len(sorted_values) - 1) * fraction
+    low = int(math.floor(position))
+    high = int(math.ceil(position))
+    if low == high:
+        return float(sorted_values[low])
+    weight = position - low
+    return float(sorted_values[low] * (1. - weight) + sorted_values[high] * weight)
+
+
 def _read_telemetry_json(path, max_bytes):
     """Only these telemetry artifacts have a larger, explicitly bounded reader."""
     from .protocol import _object
@@ -262,6 +422,7 @@ def inspect_control_invocations(value,*,clock_domain):
     keys={'schema_version','clock_domain','population','starts_monotonic_ns','total','retained',
           'dropped','complete','cap','navigation_wait','control_results','result_total',
           'result_missing','executed_results','intervals','limitation'}
+    if type(value) is dict and 'run_deadline_skips' in value:keys.add('run_deadline_skips')
     _closed(value,keys,'control invocations')
     if type(value['schema_version']) is not int or value['schema_version']!=1:
         raise ValueError('control invocation schema mismatch')
@@ -286,6 +447,22 @@ def inspect_control_invocations(value,*,clock_domain):
     waits=value['navigation_wait'];_closed(waits,{'matched','unmatched','unspecified'},'navigation wait')
     for count in waits.values():_integer(count,'navigation wait count')
     if sum(waits.values())!=total:raise ValueError('navigation wait support mismatch')
+    if 'run_deadline_skips' in value:
+        skips=value['run_deadline_skips']
+        _closed(skips,{'total','navigation_ready','navigation_pending','last_source'},'run deadline skips')
+        skip_total=_integer(skips['total'],'run deadline skips')
+        skip_ready=_integer(skips['navigation_ready'],'navigation-ready deadline skips')
+        skip_pending=_integer(skips['navigation_pending'],'navigation-pending deadline skips')
+        if skip_total!=skip_ready+skip_pending:
+            raise ValueError('run deadline skip count mismatch')
+        last_source=skips['last_source']
+        if skip_total==0:
+            if last_source is not None:raise ValueError('empty run deadline skips have a last source')
+        else:
+            _closed(last_source,{'episode_id','sensor_id','frame_index'},'last deadline skip source')
+            _text(last_source['episode_id'],'deadline skip episode')
+            _text(last_source['sensor_id'],'deadline skip sensor')
+            _integer(last_source['frame_index'],'deadline skip frame')
     results=value['control_results']
     if type(results) is not dict or len(results)>65:raise ValueError('bounded control results required')
     for reason,count in results.items():
@@ -336,6 +513,135 @@ def load_control_invocations(path,*,clock_domain):
     return value,inspect_control_invocations(value,clock_domain=clock_domain)
 
 
+_RSS_SAMPLE_FIELDS={'schema_version','sampled_at_ns','sample_started_ns','sample_finished_ns',
+    'sample_duration_ns','received_ns','process_count','rss_bytes','supported',
+    'missing_processes','read_errors','identity_changes','scope_truncated','attempt_count',
+    'failure_phase','failure_class','failure_pid','disposition'}
+_RSS_TRACE_FIELDS={'sample_trace','sample_trace_dropped','discarded_after_stop',
+    'sample_trace_cap','sample_trace_schema_version'}
+_RSS_LEGACY_FIELDS={'samples','support','sampled_peak_bytes','missing_processes',
+    'read_errors','identity_changes','truncated_samples','first_sample_ns',
+    'last_sample_ns','max_sample_gap_ns','method'}
+
+
+def _rss_sample_trace(rss):
+    """Validate the optional, bounded v1 sample trace alongside RSS counters."""
+    if type(rss) is not dict:raise ValueError('RSS sample object required')
+    present=_RSS_TRACE_FIELDS.intersection(rss)
+    if not present:
+        _closed(rss,_RSS_LEGACY_FIELDS,'RSS samples')
+        return None
+    if present!=_RSS_TRACE_FIELDS:
+        raise ValueError('RSS sample trace fields mismatch')
+    _closed(rss,_RSS_LEGACY_FIELDS|_RSS_TRACE_FIELDS,'RSS samples')
+    samples=_integer(rss['samples'],'RSS samples')
+    for field in ('support','missing_processes','read_errors','identity_changes','truncated_samples'):
+        _integer(rss[field],field)
+    if rss['sampled_peak_bytes'] is not None:_integer(rss['sampled_peak_bytes'],'sampled peak')
+    for field in ('first_sample_ns','last_sample_ns','max_sample_gap_ns'):
+        if rss[field] is not None:_integer(rss[field],'RSS sampling time')
+    if type(rss['sample_trace_schema_version']) is not int or rss['sample_trace_schema_version']!=1:
+        raise ValueError('unsupported RSS sample trace schema')
+    cap=_integer(rss['sample_trace_cap'],'RSS sample trace cap',
+        MAX_RESOURCE_DIAGNOSTIC_RECORDS,1)
+    if cap!=MAX_RESOURCE_DIAGNOSTIC_RECORDS:
+        raise ValueError('RSS sample trace cap mismatch')
+    records=rss['sample_trace'];dropped=_integer(rss['sample_trace_dropped'],'RSS sample trace dropped')
+    discarded=_integer(rss['discarded_after_stop'],'RSS discarded after stop')
+    if type(records) is not list or len(records)>cap or (dropped and len(records)!=cap):
+        raise ValueError('RSS sample trace bound mismatch')
+    if len(records)+dropped!=samples+discarded:
+        raise ValueError('RSS sample trace accounting mismatch')
+    accepted_records=discarded_records=0;last_received=None;discarded_seen=False
+    observed=dict(support=0,sampled_peak_bytes=None,missing_processes=0,read_errors=0,
+        identity_changes=0,truncated_samples=0,first_sample_ns=None,last_sample_ns=None,
+        max_sample_gap_ns=None)
+
+    def add_count(field,amount):
+        observed[field]=min(MAX_INTEGER,observed[field]+amount)
+
+    for record in records:
+        _closed(record,_RSS_SAMPLE_FIELDS,'RSS sample trace record')
+        if type(record['schema_version']) is not int or record['schema_version']!=1:
+            raise ValueError('unsupported RSS sample record schema')
+        for name in ('sampled_at_ns','received_ns','process_count','missing_processes',
+                     'read_errors','identity_changes','attempt_count'):
+            _integer(record[name],'RSS sample '+name)
+        for name in ('sample_started_ns','sample_finished_ns','sample_duration_ns'):
+            if record[name] is not None:_integer(record[name],'RSS sample '+name)
+        if record['rss_bytes'] is not None:_integer(record['rss_bytes'],'RSS sample bytes')
+        if record['failure_pid'] is not None:_integer(record['failure_pid'],'RSS sample failure PID',minimum=1)
+        for name in ('supported','scope_truncated'):_bool(record[name])
+        for name in ('failure_phase','failure_class'):
+            if record[name] is not None:_text(record[name],'RSS sample '+name)
+        started,finished,duration=(record[name] for name in
+            ('sample_started_ns','sample_finished_ns','sample_duration_ns'))
+        if started is not None and finished is not None and finished<started:
+            raise ValueError('RSS sample time order mismatch')
+        if duration is not None and started is not None and finished is not None and duration!=finished-started:
+            raise ValueError('RSS sample duration mismatch')
+        if record['sampled_at_ns']>record['received_ns'] or (finished is not None and finished>record['received_ns']):
+            raise ValueError('RSS sample received before completion')
+        if last_received is not None and record['received_ns']<last_received:
+            raise ValueError('RSS sample trace time moved backward')
+        last_received=record['received_ns']
+        supported=(record['rss_bytes'] is not None and not record['missing_processes']
+            and not record['read_errors'] and not record['identity_changes']
+            and not record['scope_truncated'])
+        if record['supported']!=supported:
+            raise ValueError('RSS sample support provenance mismatch')
+        disposition=record['disposition']
+        if disposition=='accepted_by_sampler':
+            if discarded_seen:raise ValueError('accepted RSS sample follows discarded-after-stop record')
+            accepted_records+=1
+            for field in ('missing_processes','read_errors','identity_changes'):
+                add_count(field,record[field])
+            add_count('truncated_samples',int(record['scope_truncated']))
+            previous=observed['last_sample_ns'];sampled_at=record['sampled_at_ns']
+            valid=record['supported']
+            if previous is not None and sampled_at<previous:
+                add_count('read_errors',1)
+                valid=False
+            else:
+                if previous is not None:
+                    gap=sampled_at-previous
+                    observed['max_sample_gap_ns']=max(observed['max_sample_gap_ns'] or 0,gap)
+                observed['last_sample_ns']=sampled_at
+                if observed['first_sample_ns'] is None:observed['first_sample_ns']=sampled_at
+            if valid:
+                add_count('support',1)
+                peak=record['rss_bytes']
+                observed['sampled_peak_bytes']=max(observed['sampled_peak_bytes'] or 0,peak)
+        elif disposition=='discarded_after_stop':
+            discarded_records+=1;discarded_seen=True
+        else:raise ValueError('unknown RSS sample disposition')
+    if accepted_records>samples or discarded_records>discarded:
+        raise ValueError('RSS sample disposition count mismatch')
+    if dropped==0 and (accepted_records!=samples or discarded_records!=discarded):
+        raise ValueError('RSS sample trace disposition accounting mismatch')
+    if not dropped:
+        if any(rss[field]!=observed[field] for field in observed):
+            raise ValueError('RSS sample trace differs from aggregate summary')
+    else:
+        for field in ('support','missing_processes','read_errors','identity_changes','truncated_samples'):
+            if rss[field]<observed[field]:
+                raise ValueError('retained RSS sample trace exceeds aggregate summary')
+        peak=observed['sampled_peak_bytes']
+        if peak is not None and (rss['sampled_peak_bytes'] is None or rss['sampled_peak_bytes']<peak):
+            raise ValueError('retained RSS sample peak exceeds aggregate summary')
+        first=observed['first_sample_ns']
+        last=observed['last_sample_ns']
+        gap=observed['max_sample_gap_ns']
+        if first is not None and rss['first_sample_ns']!=first:
+            raise ValueError('retained RSS first sample differs from aggregate summary')
+        if last is not None and (rss['last_sample_ns'] is None or rss['last_sample_ns']<last):
+            raise ValueError('retained RSS last sample exceeds aggregate summary')
+        if gap is not None and (rss['max_sample_gap_ns'] is None or rss['max_sample_gap_ns']<gap):
+            raise ValueError('retained RSS sample gap exceeds aggregate summary')
+    return dict(schema_version=1,retained_records=len(records),dropped_records=dropped,
+        record_cap=cap,discarded_after_stop=discarded)
+
+
 
 def resource_metrics(value):
     """Check sampler summaries; these peaks remain sampled provider assertions.
@@ -369,7 +675,7 @@ def resource_metrics(value):
         _text(proof['proc_root'],'proc root',maximum=4096)
     elif any(proof[field] is not None for field in ('root_pid','root_starttime_ticks','proc_root')):raise ValueError('unverified provider has claimed PID proof')
     rss=value['rss'];gpu=value['gpu']
-    _closed(rss,{'samples','support','sampled_peak_bytes','missing_processes','read_errors','identity_changes','truncated_samples','first_sample_ns','last_sample_ns','max_sample_gap_ns','method'},'RSS samples')
+    sample_trace_provenance=_rss_sample_trace(rss)
     _closed(gpu,{'samples','support','sampled_peak_bytes','unavailable_reason','errors','timeouts','method'},'GPU samples')
     if rss['method']!='sampled_process_tree_rss_sum' or gpu['method']!='injected_process_tree_attributed_gpu_sample':raise ValueError('resource measurement method mismatch')
     result={}
@@ -381,7 +687,10 @@ def resource_metrics(value):
             _integer(peak,'sampled peak')
             if start is None:raise ValueError('resource samples without startup timestamp')
         elif peak is not None:raise ValueError('unsupported resource channel has non-null peak')
-        result[name]=measured(dict(sampled_peak_bytes=peak,method=channel['method'],samples=channel['samples'],scope=value['scope'],scope_proof=proof,worker_pending=value['worker_pending'],interval_s=value['interval_s'] if channel is rss else value['gpu_interval_s'],observed_phase='startup_active_worker_cleanup_before_final_export',absolute_peak_proven=False),support=channel['support'],source='pinned resource sampler summary; sampled provider values, no raw instantaneous memory trace') if channel['support'] and not value['worker_pending'] else unavailable('resource sampler pending' if value['worker_pending'] else 'no supported samples')
+        measurement=dict(sampled_peak_bytes=peak,method=channel['method'],samples=channel['samples'],scope=value['scope'],scope_proof=proof,worker_pending=value['worker_pending'],interval_s=value['interval_s'] if channel is rss else value['gpu_interval_s'],observed_phase='startup_active_worker_cleanup_before_final_export',absolute_peak_proven=False)
+        if channel is rss and sample_trace_provenance is not None:
+            measurement['sample_trace_provenance']=sample_trace_provenance
+        result[name]=measured(measurement,support=channel['support'],source='pinned resource sampler summary; sampled provider values, no raw instantaneous memory trace') if channel['support'] and not value['worker_pending'] else unavailable('resource sampler pending' if value['worker_pending'] else 'no supported samples')
     for field in ('missing_processes','read_errors','identity_changes','truncated_samples'):_integer(rss[field],field)
     for field in ('errors','timeouts'):_integer(gpu[field],field)
     if rss['truncated_samples']>rss['samples'] or gpu['errors']>gpu['samples'] or gpu['timeouts']>gpu['samples']:raise ValueError('resource error count exceeds samples')

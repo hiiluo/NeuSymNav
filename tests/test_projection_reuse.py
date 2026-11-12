@@ -35,6 +35,23 @@ def test_measured_projection_constructed_once(tmp_path,monkeypatch):
     assert calls == [True], 'probe must still detect the original reconstruction'
 
 
+def test_ray_geometry_preflight_reuses_only_matching_calibration(tmp_path,monkeypatch):
+    m=mapper(tmp_path);obs=down(size=9)
+    inverse=np.linalg.inv;calls=[]
+    def record(matrix):
+        calls.append(matrix.copy())
+        return inverse(matrix)
+    monkeypatch.setattr(np.linalg,'inv',record)
+    first=m._check_ray_budget(obs)
+    second_obs=down(1,size=9,x=.01)
+    second=m._check_ray_budget(second_obs)
+    assert len(calls)==1
+    np.testing.assert_array_equal(first,second)
+    changed=obs.K.copy();changed[0,0]+=1
+    m._check_ray_budget(replace(obs,K=changed))
+    assert len(calls)==2, 'intrinsic changes must invalidate cached inverse geometry'
+
+
 @pytest.mark.parametrize('kind',['measured','empty','no_return','near_pinhole'])
 def test_reused_map_matches_original_path_exactly(tmp_path,kind):
     a=mapper(tmp_path/'a');b=mapper(tmp_path/'b')

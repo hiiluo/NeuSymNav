@@ -84,6 +84,14 @@ def test_seeded_real_ipc_ack_and_actual_decoded_resolution_per_lane(tmp_path,mon
         assert initial['worker_script_sha256']==hashlib.sha256(script.read_bytes()).hexdigest()
         assert initial['actual_resolution_hw']=={}
         primary=source.capture();navigation=source.capture_navigation()
+        capture_timing=source.last_capture_timing
+        assert capture_timing['clock_domain']==primary.clock_domain
+        assert capture_timing['worker_request_received_ns'] <= capture_timing['worker_handler_start_ns']
+        assert capture_timing['worker_handler_start_ns'] <= capture_timing['worker_handler_end_ns']
+        assert {'sensor_draw_observations','sensor_readback_observations',
+                'sensor_packet_normalize_encode'} <= {row['stage'] for row in capture_timing['worker_stages']}
+        assert capture_timing['host_request_start_ns'] <= capture_timing['host_response_received_ns']
+        assert capture_timing['host_decode_start_ns'] <= capture_timing['host_decode_end_ns']
         actual=source.runtime_metadata['actual_resolution_hw']
         assert actual['primary']['resolution_hw']==[2,3]
         assert actual['navigation']['resolution_hw']==[4,5]

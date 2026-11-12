@@ -39,7 +39,8 @@ def test_decode_and_validation_share_transport_deadline(tmp_path,monkeypatch,sta
         clock[0] += .04
         return result
     source._wire.receive=timed_receive
-    monkeypatch.setattr(module,'time',SimpleNamespace(monotonic=lambda:clock[0]))
+    monkeypatch.setattr(module,'time',SimpleNamespace(monotonic=lambda:clock[0],
+        monotonic_ns=lambda:int(clock[0]*1e9)))
     if stage=='source':
         class SlowWatermarks(dict):
             def get(self,*args):

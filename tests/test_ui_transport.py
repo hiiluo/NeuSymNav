@@ -21,6 +21,15 @@ def test_transport_roundtrip_preserves_images_and_source_revision():
     assert decoded.sources.verification.objects.keys()==envelope.sources.verification.objects.keys()
 
 
+def test_cloud_source_match_compares_frame_key_fields_not_wire_encoding():
+    from neusymnav.contracts import FrameKey
+    from neusymnav.runtime.ui_transport import _matches_graph_source
+    key=FrameKey('episode','primary-rgbd',9)
+    source=dict(episode_id='episode',sensor_id='primary-rgbd',frame_index=9)
+    assert _matches_graph_source(key,source)
+    assert not _matches_graph_source(key,{**source,'frame_index':10})
+
+
 def test_transport_bounds_history_and_wire_bytes():
     from neusymnav.runtime.ui_transport import encode_publication,decode_publication
     envelope=make_publisher()[0].read_latest()
@@ -46,7 +55,8 @@ def test_actual_ui_subprocess_and_ack(tmp_path,monkeypatch):
     script=root/'src'/'neusymnav'/'runtime'/'ui_transport.py'
     now=time.monotonic_ns()
     def handle(command):return UiCommandAck(command.request_uuid,'accepted',None,time.monotonic_ns(),'clock')
-    process=UiProcess(tmp_path,python=sys.executable,script=script,clock_domain='clock',command_handler=handle,smoke_exit_ms=700)
+    process=UiProcess(tmp_path,python=sys.executable,script=script,clock_domain='clock',command_handler=handle,
+        recording_root=tmp_path/'recording',smoke_exit_ms=700)
     try:
         endpoint=UiEndpoint(tmp_path,clock_domain='clock')
         command=UiCommand(str(uuid4()),'pause','test',now,'clock')
@@ -64,6 +74,56 @@ def test_actual_ui_subprocess_and_ack(tmp_path,monkeypatch):
         assert ready['pid']!=os.getpid()
         assert ready['desktop']=='run_desktop'
     finally:assert process.close(2.)['clean_shutdown']
+
+
+def test_ui_close_flushes_and_confirms_render_of_final_graph_publication(tmp_path,monkeypatch):
+    from neusymnav.runtime.ui_transport import UiProcess,decode_publication
+    from neusymnav.backends.hydra.graph_adapter import HydraGraphProjection
+    from neusymnav.visualization.publisher import DisplaySources
+    monkeypatch.setenv('QT_QPA_PLATFORM','offscreen')
+    publisher,hierarchy,metrics,*_=make_publisher()
+    projection=HydraGraphProjection(1,'e','run',6,'a'*64,(),(),{},None,False,False,None,'available',{}, {})
+    metrics={**metrics,'sources':replace(metrics['sources'],hydra_graph=projection)}
+    script=Path(__file__).parents[1]/'src/neusymnav/runtime/ui_transport.py'
+    ui=UiProcess(tmp_path,python=sys.executable,script=script,clock_domain='clock',command_handler=lambda c:None,
+        recording_root=tmp_path/'recording')
+    deadline=time.monotonic()+3
+    while time.monotonic()<deadline and not (tmp_path/'ready.json').exists():time.sleep(.01)
+    assert (tmp_path/'ready.json').exists()
+
+    ui.publish(hierarchy,metrics)
+    report=ui.close(4.)
+
+    assert report['clean_shutdown']
+    envelope=decode_publication((tmp_path/'publication.json').read_bytes())
+    assert envelope.sources.hydra_graph.graph_revision==6
+    rendered=json.loads((tmp_path/'rendered.json').read_text())
+    assert rendered['publication_sequence']==envelope.publication_sequence
+    assert rendered['hydra_graph_revision']==6
+    assert rendered['hydra_graph_source'] is None
+    assert rendered['display_cloud_revision'] is None
+    assert rendered['display_cloud_graph_lag_ns'] is None
+    assert rendered['hydra_cloud_reader']['shutdown']['clean_shutdown']
+    assert rendered['hydra_cloud_reader']['pending']==0
+
+
+def test_ui_close_stops_waiting_and_persists_logs_when_child_exits_before_render(tmp_path):
+    from neusymnav.runtime.ui_transport import UiProcess
+    script=tmp_path/'crash.py'
+    script.write_text('print("TEST_UI_EARLY_EXIT",flush=True)\n')
+    ui=UiProcess(tmp_path/'ipc',python=sys.executable,script=script,clock_domain='clock',command_handler=lambda c:None)
+    publisher,hierarchy,metrics,*_=make_publisher()
+    ui.publish(hierarchy,metrics)
+    deadline=time.monotonic()+2
+    while time.monotonic()<deadline and not (ui.root/'publication.json').exists():time.sleep(.005)
+    assert (ui.root/'publication.json').exists()
+    ui.process.wait(timeout=2)
+
+    started=time.monotonic();report=ui.close(.8);elapsed=time.monotonic()-started
+
+    assert elapsed<.3
+    assert not report['clean_shutdown'] and not report['final_publication_rendered']
+    assert 'TEST_UI_EARLY_EXIT' in (ui.root/'desktop.log').read_text()
 
 
 def test_ui_diagnostics_remain_bounded_after_noisy_child(tmp_path):

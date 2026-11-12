@@ -7,4 +7,9 @@ from .graphs import (CommitResult, GridState, HierarchyComposer, HierarchyEdge, 
     HierarchySnapshot, NavMapper, NavSnapshot, ObjectOwner, ObjectSnapshot, ObjectState,
     Region, RegionBackend, RegionGrid, RegionSnapshot, VerificationOwner)
 from .navigation import MotionCommand, MotionGuard, NavigationDecision, Navigator
+from .room_pipeline import RoomMapSnapshot, RoomPipelinePublication
+from .hydra_graph import HydraCalibration, HydraFrame, validate_hydra_frame_order
+from .hydra_evidence import (EvidencePage, HydraEvidenceIndex, HydraObjectKey,
+    ObservationEvidence)
+from .room_semantics import RoomLabelProposal, RoomLabelResult, validate_room_label
 from .serialization import dumps, from_dict, loads, to_dict

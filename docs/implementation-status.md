@@ -1,5 +1,2143 @@
 # Trạng thái NeuSymNav
 
+### Room SLM async / snapshot debug — 2026-11-08 — implemented; error/cancel paths validated, no completed live label
+
+Report: `docs/results/room-slm-async-debug-2026-11-08.md`; artifacts: `runs/room-slm-async-debug-20261108/`.
+
+- **Implemented:** opt-in UI-child background service + persistent model backend, queue32/one inflight/latest per room/debounce/round-robin, history128/8MiB; source-bound semantic metadata and immutable snapshots. New Room labels (debug) tab shows state/context/hashes/evidence flags; historical graph has no current cloud/image sidebar. Zoom/Fit/Expand/Pop out supported. No model, Hydra geometry, movement or300ms/100ms guard change; shared SLM config remains disabled.
+- **Correctness-verified:**245 distinct focused tests passed32.84s/exit0, including local HTTP fixtures/native grammar oracle, source staleness/epoch and queue race regressions, UI timer/unavailable/zoom/sidebar and launcher regressions. Not full suite. Terra independent review findings fixed with regression. New profile preflight exit0; legacy UI worker SHA unchanged. Old baseline15/17match, two semantic files already evolved; no claim17/17.
+- **Runtime-validated, limited:** two00807 60s offscreen smokes completed/closed cleanly. Sandbox smoke exercised localhost PermissionError; permitted localhost smoke started real model but first job cancelled when demo ended. UI final Hydra revision2. No completed live label. Separate exact-content5object/10relation/661token context timed out twice at~60.72/~60.37s including cleanup; both reaped. New class native reuse not proven for this context. Actual timeout replay PNG/source1/current2 historical proof saved; no physical desktop interaction claim. Live58executed/134expired_or_zero, observed translation lower bound0m; strict actuation.complete=false, no freshness/movement acceptance claim.
+- **Evidence:** three existing source-bound contexts14+18+9=41objects, zero linked observations. Quality flags/generic-only host abstention implemented; bed/sofa error and visual association remain unresolved. Human references evaluator-only, old cross-run00805links quarantined. No semantic quality/default/ObjectNav promotion.
+- **Next:** compact-prompt A/B preserving all evidence and output policy to reduce cold prefill; then completed live result/UI source proof. Connect correct evidence sidecars/gallery independently. Profile `configs/demo-00807.hydra-room-slm-debug.experimental.local.json` is debug-only;120s command documented but not executed/accepted. No downloads, training, commits or push.
+
+### Room SLM output consistency + persistent KV — 2026-11-08 — implemented offline; measured, no semantic/live promotion
+
+Report `docs/results/room-slm-consistency-kv-2026-11-08.md`; artifacts `runs/room-slm-consistency-kv-20261108/`.
+- **Implemented:** request-bound deterministicGBNF (`room-output-consistency-v1`): unique/sortedalternatives≠label;1..8unique/sortedassignedIDs;unknown/insufficient onlyunknown+emptyarrays;boundedreason. Strictadapter/publicvalidator rejectsabstentionclaims, duplicateJSONkeys; backend sendsGBNFonly, logsgrammar/version/native timings/rawSHA, rejectsfinishlength. Sharedbodyhelper usedbyofflinebenchmark; productbackendstillperrequest, sharedSLMconfigdisabled. NoHydra/movement/guard/default/modelupgrade.
+- **Correctness-verified:** 97distinctfocusedtests pass2.05s/exit0, includes26nativegrammaroracles (no skip), max64objects52,487bytegrammar/~4ms;2policytestsrerun portabilitynotdoublecount. IndependentLunareview foundconditionalmeasurementtruncationgap; fixedfutureharness/helper+regression, archivedexactexecutedscript, observed9allstopunaffected. Verificationexit0/native9acceptances,6geometry/profilehashes+coordinator/safety/configunchanged.
+- **Runtime-validated diagnostic:**9completions on1persistentserver, CPU1/Qwen1.7BQ4/samemodelruntime/grammar,2contextsOFFONOFFON+crosscontextprobe. Mirror meanHTTP34.709OFF→11.799ONs, prefill23.356→.240s,61decodedtokensboth.9objects88.551→15.493s, prefill56.686→.278s; decode136OFF/67ONtokens, do notattributeallHTTPgain tocache. Crosscontext331reused/75newtokens~16.3s. Startup2.784s separate, childRSS2.69GB, closescleanly. Diagnostic100sHTTPonly; production60s anddepthguard300ms/horizon100ms unchanged.
+- **Not proven / remaining:**all9syntacticallyavailable doesnotmeansemanticcorrect: mirrorutilityunsupported,00807bedroomvsuserliving_room withnativeO0bed/actualsofa. Humanroomlabelset12eligible unmet; noquality/5slive/controlcontentiongate. KV≠resultcache; source/requestidentityunchanged. Needexplicitpersistentbackendlifecycle beforeeverydayreuse; S4/S5/UIremainunimplemented/gated. No commits/push/download/simulator.
+
+
+### Room SLM small-context diagnosis — 2026-11-08 — measured offline; human visual references recorded, no live promotion
+
+Report `docs/results/room-slm-diagnosis-2026-11-08.md`; artifacts `runs/room-slm-diagnosis-20261108/`.
+- **Implemented:** artifact-only stage probes on existing pinnedQwen1.7BQ4/nativeCPU1thread, persistent server within each probe, rawresponse/template/metrics/validator audit. No product source/default/guard/Hydra edits or downloads. Separate Luna xhigh packages neutral real-RGB human review cards; AI draft is not humanGT.
+- **Correctness-verified:** `PYTHONPATH=src .venv/bin/python runs/room-slm-diagnosis-20261108/analyze.py` exit0:7rawresponses/readapted results,3script/source/protocol chains,3loadedtemplate matches,6geometry/profile SHA matches; allcache_n0. Focused adapter/prompt/contract29tests passed0.62s/exit0; finalverification checks13source/outputPNGbindings,3humanreplies,14corrected00805objectmatches, sharedSLMconfigdisabled; `git diff --check` exit0. Artifact `runs/room-slm-diagnosis-20261108/final-verification.json`.
+- **Runtime-validated diagnostic:**7requests/2frozencontexts/3serialserverprocesses. Startup→health2.67–2.99s (pagecache not flushed). Production-order singleton prefill20.75s/decode15.29s;9objects57.28s/33.62s→90.94s after diagnostic-only100s timeout. Production60s deadline unchanged. Loadedtemplate SHA exactupstream; rendered enable_thinking=false emptyclosedthink confirms nonthinking works. Parser correctly rejects primarylabel repeatedinalternatives;9object output also combines O(7),O(8) into one unknownsupportstring.
+- **Ablation:**append generic abstention/alternatives policy to same singleton/context/schema→valid insufficient_evidence twice, stillunrequestedalternatives. Remove duplicated textualschema on onepair399→244tokens,HTTP36.05→24.36s butinvalid unknown/alternatives[unknown]. No semanticlabel accepted, no prompt/default promotion, no accuracy claim. Exploratoryfirstprobe sorted schemaorder differs production; keptseparate, notexactparitybaseline. NoKVcache, GPU/threadAB, live/control benchmark or S4/S5 integration.
+- **Human data:**CardA actualRGB shown and unprimed humanroom/objectquestion requested; đã trảlời bathroom/sink, lưu verbatim/hashbound riêng chỉA1/frame340/O16 (khôngA2/A3/nativewholeR0). B–Eđãtrảlời: Bbedroom+bathroom; C/Dcùngbedroom; Dbackgroundbathroomqua small doorway; Eliving_room/O0sofa. Referenceimages khôngfullgeometryGT. Neutral reviewpack/source hashes và3humanreplies đãlưu; A2/A3/otherobjectreviews vẫnpending.13viewPNGbindings verified, initialsheetarchive+correctedidentityheader preserved; no invented humanlabels or12roomcoverage. Pháthiện00805AIdraftcrossrunbindingc569/af1 vs3aeb/3122 (O16missing/O17conflict);quarantineoldlink vàrebuildcorrected00805request c569/af1/context511c,14objectsmatchsource. C/D/E exactrun+graphmatchverified. AIdraft006“living+bedroommerge” khôngcòn làreference đángtin; humanC/Dsamebedroom, bathroombackground vẫn cầnmembershipcheck. SLMgeometry/evidenceknownfailures remain. ExistingS3code/model/runtime installation was completed by priorwork (latest checkpoint at bottom); older noimplementation headings below are historical.
+
+
+### SLM room-label pilot — 2026-11-08 — historical planning checkpoint (before implementation)
+
+Người dùng muốn tạm giữ Hydra geometry config và bàn giao exploration độc lập. Design: `docs/superpowers/specs/2026-11-08-room-slm-pilot-design.md`; plan: `docs/superpowers/plans/2026-11-08-room-slm-pilot.md`. Manifest `docs/baselines/hydra-room-slm-pilot-2026-11-08.lock.json` giữ17 hashes profile/YAML/privateDSO/selectedsources; không full installed dependency closure, không default promotion/chmod/freeze graph. User báo live00807 phân đúng kỳ vọng (ảnh3rooms), chưa có user-run artifact để main xác minh profile/trajectory; replay006/007 final3/2 thuộc protocol khác.
+
+Đề xuất Qwen3-1.7B non-thinking Q4_K_M/llama.cpp CPU offline trước;4B-Instruct-2507 chỉ là đối chiếu tùy điều kiện. Exact model asset/runtime chưa pin/cài/tải. Existing context+labelcontract tái sử dụng nhưng phải thêm full run/episode wrapper, stricter supporting IDs và bounded service. Geometry-only006/007 emptydetections không làm semanticquality benchmark. Offline pilot dùng detector-backed contexts và human semanticreference, labels không sửa geometry/control. SLM replies exactrevision, stale giữ history, không tự reuse crossrevision.
+
+**Implemented:** tài liệu/manifest thôi; không product code/runtime/config edit. **Correctness-verified:** Luna xhigh read-only builder review đã trả approve với limitation live attachment; plan thêm cổng usability và sửa3contract gaps ở mức thiết kế (chưa sửa code); manifest17/17 SHA match; document whitespace/gitdiffcheck exit0; đây không phải test code. **Runtime-validated:** chưa inference/model/liveSLM, chưa nghiệm thu quality/resource. Chờ review/giao triển khai; exploration/control và geometryknownfailures theo reportB1 vẫn độc lập. Không chạy lại simulator/replay hoàn tất trong lượt lập plan.
+
+
+### Live profile006/007 — 2026-11-08 — prepared, preflight only
+
+Đã thêm `configs/demo-00806.hydra-world2hz-room-stability.experimental.local.json` và tương ứng00807, lấy scene/spawn/measured floor từ local map calibration và Hydra camera mount từ captured manifest đã kiểm chứng. Giữ movement/guard/room config, chọn world2Hz opt-in. Hai preflight exit0/readytrue; chưa chạy autonomous live hai profile này. Native3rooms006/2rooms007 trước đó là targeted geometry-only replay, không hứa live tái tạo cùng count. Logs/hashes `runs/hydra-objectnav/B1-multiscene-20261107/live-{profiles.json,00806-preflight.log,00807-preflight.log}`. Không thay default/source.
+
+### B1 multi-scene / seed attribution / local-map audit — 2026-11-08 — executed; annotation and long-run acceptance pending
+
+User four-step task; report `docs/results/hydra-multiscene-geometry-localmap-2026-11-07.md`.
+
+- **Implemented:** artifact-only capture/replay/audit/plots for00806+00807; no product source, installed library, default profile or300ms/100ms guard changes. Private stable DSO pinned. Geometry-only unknown_static semantic input; no detector or semanticGT in newscene baseline.
+- **Correctness-verified:**97focusedtests passed11.47s/exit0 in this task; verifier exit0 validates158captured packets, selected source identities, calibration and native artifacts. Source/control/default-profile/stableDSO hashes match initial lock. Additional61replay/goal-feedback tests passed5.96s/exit0; not fullsuite.
+- **Runtime-validated, geometry:**00806 captures94→48selected;00807 captures64→33selected. Four fresh OFF/ON replays accept162/162 selected inputs total. Same source prefix/XYZ/clearance/weighted edges81/81paired revisions; stock native reconstruction partition parity81/81. Final006354places/3rooms,007384places/2rooms (bothmodes). Counts are notaccuracy. Human neutral maps+registered pixels ready; need user room interiors/opening annotations for cross-region errors/fragmentation accuracy.
+- **Temporal:**006 OFF split10/merge12 vsON4/4;007 OFF0/2 vsON0/2 under observed-ID overlap audit; not physical room lineage proof. ON/OFF partitions differ9/48 and5/33 revisions. NativeOFF seeds/thresholds exported eachrevision; ON effectiveCC reconstructed at loggedthreshold andchecked againstnative seedcount.
+- **00805 immediate cause:** exact23-inputOFF replay/native partition parity23/23. Of13mixedrevisions OFF4 lose allbath support toclearance threshold,9 contain only size1bathcomponents filtered bymin3. ON3clearance/10size-pruned at actual loggedeffective threshold. No evidence of two viable bath/hall seeds later fused byNEIGHBORS in thosecases. No threshold tuning.
+- **Cost:**map-only12spread×3 +top8worst-live×3 confirm realNumba; original903local stages allstart<300ms,250cross300duringmap. CPU/GPUprobe fresh:OpenVINO CPUonly, no/dev/dri inthisenvironment;Torch intra1/inter8. Worldworkers4→1 marginalbenefit/worldslower; localworkers2 benefit not repeatable; rejected asdefaults. Oldhostclock changedafterreboot; newpairedcostruns use existingReplaySession contract, preservingpixels/poses/intervals and fullhashparity; retain originalfuturetimestamp rejection.
+- **Live60trials:**sameboot baseline38/210=18.10%freshnessmisses, observed0.698m; world1Hz4/449=.89% butonly.061m and411world_intent_unavailable — rejected despite metric. Found existing failure-watch1sgap resets at1.01s; deterministicfixture reproduces. Existing2Hz cap completed60s:28/264=10.61%, localp95240.41ms vsbaseline272.23ms, observed.936m vs.698m;7native revisions each. Singleexploratorycase, not<5%orlongpass. Profile `configs/demo-00805.hydra-world2hz-room-stability.experimental.local.json` opt-in; defaultunchanged. Do not use1Hz asrecommended demo.
+- **Artifacts:**`runs/hydra-objectnav/B1-{multiscene,newgeometry,localmap-cost,next-baseline}-20261107/`. Latest ledger `B1-next-baseline-20261107/progress.md`; no repeats of completed captures/native replays needed. SLM not installed/started; readiness does not require universal freshness<5%, but geometry annotation and object evidence quality remain separate gates.
+
+
+### B1 stability cost / live validation — 2026-11-07 — executed, acceptance not met; no promotion
+
+Đã hoàn tất ba bước kiểm tra; [báo cáo](results/hydra-stability-validation-2026-11-07.md).
+
+- **Implemented:** tooling timed DSO riêng + replay OFF/ON/OFF/ON; hai entry chẩn đoán
+  tùy chọn được đóng gói trong `backends/hydra/validation_entry.py` và
+  `runtime/ui_validation_entry.py` để giữ preflight source confinement. Default entries,
+  threshold, core movement/safety, installed/stable Hydra giữ nguyên. Không bypass preflight.
+- **Correctness-verified:** 207 focused tests passed10.92s/exit0 (gồm bundled UI fixture),
+  native policy driver mới PASS/exit0; verifier source/hash/provenance exit0. Không fullsuite.
+- **Runtime-validated, cost:** bốn fresh workers×58 inputs cùng .5/min3/merge.25;232/232
+  graph revisions khớp prior stock/stable geometry/edges/partitions. Mean findRooms
+  +0.210ms/bước; whole-step2591.40OFF/2585.76ONms, không slowdown lặp lại trong mẫu này.
+  Native scopes lồng nhau; không cộng. Hai mẫu/mode, chưa có universal overhead guarantee.
+- **Runtime-validated, live:** hai simulator runs300s completed/export/recording/shutdown sạch.
+  Profile cũ (5Hz/world control) chỉ2.17m, freshness201/584=34.42%, UI20/20match, chưa qua hai cores.
+  Chạy lại từ profile local-depth HIỆN CÓ (retention10s/primary.5Hz/guard không đổi):
+  2.09m, body đã đi qua hai cores và cắt marked opening1lần; freshness293/903=32.45%,
+  UI23/23match. Qt offscreen only; chưa physical desktop proof. Missing command proofs0;
+  strict actuation.complete vẫnfalse, không nâng observed distance thành certified distance.
+- **Geometry chưa đạt:** local-depth ON gộp chéo13/18eligible, strict1/18; replay OFF đúng
+  cùng23inputs cũnggộp cùng13/18, strict0/18. Policy không phải nguyên nhân duy nhất;
+  cần audit support/filtration/clustering recording mới. Independent short60 OFF/ON10+10
+  geometry/cạnh khớp, ON hold5–8/adopt9 chứng minh sửa được nhưng có độ trễ. Không promote.
+- **Telemetry/remaining:** detector yêu cầu OpenVINO GPU nhưng runtime chỉ thấyCPU,
+  fallbackTorchCPU. Local-depth control_navigation_wait p95.0043ms (decoupling hoạt động),
+  local_depth_map p95 449.14ms >depth300ms. Chưa quy causal toàn bộ cho fallback;
+  bước tiếp kiểm tra device exposure/CPU contention và chi phí local map, giữ guard,
+  song song trace geometry mới. SLM label không dùng làm geometry proof.
+- **Profile đúng để thử tiếp:** `configs/demo-00805.hydra-room-stability-local-depth.experimental.local.json`;
+  profile room-stability cũ vẫn được giữ để tái lập, không nên dùng làm current movement baseline.
+- **Evidence/commands:** `runs/hydra-objectnav/B1-stability-validation-20261107/` với
+  `plan.md`, `progress.md`, command/exit/log từng run, `benchmark-analysis.json`,
+  `new-live-recording-comparison.json`, hai `room-validation.json`/`ui-validation.json`,
+  `local-depth-control-profile.json`, `final-tests.log`, `verification.json`.
+  `python3 .../verify_validation.py` exit0; `git diff --check` exit0. Wrong-profile smoke
+  và preflight rejected-artifact-entry được giữ riêng; không đưa vào primary averages.
+
+### B1 threshold/seed stability — 2026-11-07 — implemented, offline native replay validated
+
+Đã thực hiện trong `Kiet_branch2`; [báo cáo](results/hydra-threshold-seed-stability-2026-11-07.md).
+
+- **Implemented:** opt-in private Hydra RoomFinder hysteresis; ba timestamp graph mới
+  trước khi nhận thay đổi đáng kể, seed tính lại trên geometry hiện tại, fallback khi
+  mất held support, reset pending khi unavailable, reset instance khi kết thúc. Bridge
+  pin DSO/version/hash; live snapshot/projection và accepted journal có provenance/decision.
+- **Correctness-verified:** 206 focused Python/UI/GT-isolation tests passed, 10.87 s,
+  exit 0; native temporal/geometry/reset/API fixtures và disabled seed parity exit 0.
+  Test UI wire cũ được cập nhật để yêu cầu all layers và pick object đúng A1/A2.
+  Không tuyên bố toàn bộ repository suite pass.
+- **Runtime-validated (offline RGB-D):** hai worker mới replay đủ 58/58 + 10/10 accepted
+  inputs, prefix/build/loaded-DSO verified, close/export sạch. Long300: places XYZ/
+  clearance/edge weights/source prefix khớp đối chứng cả 58 revisions. Gộp chéo hai
+  human cores 3/53 → 0/53; strict core separation 37/53 → 40/53. Hành lang vẫn bị
+  phân mảnh ở revisions 6–18. GT chỉ evaluator offline; không chứng minh full boundary.
+- **Phạm vi còn thiếu:** chưa live simulator/UI trong task; thời gian process quan sát
+  cao hơn đối chứng (p95 3.990 → 5.830 ms, hai replay khác thời điểm, chưa suy causal
+  overhead). Cần benchmark lặp + live/scene khác trước promotion. Default YAML, installed
+  Hydra, GraphExtractor, coordinator và safety giữ nguyên SHA; không thay guard/control.
+- **Sử dụng:** `configs/demo-00805.hydra-room-stability.experimental.local.json`
+  qua `NEUSYMNAV_HYDRA_DEMO_CONFIG`; preflight exit 0. Lệnh demo trong báo cáo.
+- **Lệnh kiểm chứng:** `python3 runs/hydra-objectnav/B1-stability-20261107/verify.py`
+  exit 0; focused pytest command trong `commands.json`, exit 0; `git diff --check` exit 0.
+  Artifact: `runs/hydra-objectnav/B1-stability-20261107/{verification.json,comparison.json,
+  final-tests.log,preflight.log,clean/,native/}`. Bản ghi cũ bên dưới là lịch sử trước fix.
+
+### B1 human-marked target evaluation — 2026-11-07 — partial reference evaluated; promotion still pending
+
+User supplied greenbathroom/cyanhallway/redopening-range image; [báo cáo](results/hydra-human-regions-2026-11-07.md).
+Image persisted/sourceSHA, gridregistration≤2pixels, partialinteriorpolygons and
+0.10m extrauncertainty; outside/overlap/outline/redline unknown. GT offlineonly;
+rednotwall/occupancy; no runtime/default/control/library changes.
+
+- **Implemented:** Luna xhigh offlinepolygon→exactgraph support evaluator +8tests;
+  maincolorcontours/registration/independentraster/report. Source/run/revision/
+  graphSHA+acceptedchain, annotationJSONSHA/userimageSHA/sourceManifestSHA bound.
+  Currentrow previously“annotationmissing” below is historical: now human partial
+  corelabels exist; fullphysicalroom/door-boundary annotation still incomplete.
+- **Correctness-verified:**78focusedtests passed2.67s/exit0 (nativefixtureenabled,
+  noskip), notfullsuite.174primaryrevision evaluations (3profiles×58) CLIexit0;
+ 348sensitivityevaluations reuse samegraphs. Source/native/controlSHAunchanged,
+  diffcheck0. Independent raster exactGTassignmentsmatchall3finalgraphs.
+- **Observed target:** default mergesbothcores52/52eligible; comp.5/min3/M.5
+  merges17/50eligible; M.25 merges3/53(revisions36/49/57). M.25 splits marked
+  hallway6–18 (13revs). Strictcoreseparation31/50 vs37/53; on50commonavailable
+  candidateframes31vs37, M.25fragment10vs0. Unknownframes notsuccesses.
+- **Finalsnapshot:** defaultbath3/hall18sameR0; M.5bath3R1/hall21R0; M.25bath8R1/
+  hall62R0. Bothcandidate finalF1=1onlyonpartialconfidentpoints (~17–21%graph),
+  notwholemapaccuracy. Handmark reference differs oldqualROI; seedlocationoutside
+  oldROI alone didn'tprovewrongsegmentation. Target3lateerrorsrobust margins
+  .05/.10/.15m, so notremovedbyselectingannotationmargin.
+- **Remaining mechanism:** nativefreshreconstruction threshold.5657→.6325 at36/49
+  and→1.0000at57 removesbathroomseed (andhallseedat57); returnsnextframe. Actual
+  partitionsmatchreconstruction previouslyverified. Need seed/merge persistence
+  policy derivedfromnativeevidence, notmoreblind densitytuning/GTwallinjection.
+- **Evidence:** `runs/hydra-objectnav/B1-human-20261107/{human-regions.json,
+  annotation-registered.svg,evaluation/index.json,target-summary.json,
+  bad-revision-seeds.json,tests-command.json,tests.log,tests.exit,verification.json}`.
+  Verification command `PYTHONPATH=src .venv/bin/python runs/hydra-objectnav/B1-human-20261107/verify_human_eval.py`
+  exit0. No new native/simulator/GPU/detector/modeldownload/training/commit/push.
+- **Decision:** no defaultpromotion/liveacceptance. M.25 betteragainsttargetmerge
+  but earlyfragments/latecollapses remain; roomgeometryboundary/globalaccuracy,
+  livecost andObjectNav modulecompletion unproven. Existingcostfromprevious
+  cleantrials unchanged; no performanceclaims fromthis label-onlyevaluation.
+
+
+### B1 GVD support trace / merge A/B / revision audit — 2026-11-07 — offline complete; human annotation pending
+
+User authorized3steps; [báo cáo](results/hydra-support-merge-2026-11-07.md).
+Default promotion chưa đủ bằng chứng; defaults1.0/10/10 giữ nguyên.
+
+- **Implemented:** Terra high isolated probe từ copiedGraphExtractor TU, parser;
+  main perrevisionentry/temporal evaluator/CLI; Luna blindRGBD annotation packet.
+  Production source/library/config/control unchanged (SHA gate). No Astra,
+  simulator/GPU/detector/download/training/commit/push. Separate file owners.
+- **Correctness-verified:**70focusedtests passed4.51s/exit0, no skip, gồm native
+  fixture, exhaustive pair oracle, GT isolation/UI/query. Not fullsuite. Probe
+  parity actual backend places/edges/fullRoomFinder exactold for10/58/58frames.
+- **Native offline validated:**3probe +4cleanfullhistory replays; originalinput
+  prefixes/counts/source/build/config and actualloadedlibraryverified.136clean
+  snapshots andfreshRoomFinder reconstructions co-membershipmatchallrevisions.
+  One interruptedM.25trial39frames archived/ineligible; full58restart complete.
+- **Cause:** finalphysicalROI GVD147same/120eligible bothcompressions. Comp1
+ 14ROIrepresentativegroups/8visible/6hidden vscomp.5 15groups/5visible/10hidden;
+  historicalresolvedmerges hide survivinglocalsupport. Exactrefs/eventIDs in
+  native-probe/analysis/long300-comparison.json. Frontend/backend distinguished.
+- **Isolatedmerge:** comp.5/component3/room10 held; M.5→.25 restoresROI5→14long,
+ 8→14short, butglobalplaces135→399long and48→127short. Longfinal2→3roomgroups,
+  fineROIseed6 long butnone short (PLATEAU.7483); no physicalaccuracyclaim.
+- **Stability/cost:** assignedstationarypair weightedchanges long7.20→7.49%,
+  short0→13.93%; shortbaselinebathroomgroupbornonlylastrevision,0% notproof.
+  Longnativep954.060→3.990s singletrials butmax4.111→5.343s; sampledRSS294→301MiB.
+  Debugexportseparate; offlinecost notlivefreshness/budgetpass. Split/mergeevents
+  descriptive onpersistentobservedplaceIDs, notconfirmedphysicalroomerrors.
+- **Quality blocker:** no independent00805roomGT; userconfirmednone, askedblind
+  map tolabel. Maps/sourceRGB/template prepared, no prediction/seed/ROI overlay;
+  quality4reports unavailable/annotation_missing. Awaithumanpolygons before
+  boundaryaccuracy/default/liveacceptance; no qualitativeROIasGT.
+- **Evidence/commands:** `runs/hydra-objectnav/B1-support-20261107/verification.json`,
+  paired-summary.json, tests-command.json/tests.log/tests.exit, clean/trace/audit/,
+  annotation/. Final `PYTHONPATH=src .venv/bin/python runs/hydra-objectnav/B1-support-20261107/verify_support.py`
+  exit0 checks7completecases, exactrevisionindex, library/sourceintegrity and
+  gitdiffcheck0. Wholegeometryquality/ObjectNav roadmap remainsincomplete.
+
+### B1 controlled room A/B — 2026-11-07 — offline experiment complete; defaults unchanged
+
+User giao A/B support places vs size filters trước đổi default.
+[Báo cáo](results/hydra-room-ab-2026-11-07.md); protocol khóa trước chạy ở
+`runs/hydra-objectnav/B1-ab-20261107/protocol.md`.
+
+- **Implemented:** offline sizefactorial harness + metrics/tests; artifact-local
+  native accepted-prefix replay/XYsupport comparison. Main owns harness/docs;
+  Luna xhigh owns replay; separate Luna read-only size review. No app/runtime/
+  default config/library/control edits. Review provenancegap fixed and rerun.
+- **Correctness-verified:**63focusedtests passed4.10s/exit0, no skip (native
+  env enabled); six metric/config tests include exhaustive pair oracle. Four
+  source/library-fingerprinted matrices c10/5/3 × r10/5 + baseline repeat each
+  =28confirmed nativecalls; historical first14calls retained separately. Each
+  graph's geometry fixed and baseline repeat exact; final diffcheck exit0.
+- **Native offline validated:**6freshworker replays, exact10/10 or58/58 original
+  accepted frameprefixes, same Hydra source/build. Baseline places/edges/RoomFinder
+  exactlymatch frozen graphs60s/300s; comp0.5 shortrepeat exact. FileSHA drift
+  outside roomstructuralparity unresolved, not claimed fullmesh byte parity.
+- **Findings:** sizealone all1room; compression1→0.5 alone34→48places(60s),
+  102→135(300s), still1room. Combined comp0.5/component3/room10 posthoc native
+  gives38/10places(60s),113/22(300s). ShortbathROI8/8 in10place room withlocal
+  seed3; longbathROI8→5places and no localseed (component2filtered);22place
+  room propagates from seed6outsideROI. Globaldensity ≠ targetlocalsupport.
+- **Decision/limits:** giữ1.0/10/10 defaults. No independent spatialGT/accuracy,
+  roomID temporal stability, live candidate or runtime performance claim. Size
+  variants run full RoomFinder on frozen exported graphs, not entire worker
+  histories undercomponent3. Recordings60s/300s have different routes, not same
+  episodeprefixes; do not infer temporal instability from their difference.
+- **Evidence:** root `verification.json`, `final-tests-command.json/.log/.exit`,
+  `size-verified/`, `density-size/`, `density/`, `comparison/`; repeat positive
+  confirmation under `positive-repeat-short60/`. Verification script exit0:
+  `PYTHONPATH=src .venv/bin/python runs/hydra-objectnav/B1-ab-20261107/verify_experiment.py`.
+- **Next:** trace GVD→compressed representative→merge localROI and isolate
+  merge-distance A/B, preservingclearance policy; independent geometry annotation
+  before promotion; fullhistory candidate replay/live budget later. No new
+  simulator/GPU/detector/modeldownload/commit/push. Full roadmap incomplete.
+
+### B1 native Hydra room diagnosis — 2026-11-07 — mechanism verified; geometry accuracy chưa xác nhận
+
+Task ưu tiên user giao trong `Kiet_branch2`, cặp bathroom/hallway00805.
+[Báo cáo](results/hydra-room-diagnostic-2026-11-07.md).
+
+- **Implemented:** helper native offline + CLI/report/overlay, export clearance,
+  edgeweights, threshold, raw components, seeds trước NEIGHBORS và memberships.
+  Không sửa production runtime/config/control hay thư viện Hydra.
+- **Correctness-verified:** **57passed/3.56s/exit0** focused tests gồm native
+  synthetic2room + offscreen UI/query/GT isolation. Build/native inputs exit0;
+  graph/config/worker/coordinator/safety hashes không đổi. Không phải fullsuite.
+- **Native offline validated:** graph60s34places→raw16/1/3→seed16→room34;
+  graph300s102places→raw25/1/3/3/3/1/1→seed25→room102. Cùng threshold
+  .5656853318214417m; recorded membership khớp34/34 và102/102.
+  Component3nodes phía bathroom bị `min_component_size=10` lọc trước NEIGHBORS.
+  Synthetic cùng config có2seeds16/16 và2rooms; không phải UI chỉ hiện1room.
+- **Limits:** finalgraph reconstruction không là original per-frame trace;
+  bathroomROI định tính, chưa có independent spatialGT/accuracy. Counterfactual
+  giữ mọi rawseed cho bathroomcluster6(60s)/10(300s); không tương đương retune
+  toànRoomFinder. `min_room_size=10` và oversegmentation cần kiểm tra riêng.
+- **Evidence:** `runs/hydra-objectnav/B1-diagnostic-20261106/verification.json`,
+  `short60/`, `long300/`, `synthetic/`, `worker/final-tests.log`. Exact commands
+  trong report; no new simulator/liveUI run. No commit/push/download.
+- **Next:** controlled recording A/B coverage/place support vs component/room
+  filtering; independent annotation trước accuracy claim. A2sidecar/gallery và
+  offlineObjectNav tiếp tục độc lập; SLM không chứng nhận geometry. Roadmap chưa
+  hoàn tất. Phần “plan đề xuất” bên dưới là checkpoint lịch sử.
+
+
+### Hydra graph/evidence/ObjectNav + control — 2026-11-06 — plan đề xuất, chưa implement
+
+User đã đồng ý tiếp tục graph/query/evidence và ObjectNav kiểm thử độc lập, song
+song control; chọn **text-SLM từ object/quan hệ** cho room labels.
+[Roadmap](superpowers/plans/2026-11-06-hydra-objectnav-roadmap.md) liên kết spec và
+3subplans: UI/gallery/query/ObjectNav; room geometry audit + SLM; control isolation.
+
+Ưu tiên Rooms+Objects/placesOFF cả2D/3D, clickobject gallerycrop+mask/fullframe.
+Current Hydra có picking/query nhưng per-objectevidenceNone và categoryraster
+không giữ instanceID; galleryv1 phải candidate-debug với provenance, không claim
+native identity. Roomsegmentation accuracy và roomlabel inference chấm riêng;
+SLM không sửa geometry/native IDs. Geometry metrics phụ thuộc support domain.
+
+Buildercheck Luna xhigh đã nêu3điểm: evidence revisioncarry-forward, graph↔nav
+binding/freshness, point-domain metrics; main bổ sung quy tắc cụ thể và tự rà
+soát. Chưa có implementation/design acceptance từ user cho các task mới; không
+code, khôngtests/demo/modeldownload trong lượt plan. Sourcehash code khớp
+checkpoint trước; link/whitespace/diff checks sẽ ghi ở
+`.runtime/hydra-objectnav-plan-20261106/verification.json`. SLM model/license/asset
+và threshold qualitypromotion chờ inventory/baseline, không suy đã được chọn.
+
+
+### NavMap critical path / local-depth lane — 2026-11-06 — implemented/correctness; long performance FAIL
+
+Chỉ `Kiet_branch2`; [báo cáo và hướng tiếp](results/navmap-critical-path-2026-11-06.md).
+
+- **Implemented:** exact bounded rays; local measured-depth map/controller/guard
+  độc lập world-map/Navigator, worldintent nguyên nguồn/expiry2s, local revision
+  độc lập; telemetryv2 strict provenance; tùy chọn cadence world riêng.
+  Giữ depth/mapTTL300ms/horizon100ms, unknown/floor/height/capsule. Không default
+  hay profile long-ready mới. Experimentalfile:
+  `configs/demo-00805.hydra-local-depth.experimental.local.json`.
+- **Correctness-verified:** paired1211/1211 world/currentcoverage equal; independent
+  review sửa goalblacklist tạm thời và race intentcũ xóa intentmới; realthread
+  test điều khiển depthmới trong lúcworldworkerblocked; worldno-path watchdog
+  recovery. Final **2706passed/10skipped,255.46s,exit0**, `full-release.log`.
+- **Runtime-validated:**15nativeUIruns/9364actualcontrolinvocations, strictclosed
+  source/clock/measurements/proofs, collectorcomplete/no drops/no missingproof or
+  executedtimingviolations, recording/UI/export/shutdowncomplete; frozen source
+  hashesmatch. `strict-final.log`/`.exit=0`, `final-verification.json`.
+- **Performance NOT achieved:** fullrate local120s3.17%/4.782m;300s6.96%/9.869m,
+  max4misses. World2.5Hz300s7.34%/7.830m;combinedGC120s5.32%/2.385m;
+  capture5Hz120s0% nhưng.649m/450bootstrapblocked -> availabilityFAIL.
+  Local4worker300s13.32%/5.977m -> rútoption khỏiproduction, lưu sourceexperiment.
+- **Remaining:** fullrate worldwaitp95≈.003ms nhưng localmapp95172→274→279ms
+  qua3đoạn100s; chưa xác nhận đơn nguyên nhân CPU/GIL/GC/render. Next ưu tiên
+  process riêng cho capture/localdepth/control, telemetry ngoài criticalprocess,
+  đo sensor/render/projection/raycast; không nới guard. Chưa600s/room-object
+  accuracy/ObjectNav completion hay bảo đảm5%mọirun.
+- **Artifacts:** `.runtime/navmap-critical-path-20261106/`, final `local-lane/`.
+  Commands: `.venv/bin/python -m pytest -q` và
+  `PYTHONPATH=src .venv/bin/python .runtime/navmap-critical-path-20261106/validate_local_lane.py`
+  với15runnames (đủ argv trong `local-lane/commands.json`); exit0.
+  No commit/push/source-sibling edits; historical checkpoints dưới giữ nguyên.
+
+
+### Rolling NavMap — 2026-11-06 — implemented/đo hoàn tất; long gate FAIL
+
+WorktreeKiet_branch2 only. [Báo cáo](results/navmap-sliding-window-2026-11-06.md).
+
+- **Implemented:** optional local_retention_s; rolling spatial crop/eviction,
+  independent planar/height/floor last-observed expiry→UNKNOWN; no archive reload.
+  Bounded per-sensor dedup, exact fused maintenance prewarmed + NumPy fallback.
+  Full measured rays/stride1/Hydra/controller/TTL300ms/horizon100ms không đổi;
+  accumulated overview lịch sử riêng không là motion proof.
+- **Correctness-verified:**24rolling regressions + independent scalar kernel
+  oracle C/strided/no per-frameJIT;52mapping/guard tests. Full2627passed/10skipped,
+  172.09s/exit0; independent reviews;7native strict schema/control inspections,
+  no trace drops/missing executed proof/timing violation; final code hashes match.
+- **Measured choice:**9radius/age combinations+repeated baseline screening;
+  full1211sources×3shortlists;7native UI-on runs. Chốt bán kính2m / age10s
+  (thay provisional30s sau direct120/300s comparison). Profile riêng
+  `configs/demo-00805.hydra-rolling.local.json`, không đổi default/long-ready.
+- **Runtime-validated:** baseline60s3.242m/0misses;1m10s30s1.349m/0;
+  2m30s30s1.855m/0,120s5.072m/3.58%,300s11.013m/8.73%;
+  2m10s120s5.655m/2.51%,300s10.719m/101of1584=6.38%. Cả7exit0,
+  recording/UI/export/shutdowncomplete. Selected300sHydrarev59,15objects/77places/
+  1room;RSS2049/2049supported. Localarrays4tiles6.24MB cuối;bound9tiles14.05MB.
+- **Remaining:**≤1% gateFAIL, selectedmax3misses liên tiếp; latencytail vẫn tăng
+  dù localmemorybounded. Selectedextent4.388×1.540m; không suy pathlength là
+  coverage/accuracy hoặc ObjectNav completion. Không600s. Next: local-depth
+  safety lane/full-map scheduling hoặc exactROI raytracing với oracle.
+- **Artifacts:** `.runtime/navmap-window-20261106/`; current results/limits trong
+  report và final-verification.json. Older checkpoints below remain historical.
+
+
+### Hydra long-demo follow-up — 2026-11-05 — diagnostic hoàn tất
+
+Chỉ thực thi trong `.runtime/worktrees/Kiet_branch2`; giữ nguyên checkout
+`Kiet_branch`, không commit/push. Báo cáo và giới hạn:
+[hydra-long-demo-fix-2026-11-05.md](results/hydra-long-demo-fix-2026-11-05.md).
+
+- **Implemented:** startup probe, UI hover, accepted-source provenance,
+  detached snapshots, canonical query API, exact log-odds kernel, byte-identical
+  frame codec/wire reuse, bounded streaming export, strict RSS trace reconciliation.
+- **Diagnostic runtime-validated:** user cho phép300s dù có thể fail1% gate.
+  Recording1353/1353 complete; native graph revision40,15objects/76places/1room;
+  UI295 rendered và export/shutdown sạch. Proof translation lower bound6.724m;
+  942executed,0missing proof/0executed timing violation. Offline native reload
+  query15/15objects có category/XYZ/room provenance, không chứng minh accuracy.
+- **Không đạt long acceptance:**247/1207 freshness/deadline refusals20.46%, max11
+  liên tiếp; map median103→132→142ms qua ba đoạn100s. Outcome incomplete/CLI1
+  do1 RSS census deadline sau control cuối (1759/1760supported). Không nớiTTL300ms,
+  horizon100ms hoặc guard. Không chạy600s, không promote candidate thất bại.
+- **Correctness-verified sau diagnostic:** export streaming33focused passed/exit0;
+  20MiB probe peak3.16MiB, thay vì41.99MiB legacy. Chưa chứng minh sửa được RSS
+  timeout native300s; artifact cũ vẫn incomplete. Full suite cuối2580passed/10skipped,201.15s,exit0 ngày2026-11-06.
+  Journal thật196.8MB: parser mới khớp40/40 manifest entries, peak Python15.55MB;
+  chỉ kiểm chứng offline, không suy native RSS fix pass.
+- **Bước tiếp đề xuất, chưa implement:** thiết kế local measured-clearance lane
+  độc lập full world-map/planner với provenance/TTL riêng và safety regression;
+  không dùng world map cũ như evidence motor mới. ObjectNav còn approach pose,
+  target verification, object evidence/lifecycle/alias và quality eval nhiều map.
+- **Artifacts:** `.runtime/hydra-long-demo-fix-20261105/`; profile diagnostic
+  `configs/demo-00805.hydra-diagnostic.local.json`. Historical checkpoints bên
+  dưới giữ nguyên theo thời điểm; kết luận readiness hiện hành là mục này.
+
+
+### Long-demo report sync — 2026-11-05 — documentation only
+
+Đã đối chiếu lại artifact30s RSS-fix và120s first-gated, cập nhật phần kết luận/
+evidence/findings của [readiness plan](results/hydra-long-demo-readiness-plan-2026-11-05.md)
+để không còn dùng snapshot cũ làm blocker: UI Hydra XYZ + measured cloud và
+profile durable đã có; RSS fix được xác nhận30s. Blocker chính còn lại là
+6/546 freshness misses của120s, cần giảm map/control tail rồi qua gate120s
+trước300/600s. Native TSDF mesh và GPU memory vẫn là limitations riêng.
+Lượt sync chỉ sửa tài liệu; `git diff --check` exit0, không chạy tests/demo mới.
+
+### Hydra long-demo readiness — implementation checkpoint — 2026-11-05
+
+Checkpoint mới nhất supersedes ghi chú documentation-only bên dưới. Profile bền
+`configs/demo-00805.hydra-long-demo.local.json` preflight ready, UHD OpenVINO
+GPU và X11 đã kết nối. Demo UI-on 30–60 giây trên map00805 đã có artifact hoàn
+chỉnh; lệnh chạy và điều kiện nằm trong
+[`hydra-long-demo-readiness-plan-2026-11-05.md`](results/hydra-long-demo-readiness-plan-2026-11-05.md).
+
+- **Implemented/correctness-verified:** Hydra native graph + measured RGB-D
+  point cloud hiển thị trong UI; source cuối khớp graph. Sửa RSS census race
+  chỉ bỏ qua `children` read khi task directory vừa biến mất và process
+  identity còn nguyên. Resource-focused suite:88 passed, exit0.
+- **Runtime-validated:** smoke30s sau sửa RSS hoàn tất,268/268 frames, graph
+  revision9, clean worker shutdown; RSS427/427 supported, zero missing/read
+  errors. GPU process-memory provider unavailable.
+- **D2/D3 chưa qua:** run120s trước fix RSS có6/546 freshness misses (1.10%),
+  gồm3 pending +3 expired-before-step; tổng proofs525/525, translation LB
+  4.539m. Map update p95/max148.5/295.9ms; tail tập trung vào core/raycast/
+  vote. Nguyên nhân RSS đã sửa và xác nhận30s, nhưng run120s cũ vẫn incomplete;
+  chưa có candidate map-core parity-safe giảm tail đủ.
+- **Gate:** demo30/60s được dùng để trình diễn ngắn; không chạy120s lại cho tới
+  khi tối ưu map qua offline parity/tail gate rồi xác nhận30/60. Chưa chạy
+  300/600s hoặc map thứ hai; cần hai120s sạch trước300s. Full suite chưa chạy
+  lại; baseline trước lượt này2436 passed/10 skipped/32 failed.
+- **Artifacts:** `.runtime/hydra_ws/artifacts/hydra-readiness-D1-00805-20261105/`
+  (`ui-on-30s-rss-fix`, `ui-on-60s-cloud-flush`, `ui-on-120s-first-gated`).
+  Full evidence tại `docs/results/hydra-long-demo-readiness-2026-11-05.md`.
+
+### Hydra long-demo readiness report — 2026-11-05 — documentation only
+
+Đã tạo [báo cáo vấn đề và kế hoạch long demo](results/hydra-long-demo-readiness-plan-2026-11-05.md):
+kiểm tra evidence UI-on60/120s, các seam3D còn dùng legacy data, map/control
+freshness tail, profile/map readiness, resource limitations; kế hoạch D0–D6
+đi từ baseline/projection/latency đến120→300→600s và map thứ hai. Các performance
+targets mới là đề xuất cho campaign, không phải kết quả pass hoặc thay checker.
+
+Lượt này chỉ tạo tài liệu, không sửa runtime/profile, chạy tests hoặc native demo.
+Kiểm links/fences/coverage các task exit0; `git diff --check` exit0. Artifact:
+`.runtime/hydra-long-demo-report-20261105/document-check.json`. Gate chưa cho lên
+300s ở checkpoint bên dưới vẫn giữ nguyên; chưa tuyên bố demo3D hoặc long-run đạt.
+
+### Kiet_branch2 / Hydra — checkpoint smoke UI-on 60 s → 120 s — 2026-11-05
+
+**Profile:** `/tmp/neusymnav-telemetry-smoke-00805-ui-on.json`, SHA-256
+`1aa2e14bb126cb66cce3982fcd98a9536e55c1b2bbe14a6f2571f6bfd815899d`, scene
+00805, seed 0 applied, UI on, OpenVINO UHD active without fallback. Both runs
+used this exact profile and completed with exit 0.
+
+**60 s gate passed:** 457 frames; 224 executed controls and 224 source-matched
+proofs; `missing_command_proofs=0`; no `navigation_source_pending`; body
+translation lower bound 1.801 m (0.775 m first half, 1.027 m second half).
+There was one deadline-expired movement command. The first 10.28 s had no
+translation while heading error decreased monotonically during alignment; then
+the robot tracked goals and moved. Recording/export complete, Hydra graph
+revision 12, UI final publication 122 rendered, clean shutdown.
+
+**120 s result — do not advance to 300 s yet:** 892 frames; 433 executed controls
+and 433 source-matched proofs; `missing_command_proofs=0`; translation lower
+bound 3.543 m (1.544 m first half, 1.984 m second half). No `expired_before_step`
+or movement command with `deadline_expired`; the 16 `expired_or_zero` records
+were no-op stops for blocked goal, stale depth or reached viewpoint. However,
+there were 13 `navigation_source_pending` results: 11 isolated events and two
+consecutive events at 119.8/120.02 s at the run boundary. Control interval p95
+increased from 415 ms at 60 s to 462 ms at 120 s (max 589 ms). Two sampled
+10-second intervals had under 0.1 m translation: the initial alignment and a
+goal change at 71–81 s; both traces show monotonic heading convergence followed
+by tracking, not oscillatory spinning. This is measured progress, but pending
+source frequency and the run-boundary pair remain unresolved.
+
+Both 120 s recording/Hydra export completed (graph revision 25), UI publication
+244 rendered and shutdown was clean. RSS had 1,043/1,043 supported samples with
+sampled peak 1,998,946,304 B. GPU memory remains unsampled and
+`boundedness_certified=false`.
+
+**Root cause traced and confirmed:** coordinator returns pending when the exact
+map is unavailable or either source exceeds the 300 ms freshness bound. In the
+120 s artifact, 12/13 pending controls had depth age 301–314 ms while that
+frame's NavMap update was still running or had just completed; the remaining
+fresh-depth frame saw its map update finish 196 ms after control returned.
+NavMap update p50/p95/max was 81/200/414 ms; control navigation wait
+82/192/288 ms. The 30 s confirmation produced one pending at the run boundary:
+depth age 84 ms, wait 35 ms, with its update finishing 107 ms after control.
+This confirms boundary pending occurs when shutdown reaches an in-flight map
+update; the other 12 are freshness misses. The 300 ms gate was not relaxed.
+
+**Next gate:** reduce map/control latency while preserving freshness and
+fail-closed behavior, then repeat a bounded UI-on smoke. Do not start 300 s yet:
+the 120 s run still has 12 in-run freshness misses and its control p95 is higher
+than the 60 s run. Detailed cross-artifact analysis:
+`.runtime/hydra_ws/artifacts/hydra-telemetry-counter-fix-smoke-00805-20261105/navigation-source-pending-investigation.json`.
+
+**Commands/checks:** profile preflight — exit 0 (`ready=true`, `issues=[]`);
+60 s, 120 s and 30 s UI-on smokes — each exit 0; JSON artifact audit and
+`git diff --check` — exit 0. No 300 s run was started.
+
+### Kiet_branch2 / Hydra — audit expired_or_zero và resource sampling — 2026-11-05
+
+**Implemented:** `RunMeasurements.control()` chỉ tăng
+`missing_command_proofs` khi worker báo lệnh đã `executed=true` nhưng không có
+proof. Lệnh stop/expired không tạo simulator action nên không còn bị tính nhầm
+là thiếu actuation proof. Không thay đổi hành vi điều khiển hoặc resource sampler.
+
+**Correctness-verified:** test hồi quy mới trước sửa đỏ (counter là 1 thay vì 0);
+sau sửa, `./.venv/bin/python -m pytest tests/test_runtime_measurement_wiring.py
+tests/test_runtime_measurements.py tests/test_actuation_measurements.py -q` — 86
+passed, exit 0. Lệnh thực thi thiếu proof vẫn được đếm; zero command không.
+
+**Artifact audit:** trong smoke UI-on 60 s tại
+`.runtime/hydra_ws/artifacts/hydra-bootstrap-command-sweep-00805-20261105/ui-on-60s/`,
+cả 11 `expired_or_zero` đều là lệnh 0 m/s và 0 rad/s, vì thế không có simulator
+step để tạo actuation proof. Sáu lệnh đến từ `committed_goal_blocked`, hai từ
+`frontier_viewpoint_reached`, ba từ `depth_stale`. Cả 228 lệnh worker báo
+`executed` đều có 228 proof; số executed thiếu proof là 0. Audit chi tiết:
+`expired-zero-resource-audit.json`. Con số cũ “11 missing proofs” là sai nghĩa
+counter, không phải 11 lần robot đã chạy mà mất bằng chứng.
+
+**Resource sampling:** RSS sampler đã khôi phục và hoàn tất: 609/609 mẫu được hỗ
+trợ, không mẫu truncated, không lỗi đọc cuối cùng, đỉnh RSS được lấy mẫu
+1,934,004,224 B; một phản hồi tới sau khi sampler dừng bị loại có ghi nhận. Tuyệt
+nhiên đây vẫn là peak quan sát giữa các mẫu, không phải chứng minh giới hạn tuyệt
+đối. Cadence không đều: p50 gap 119 ms, p95 261 ms, tối đa 832 ms; thời gian gọi
+provider p50 17.7 ms, p95 167 ms, tối đa 540 ms. Có 21 lần thiếu tiến trình tạm
+thời trong census (19 lúc đầu, 2 lúc cuối), đều retry thành công. GPU memory vẫn
+chưa được sample: 0 mẫu, `no_usable_provider`; nhận diện OpenVINO GPU không cung
+cấp phép đo bộ nhớ GPU theo process. Vì vậy `boundedness_certified=false` vẫn
+đúng.
+
+**Runtime-validated:** UI-on smoke 20 s trên scene 00805, seed 0 và cùng profile
+hash `1aa2e14b…`; preflight `ready=true`, `issues=[]`. Run exit 0,
+`outcome=completed`, 163 frames, OpenVINO `openvino_gpu` không fallback, recording
+complete, Hydra export graph revision 5 complete; UI publication cuối 43 đã
+render và sensor/UI/resource shutdown sạch. Artifact mới ghi
+`missing_command_proofs=0`. Có 78 control result `executed` và source-key join
+cho thấy cả 78 có proof. Bảy `expired_or_zero` gồm sáu zero-motion stop và một
+deadline-expired command; thêm một `expired_before_step`. Tổng 79 proof record
+không hàm ý có 79 lệnh executed. `actuation.complete=false` vẫn theo contract vì
+body distance chỉ là lower bound; không phải counter missing-proof còn dương.
+Artifact xác minh: `.runtime/hydra_ws/artifacts/hydra-telemetry-counter-fix-smoke-00805-20261105/ui-on-20s/`.
+
+**Gate:** giữ nguyên thời lượng; bước kế tiếp là đánh giá riêng cadence RSS tail
+và bổ sung provider Intel GPU có process attribution được kiểm chứng trước khi
+tuyên bố telemetry GPU đầy đủ. Không dùng kết quả này làm chứng nhận long-run.
+
+**Commands/checks:**
+
+- `./.venv/bin/python -m pytest tests/test_runtime_measurement_wiring.py::test_intentional_zero_command_does_not_count_as_missing_actuation_proof -q` — trước sửa: 1 failed (đỏ mong đợi), exit 1.
+- `./.venv/bin/python -m pytest tests/test_runtime_measurement_wiring.py tests/test_runtime_measurements.py tests/test_actuation_measurements.py -q` — 86 passed, exit 0.
+- Offline audit trên các JSON artifact nêu trên — 609 RSS mẫu được hỗ trợ; 228/228 executed có proof; 11/11 zero command không cần proof.
+- `NEUSYMNAV_HYDRA_DEMO_CONFIG=/tmp/neusymnav-telemetry-smoke-00805-ui-on.json OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash tools/run_hydra_map_demo.sh 00805 20 .runtime/hydra_ws/artifacts/hydra-telemetry-counter-fix-smoke-00805-20261105/ui-on-20s` — exit 0.
+- Smoke verification: `telemetry-counter-verification.json` — missing proof counter 0, 78/78 executed source-key proof, clean shutdown.
+
+### Kiet_branch2 / Hydra — bootstrap theo xung quét và live smoke — 2026-11-05
+
+**Implemented:** `MotionGuard` không còn áp corridor bootstrap tối thiểu 10 cm
+ngoài quãng tịnh tiến của lệnh. Chiều dài kiểm tra là tốc độ tiến nhân với
+thời lượng khả dụng, giới hạn bởi command horizon và phần depth/map TTL còn lại;
+phần bù độ cong dùng cùng thời lượng đó. Các kiểm tra `_clear` về footprint,
+`FREE`, floor support, clearance và đường path được giữ nguyên. Cấu hình YAML bỏ
+tham số corridor cũ không còn được dùng.
+
+**Correctness-verified:** regression test ban đầu đỏ vì lệnh 0.2 m/s trong 100 ms
+đưa 10 cm thay vì 2 cm. Sau sửa, 101 test safety/navigation/map/goal-feedback/
+robot-geometry pass trong 9.08 s. Test có depth hit ngoài footprint của xung ngắn nhưng trong
+corridor 10 cm cho phép lệnh; depth hit trong footprint và depth không hợp lệ
+vẫn chặn. Phát lại dữ liệu thật source frame 179 bằng profile geometry ghi lại:
+10 cm → 123/124 cell, `bootstrap_blocked`; 1.5 cm → 105/105, `bootstrap_ready`.
+Artifact: `.runtime/hydra_ws/artifacts/hydra-bootstrap-command-sweep-00805-20261105/frame179-verification.json`.
+
+**Runtime-validated:** preflight hồ sơ `ready=true`, `issues=[]` (exit 0);
+OpenVINO liệt kê `['CPU','GPU']` và `xdpyinfo -display :0` kết nối thành công
+trong host context. Smoke UI-on 60 s, scene 00805/seed 0/vị trí đầu/config cũ,
+exit 0; worker xác nhận `backend_active=openvino_gpu` không fallback, 459/459
+frame đã lưu, Hydra export revision 14 complete, UI publication 122 đã render,
+shutdown sạch. Không có `bootstrap_blocked` hoặc
+`committed_goal_waiting_after_collision`. Với goal cũ
+`frontier-a0782d8528ca`, frame 178–180 thực thi ba lệnh tiến ở 0.06/0.12/0.15
+m/s; frame 181 đánh dấu `frontier_viewpoint_reached`, frame 182 chọn goal mới.
+Body translation lower bound là 1.927 m. Control outcomes: 228 executed, 11
+`expired_or_zero`; không có `navigation_source_pending` hay
+`expired_before_step`.
+
+**Giới hạn:** `actuation.complete=false`, còn thiếu 11 command proof tương ứng
+với các zero/expired result; resource boundedness chưa được chứng nhận và GPU
+resource sampler báo `no_usable_provider`. Smoke chứng minh frame 179 đã qua
+guard và robot có tiến triển an toàn đo được trong 60 s, chưa chứng minh long-run
+ổn định. Full non-native suite: 2,426 passed, 1 skipped, 9 deselected, 32 failed
+trong 186.45 s; failures thuộc evaluation-measurements, execution-proof,
+global/live-map publication, UI hash pin, navigation display và UI cadence.
+Nhóm tests trực tiếp liên quan guard/navigation đều pass; lỗi suite rộng chưa
+được điều tra trong task này.
+
+**Next gate:** tiếp tục soát 11 thiếu command proof và các 11 `expired_or_zero`
+trong artifact; giữ duration hiện tại, chưa tăng lên 120 s cho tới khi proof
+telemetry đầy đủ và xác nhận không có regression về footprint/clearance.
+
+**Commands/checks:**
+
+- `./.venv/bin/python -m pytest tests/test_guard_forward_corridor.py tests/test_navigation.py tests/test_navmap.py tests/test_local_bootstrap_integration.py tests/test_guard_goal_feedback.py tests/test_robot_geometry_binding.py -q` — 101 passed, exit 0.
+- `./.venv/bin/python -m pytest tests -q -m 'not native'` — 2,426 passed, 1 skipped, 9 deselected, 32 failed, exit 1.
+- `NEUSYMNAV_HYDRA_DEMO_CONFIG=/tmp/neusymnav-telemetry-smoke-00805-ui-on.json OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash tools/run_hydra_map_demo.sh 00805 60 .runtime/hydra_ws/artifacts/hydra-bootstrap-command-sweep-00805-20261105/ui-on-60s` — exit 0.
+
+Smoke artifact: `.runtime/hydra_ws/artifacts/hydra-bootstrap-command-sweep-00805-20261105/ui-on-60s/`.
+Runtime log: `/tmp/neusymnav-bootstrap-command-sweep-00805-ui-on-60s.log`.
+
+### Kiet_branch2 / Hydra — truy nguyên collision wait và smoke xác nhận — 2026-11-05
+
+**Đã hiểu chuỗi của artifact 60 s trước.** Ở source frame 179, navigator muốn
+tiến 0.15 m/s tới goal cách khoảng 5.8 cm. `MotionGuard` yêu cầu bootstrap
+corridor tối thiểu 0.10 m (`navigation/safety.py:72`); replay đúng depth và pose
+ghi nhận 123/124 cell hợp lệ, cell thiếu là `OCCUPIED` ở rìa capsule. Xung thực
+tế chỉ đi 1.5 cm và sweep tương ứng đạt 105/105 cell. Guard trả
+`bootstrap_blocked`; coordinator báo goal failure, nhưng chế độ commit giữ goal.
+Policy sau đó phát `committed_goal_waiting_after_collision` qua 46 revision có
+map khớp source, không phải chờ map. Watchdog generic mới bỏ goal sau 8.19 s / 47
+revision. Đây là ngưỡng bootstrap quá bảo thủ cộng với commit-goal cooldown,
+không phải robot đâm vào vật cản trong xung đã cấp.
+
+**Căn hướng cuối là đoạn riêng.** Sau khi goal cũ bị bỏ, run trước chọn goal mới,
+phát 12 xung quay phải trong khoảng 2.38 s; heading error giảm một chiều từ
+−0.618 xuống −0.124 rad, rồi robot chuyển sang tracking và tiến. Không thấy quay
+qua lại; cadence điều khiển thưa làm căn hướng chậm.
+
+**Runtime-validated (smoke xác nhận 60 s, cùng profile/UI-on/scene/seed/pose):**
+preflight `ready=true`, `issues=[]`, exit 0; CLI exit 0, outcome `completed`,
+393/393 frame được ghi, Hydra export revision 10 hoàn tất, UI publication 119
+không drop và shutdown sạch. Một `bootstrap_blocked` lặp lại; theo sau là ba
+`committed_goal_waiting_after_collision` tick (~0.30 s) ở các revision cuối.
+Control outcomes: 175 executed, 15 `expired_or_zero`, 6
+`navigation_source_pending`, 1 `expired_before_step`; body translation lower
+bound 1.367 m. Có ba xung căn hướng một chiều, sau đó ba xung tiến, rồi lần
+bootstrap stop ở frame 194. Artifact kết thúc khi reason vẫn là
+`committed_goal_waiting_after_collision`; do đó thời gian ngắn không chứng minh
+watchdog/recovery đã giải quyết được tình huống.
+
+**Giới hạn và quyết định:** recording và shutdown hoàn tất, nhưng actuation proof
+telemetry thiếu 15 command proof (`actuation.complete=false`); RSS boundedness
+chưa được chứng nhận và GPU resource sampler không có provider. Kết quả smoke
+chỉ xác nhận stop an toàn và diễn biến ngắn, không chứng minh recovery ổn định.
+Không chạy 120 s. Bước sau là sửa/đánh giá guard để kiểm tra bootstrap theo
+thực tế đoạn swept command ngắn trong khi vẫn giữ footprint/clearance gate, rồi
+đặt một test hồi quy trên frame 179; sau đó chạy smoke ngắn và xác nhận goal
+được giải phóng, có lệnh tiến mới, không còn chuỗi WAIT kéo dài. Chưa sửa code
+trong lượt này.
+
+Artifacts:
+
+- Gốc: `.runtime/hydra_ws/artifacts/hydra-forensic-telemetry-smoke-00805-20261105/ui-on-60s/`
+- Smoke xác nhận: `.runtime/hydra_ws/artifacts/hydra-forensic-telemetry-smoke-00805-20261105/ui-on-60s-root-cause-confirmation/`
+- **Implemented:** cơ chế goal recovery hiện có và guard vẫn như cũ.
+- **Correctness-verified:** replay depth/pose frame 179 phân biệt corridor 10 cm thất bại với swept pulse 1.5 cm đạt; phân tích proof cho thấy heading error giảm một chiều.
+- **Runtime-validated:** một smoke UI-on 60 s hoàn tất, nhưng kết thúc khi goal còn WAIT; không đủ điều kiện tăng thời lượng.
+- **Commands/checks:** preflight exit 0, smoke CLI exit 0; không chạy test suite trong lượt này.
+
+### Kiet_branch2 / Hydra — telemetry smoke UI-on 60 s — 2026-11-05
+
+**Run/runtime:** preflight cuối cùng `ready=true`, `issues=[]`, exit 0; lần
+preflight trước timeout thăm dò Hydra interpreter sau 3 s nhưng retry thành công.
+Profile tạm cập nhật hash pin sensor/UI, còn scene 00805, seed 0, initial pose,
+UI-on và navigation settings không đổi. Runtime ghi `backend_active=openvino_gpu`,
+seed applied. Smoke 60 s exit 0, `outcome=completed`, 455 recording frames, 242
+NavMap updates; recording, resource, measurement, collector, Hydra graph revision
+11 đều complete. UI final publication 121, zero drop; shutdown sạch.
+
+**RSS (first/second half):** provider calls 348/290 (638 total), accepted samples
+637/637 supported, no deadline/truncation/read failure at sampler level. Retryable
+provider failures 6/12: mostly transient `FileNotFoundError` in initial/final
+children census, plus one thread RSS `ValueError` and one transient proc-stat
+`FileNotFoundError` in the second half. All recovered. One final provider result
+arrived after stop and was explicitly recorded `discarded_after_stop`; no trace
+records dropped. The historical 120 s `ScopeDeadlineError` did not recur.
+
+**NavMap p95/max, first → second half (ms):** update 161.7/216.0 → 172.2/241.4;
+prepare 51.3/90.7 → 49.3/83.5; core integrate 130.0/171.0 → 139.7/172.4;
+projection 5.1/28.0 → 4.3/28.7; raycast 81.0/142.3 → 90.8/149.0; vote
+integration 19.7/91.4 → 48.0/82.9; core snapshot publish 0.1/0.1 → 0.1/0.1;
+fresh coverage 3.0/23.3 → 3.9/28.2; NavSnapshot 9.4/27.7 → 7.7/61.2; overview
+snapshot 0/0 → 0/0; tile overview 5.4/8.4 → 6.9/18.1. Collector trace is complete,
+zero dropped, with all phase spans on 242/242 updates. Update p95/max rose modestly;
+second-half max was frame 236 at 241.4 ms, split across core integrate 144.9 ms
+(raycast 81.9, vote 59.7), NavSnapshot 61.2 ms and prepare 24.2 ms.
+
+Control interval p95/max was 392.7/478.2 → 391.0/530.3 ms. 240 navigation traces
+contain all fields. All 186 accepted actuation proofs are complete and remain
+inside 0.15 m/s, 0.524 rad/s and 100 ms command caps. Translation lower bound is
+1.408 m, close to the previous 60 s smoke's 1.473 m. However, second half has 47
+`expired_or_zero` safe stops versus 7 in the first half; 46 are the navigator's
+`committed_goal_waiting_after_collision`, not actuator deadline expiry. There
+are also one `expired_before_step` and one `navigation_source_pending`.
+
+**Progress gate:** the final 9.95 s contains only 0.046 m endpoint translation,
+12 `turn_right` actions and 4 `move_forward` actions, with about 0.531 rad yaw
+change. Goal/path telemetry shows the final goal stays fixed and heading error
+decreases from -0.588 to -0.119 rad; this looks like slow one-direction heading
+alignment rather than left/right oscillation, but it is still a near-stationary
+tail. Latencies are not sharply degrading, though update p95/max and several
+stage tails rise modestly. **Do not run 120 s yet**: the tail-progress and
+collision-wait conditions did not pass. Investigate why the committed goal waits
+after collision and why the final goal consumes ~10 s aligning, then use another
+bounded confirmation before advancing the duration ladder.
+
+Command exit 0; no tests run. `native_runtime_validated=false` remains. Artifact:
+`.runtime/hydra_ws/artifacts/hydra-forensic-telemetry-smoke-00805-20261105/ui-on-60s/`.
+
+### Kiet_branch2 / Hydra — smoke kiểm chứng forensic telemetry — 2026-11-05
+
+**Runtime-validated (bounded smoke 20 s):** preflight exit 0 (`ready=true`,
+`issues=[]`), OpenVINO có Intel UHD GPU và UI X11 hoạt động. Run scene 00805,
+seed 0, UI-on kết thúc `outcome=completed`, CLI exit 0; recording và resource
+certificate complete, Hydra export revision 5 complete, UI render publication
+45/0 drop, shutdown sạch. `native_runtime_validated=false` vẫn là giới hạn P10.
+
+Artifact mới có 358/358 RSS sample được hỗ trợ, trace/provider records đủ và
+không bị drop; có 6 retry lỗi thoáng qua (5 `FileNotFoundError` khi census
+children, 1 `ValueError` lúc đọc thread RSS), nhưng đều phục hồi. Không có
+`ScopeDeadlineError`, truncated sample hoặc result bị bỏ sau stop. Vì deadline
+timeout cũ không tái diễn, nguyên nhân chính xác của timeout trong run 120 s cũ
+chưa được xác định; telemetry mới hiện đủ phase/PID để khóa nếu tái diễn.
+
+Collector trace có 2,855 record, complete, 0 drop; đủ cả 10 NavMap span trên
+82/82 update và navigation diagnostics trên 80/80 control record. NavMap p50/p95/
+max là 75.5/186.3/278.2 ms. Đỉnh ở frame 34: core integrate 137.6 ms (raycast
+104.5, vote integration 29.3), NavSnapshot 99.2 ms, prepare 32.1 ms; những
+thành phần này gần như giải thích toàn bộ update 278.2 ms. Điều này định vị được
+nguồn tail trong map/raycast/snapshot, không phải sensor roundtrip đơn thuần;
+chưa chứng minh được vì sao frame 406 của artifact cũ đạt 597 ms.
+
+Đoạn cuối smoke có goal/path đầy đủ, goal giữ ổn định, path 8 điểm; heading error
+giảm từ khoảng -0.22 xuống -0.108 rad và reason chuyển từ `align_heading` sang
+`tracking`. Không thấy dao động trái-phải hoặc đoạn xoay kéo dài trong 20 s này.
+Artifact cũ không có goal/path/heading fields, nên run mới chưa giải thích trực
+tiếp chuỗi xoay dài ở cuối 120 s; nó xác nhận telemetry cần thiết đã hoạt động.
+
+**Artifact:** `.runtime/hydra_ws/artifacts/hydra-forensic-telemetry-smoke-00805-20261105/ui-on-20s-gpu/`.
+Profile tạm trong `/tmp` chỉ cập nhật hash pin sensor/UI theo source hiện tại;
+scene, seed, vị trí, UHD, UI và cấu hình chuyển động giữ nguyên. Một run 30 s
+trước khi sửa thiếu accessor cho NavMap spans và một run trong sandbox rơi về CPU
+được giữ lại để audit, không dùng làm kết luận runtime cuối.
+
+**Next:** artifact đã chứng minh đường ghi telemetry. Chưa mở gate 300/600 s:
+timeout RSS cũ chưa tái hiện và run 20 s chưa kiểm tra late-run map tail hay goal
+rotation dài. Phân tích tiếp trên recording 120 s hoặc một bounded 60 s có
+telemetry; không suy rộng từ smoke này thành long-run stability.
+
+### Kiet_branch2 / Hydra — bổ sung forensic telemetry — 2026-11-05
+
+**Implemented:** RSS provider/sampler nay giữ trace bounded tới 8192 records,
+gồm timestamp/duration, số process, RSS/support, attempt count, pha/lớp lỗi/PID,
+chi tiết từng retry và disposition `accepted_by_sampler` hoặc
+`discarded_after_stop`. Deadline trong process census/thread census được gắn pha
+và PID; các bộ đếm/resource-completion rule không đổi. NavMap ghi span theo source
+frame cho prepare, core integrate, projection, raycast, vote integration, core
+snapshot publish, fresh coverage, NavSnapshot và overview/tile update. Control
+trace phiên bản 1 ghi goal ID/XY, số điểm đường đi, tối đa 64 điểm XY lấy mẫu,
+lookahead, heading error và decision reason. Không đổi TTL, safety, policy hay
+quyết định điều khiển.
+
+**Correctness-verified:** chưa. Static checks `python3 -m py_compile` trên các
+module đã sửa và `git diff --check` đều exit 0. Không chạy product test vì yêu
+cầu hiện tại là triển khai telemetry, không yêu cầu chạy test. **Runtime-validated:**
+chưa; không chạy simulator, chưa sinh artifact mới và chưa xác nhận trace thực tế
+được serialize/đọc lại từ run.
+
+**Artifact/gate:** telemetry được ghi vào artifact run kế tiếp. Cần kiểm tra lại
+smoke bounded để xác nhận trace RSS có phân loại sample timeout/late-discard;
+NavMap subspans cộng khớp với envelope update; và chuỗi heading error/goal/path
+giải thích đoạn xoay cuối. Run 120 s cũ vẫn incomplete, do đó chưa mở gate cho
+300/600 s.
+
+### Kiet_branch2 / Hydra — UI-on duration ladder 30/60/120 s — 2026-11-05
+
+**Profile/control:** ba run lần lượt 30/60/120 s giữ cùng config SHA
+`8470a61a…43c8`, scene 00805, seed 0, pose khởi đầu và UI-on. Goal blocked
+`[-0.175, 0.575]` được recovery nhất quán sau 6 map revision mới trong khoảng
+1.25–1.65 s; planner chọn goal mới. Translation lower bound tăng
+0.602 → 1.473 → 2.906 m. Có 4 goal ID / 2 viewpoint reached ở 60 s và 6 goal
+ID / 4 viewpoint reached ở 120 s. Smoke 60 s không có cửa sổ đứng yên 10 s sau
+giai đoạn căn hướng đầu tiên. Smoke 120 s có thêm một cửa sổ cuối 10 s chỉ tiến
+0.017 m; 25/29 proof trong cửa sổ đó là lệnh xoay phải cho cùng một goal, dấu
+hiệu robot lại căn hướng/đứng lâu tại goal.
+
+**Latency/control:** control interval mean/p95 30→60→120 s là
+277/489 → 286/445 → 291/453 ms. NavMap update p50/p95 là 83/256 → 90/187 →
+86/203 ms; exact-map wait p50/p95 là 83/250 → 91/189 → 87/203 ms. 120 s có
+11 `navigation_source_pending` (so với 2 ở 60 s), 15 `expired_or_zero`, một
+`expired_before_step` và một `yaw_preflight_unavailable`. Các zero là safe stop:
+6 blocked-goal, 5 depth-stale, 4 viewpoint-reached. Nửa sau run 120 s chậm hơn
+nửa đầu: NavMap p95 175→222 ms/max 274→597 ms; control p95 445→477 ms/max
+702→740 ms. TTL và safety không thay đổi.
+
+**Outcome/gate:** run 60 s exit 0, completed, recording 419/419, Hydra revision
+12 complete, UI final seq 120 rendered/0 drop, shutdown sạch. Run 120 s exit 1,
+`outcome=incomplete`: recording 817/817, Hydra revision 23 complete, UI final
+seq 249 rendered/0 drop và runtime/sensor/UI shutdown sạch; nhưng measurement /
+resource certificate không complete do RSS sampler có 1 truncated sample, 1
+deadline exhaustion và 3 read errors. RSS peak quan sát được khoảng 1.997 GB,
+không có breached resource; GPU peak vẫn không có provider. Do artifact 120 s
+incomplete, latency tail xấu dần và cửa sổ cuối thiếu tiến triển, **không chạy
+300 s**.
+
+### Forensic offline follow-up — artifact 120 s — 2026-11-05
+
+Đọc trực tiếp `summary.json`, `measurements.json`, `control-invocations.json`,
+413 pose/control proofs, stage trace và mã sampler/controller; không khởi động
+simulator. Kết luận chi tiết, gồm giới hạn không thể suy ra từ artifact, nằm ở
+[báo cáo forensic](results/hydra-branch2-navigation-recovery-00805.md#offline-forensic-analysis-120-s).
+
+- **RSS:** nguyên nhân trực tiếp của certificate incomplete là 1/1029 sample
+  bị đánh dấu truncated; diagnostics ghi đúng 1 `ScopeDeadlineError` trong
+  `ProcTreeProvider.__call__`. Sampler chỉ cấp `complete=true` khi mọi sample
+  đều có RSS hợp lệ, nên một lần timeout đủ làm CLI exit 1. Có thêm 25 lần
+  process biến mất và 3 lần đọc `/proc` lỗi; các retry phần lớn phục hồi. Mã
+  artifact không lưu thời điểm/pha census hoặc PID của sample lỗi, nên chưa biết
+  chính xác thao tác nào chạm deadline. 1030 provider calls so với 1029 sample
+  được sampler nhận phù hợp với một phản hồi cuối bị bỏ khi stop bật; đây là
+  suy luận từ luồng đóng sampler, không phải một record per-sample.
+- **NavMap:** p50/p95/max toàn `navmap_update` là 86/203/597 ms; sensor
+  navigation roundtrip p50/p95/max là 18/48/132 ms. Các đỉnh map ở frame
+  387/397/406 lần lượt 527/568/597 ms, trong đó frame 406 chỉ có 25 ms sensor
+  roundtrip. Bằng chứng nghiêng về công việc trong NavMapper, không phải sensor
+  roundtrip đơn thuần. Stage hiện gộp ray-budget/projection, integrate/raycast,
+  snapshot/coverage và tile overview; artifact chưa chia nội bộ nên chưa thể
+  quy cho một hàm cụ thể. Runtime dùng CPU/Numba NavMap, không dùng UHD cho lane này.
+- **Goal cuối:** proof lưu 39 lệnh `turn_right` liên tiếp cho goal
+  `frontier-3c50d0f61d33-view-34--20`; yaw đổi một chiều từ 0.254 xuống
+  -1.494 rad (khoảng 100 độ), không đảo dấu. Sau căn hướng, 5 proof kế tiếp đã
+  `move_forward` cho cùng goal. Vì vậy dữ liệu không chỉ ra vòng xoay trái-phải
+  hay goal không có route; nó chỉ ra căn hướng một chiều quá lâu. Trong cửa sổ
+  cuối 10 s, translation chỉ 0.017 m và 25/29 proof là turn. Lệnh quay bị chặn
+  ở 100 ms horizon trong khi control interval ở khoảng 0.3 s; giữa các tick có
+  chờ exact-map. Tail NavMap/pending làm tốc độ phát xung quay hữu hiệu thấp.
+  Proof không lưu goal XY/path/heading-error theo tick, nên chưa chứng minh được
+  vì sao policy chọn viewpoint đó hoặc liệu replan có làm góc mục tiêu trôi.
+
+Full 412-step offline NavMap rebuild được thử nhưng mất hơn 3 phút mà chưa sinh
+kết quả, sau đó chủ động dừng (exit 130); không coi đó là replay pass. Phân tích
+trên là phép đọc dữ liệu thô đã lưu, không replay lại NavMap. Gate tiếp tục đóng:
+chưa chạy dài hơn cho tới khi có telemetry nội bộ NavMap, per-sample RSS error
+phase/timestamp, và goal/path/heading trace đủ để xác nhận rồi có lại artifact
+120 s đạt completion.
+
+Artifacts: `.runtime/hydra_ws/artifacts/hydra-goal-recovery-smoke-00805-20261105/ui-on-{30s,60s,120s}/`.
+CLI exit sidecars nằm cạnh từng folder. `native_runtime_validated=false` cho cả
+ladder; 60 s là runtime-complete, 120 s chưa đạt completion contract.
+
+### Kiet_branch2 / Hydra — blocked-goal recovery live confirmation — 2026-11-05
+
+**Root cause:** committed frontier goal `[-0.175, 0.575]` ban đầu có route,
+nhưng map mới làm một ô lân cận trong footprint robot trở thành occupied; goal
+không còn traversable. Planner/MotionGuard trả zero stop đúng theo safety
+contract. Watchdog đã có sẵn: sau tối thiểu 1 s và 6 map revision mới, đánh dấu
+goal failed, bỏ commitment và tìm viewpoint khác. Không biến goal bị chặn thành
+free, không nới TTL/footprint/unknown-space guard.
+
+**Runtime-validated (bounded, live 30 s):** preflight của profile UI-on pass
+(`ready=true`, `issues=[]`); host OpenVINO liệt kê CPU+GPU và `Intel(R) UHD
+Graphics (iGPU)`, X11 `:0` kết nối. Run cùng scene 00805, seed 0, pose ban đầu
+và profile UI-on; detector dùng `openvino_gpu`. Watchdog giải phóng goal sau
+1.297 s / 6 map revision; planner chọn goal mới có route. Run có 94 `executed`,
+9 `expired_or_zero` (6 goal-blocked stop, 3 depth-stale safe stop), 5
+`navigation_source_pending`. Sau 48 tick `align_heading`, có 46 `move_forward`
+action; actuation proof và pose sidecar ghi translation lower bound **0.602 m**.
+Tốc độ lệnh tối đa 0.15 m/s, horizon tối đa 100 ms; cả 94 accepted proof đều
+complete, source age tại thời điểm issue tối đa 286 ms. Ba depth-stale event bị
+chặn an toàn.
+
+CLI exit 0, `outcome=completed`, recording 214/214, native Hydra graph revision
+7 complete; runtime, sensor, UI shutdown sạch. UI render final publication seq
+67, 0 drop. Control interval mean/p50/p95/max 277.3/252.6/489.3/570.8 ms.
+`native_runtime_validated=false`; GPU memory peak không có provider. Smoke 15 s
+trước đó kết thúc sau 35 lệnh xoay, gần ngưỡng căn hướng; không chứng minh được
+tịnh tiến vì chưa tới control tick đầu tiên sau khi căn hướng. Smoke 30 s này
+xác nhận phần tịnh tiến xảy ra; chưa phải nghiệm thu run dài.
+
+**Correctness-verified:** `PYTHONPATH=src:tests .venv/bin/pytest -q
+tests/test_guard_goal_feedback.py tests/test_navigation.py
+tests/test_controller_corner_pulse.py tests/test_navigation_motion_continuity.py`
+— 72 passed, exit 0. Artifact:
+`.runtime/hydra_ws/artifacts/hydra-goal-recovery-smoke-00805-20261105/ui-on-30s/`.
+Giữ duration ở smoke ngắn cho tới khi mục tiêu coverage P10 và resource proof
+được kiểm tra riêng.
+
+### Kiet_branch2 / Hydra — command forensics, completion semantics, smoke — 2026-11-05
+
+**Implemented:** telemetry của mỗi kết quả actuation giữ decision/command reason,
+v/w, issued/deadline và `failure_detail`; phân biệt `zero_motion_command` với
+`deadline_expired`. Hydra-only profile không còn bị hạ `incomplete` chỉ vì thiếu
+legacy bundle, nếu native graph export, recording, measurements và cleanup đều
+hoàn tất. `native_runtime_validated` vẫn là gate riêng.
+
+**Correctness-verified:** các test tập trung cho actuation/telemetry và Hydra
+export pass; nhóm liên quan đạt 123 passed, 3 deselected (exit 0), sau đó 4 test
+trực tiếp cho thay đổi cuối đạt 4 passed (exit 0). `git diff --check` được chạy
+ở cuối task. Ba test deselected là các pin SHA UI cũ ngoài phạm vi task.
+
+**Runtime-validated (bounded, 15 s):** artifact
+`.runtime/hydra_ws/artifacts/hydra-ui-diagnostics-smoke-00805-20261105/ui-on-15s-final/`
+CLI exit 0, outcome `completed`; 96/96 frame ghi bền vững, Hydra native graph
+revision 5 complete, runtime/sensor/UI shutdown sạch. UI render publication cuối
+sequence 44, 0 drop. OpenVINO GPU và desktop X11 đã qua preflight; detector dùng
+GPU trên run này. Có 47 control ticks: 35 `executed`, 8 `expired_or_zero`, 4
+`navigation_source_pending`; interval mean/p50/p95/max 316.7/285.6/465.4/514.4
+ms. Cả 8 `expired_or_zero` là zero command, không phải command nonzero hết hạn:
+7 do `committed_goal_blocked:goal_not_traversable`, 1 do `depth_stale` sau
+decision `nav_stale`. Bốn pending gồm ba source chạm/vượt freshness 300 ms khi
+NavMap cập nhật (map update 217.6–316.7 ms; wait 193.1–273.9 ms) và một tick
+cuối bị run deadline cắt khi map update còn chạy. Freshness/stop safety không
+bị nới. Các 35 proof đều là `turn_right`; sampled body XY không đổi, nên smoke
+chưa cho thấy tiến triển tịnh tiến.
+
+**Forensic update trên live A/B cũ:** trong 15 `navigation_source_pending`,
+10 là source/map không hoàn tất trong budget freshness 300 ms, 5 là tick cuối
+bị deadline run kết thúc khi source/map còn in-flight. Cũ chưa có payload lệnh
+để diễn giải `expired_or_zero`; telemetry smoke nay chứng minh tên này gộp zero
+safe-stop với expiry, và trường `failure_detail` đã tách được hai loại cho run
+mới. Không có căn cứ để xem các zero stop cũ là lỗi IPC.
+
+**Gate:** smoke đạt completion/profile và lifecycle, nhưng điều khiển chưa đạt
+mức chấp nhận cho tăng thời lượng: không tịnh tiến, goal bị kẹt
+`goal_not_traversable`, có stale-depth stop và map-wait vượt freshness. Chưa chạy
+nấc 30/60/300/600 s; trước tiên cần sửa/điều tra khả năng đi qua của goal và
+đường cập nhật NavMap/cadence, rồi lặp smoke ngắn để chứng minh tịnh tiến an toàn.
+`native_runtime_validated=false`; resource GPU peak cũng chưa được đo do provider
+không khả dụng.
+
+### Kiet_branch2 / Hydra — final UI graph publication and cadence diagnosis — 2026-11-04
+
+**Implemented:** sau khi Hydra close drain các input đã nhận, coordinator đọc lại
+snapshot/projection và phát publication cuối. Khi đóng, UI transport drain publication
+đang chờ, chờ child xác nhận sequence đã render rồi mới dừng; report shutdown ghi rõ
+sequence cuối và trạng thái render. Control lane không chờ UI trong lúc chạy.
+
+**Correctness-verified:** regression tests chứng minh Hydra revision 6 được phát sau
+close và UI render publication graph revision 6 trước shutdown. Bộ focused gồm
+`tests/test_hydra_runtime.py`, `tests/test_ui_transport.py`,
+`tests/test_hydra_projection.py`, `tests/test_runtime_scheduling.py`: 62 passed,
+exit 0; `git diff --check` exit 0.
+
+**Correctness/runtime follow-up:** A/B replay trên cùng recording SHA
+`60dd7fc2…b7bf20` (172 observation) với UI tắt/bật xử lý cùng 7 detector call,
+7 commit và Hydra revision 4. Cả hai dùng Torch CPU vì runtime hiện chỉ thấy
+OpenVINO `CPU`; để replay được, hai profile A/B cùng đặt sampling `novelty`.
+Wall time là 63.1 s off và 55.7 s on với Qt offscreen. Một cặp này không chứng
+minh UI tăng tốc; replay không chạy sensor/control loop nên không đo cadence điều
+khiển. Qt `:0` không truy cập được trong môi trường này.
+
+Smoke UI live offscreen 15 s đã render publication cuối seq 34 chứa graph revision
+3, trùng native export revision 3; UI ACK seq 34, 0 drop, UI/sensor/Hydra shutdown
+sạch. Native graph có 0 node/edge. Run `incomplete` theo contract legacy do không
+có hierarchy/NavMap/object bundle. Có 24 `executed`, 7 `expired_or_zero`, 2
+`navigation_source_pending`; 32/32 control interval vượt 100 ms, mean 450 ms.
+Detector fallback Torch CPU; đây không xác nhận cadence UHD. Một smoke 30 s offscreen
+trước đó có UI exit `-6` và thiếu ACK; log không được giữ bởi close cũ. Close mới
+thoát chờ khi child chết và vẫn lưu log ở các lần lỗi tiếp theo. Chưa biết nguyên
+nhân cụ thể của exit `-6` trước đó.
+
+**Verification:**
+`PYTHONPATH=src:tests pytest -q tests/test_ui_transport.py tests/test_hydra_runtime.py tests/test_hydra_projection.py tests/test_runtime_scheduling.py tests/test_launcher.py -k 'not shipped_ui_script_sha_matches_local_package'`
+— 93 passed, 3 deselected, exit 0. `git diff --check` exit 0.
+
+**Artifacts:** A/B ở
+`.runtime/hydra_ws/artifacts/hydra-openvino-recorded-ab-00805-20261104/`;
+smoke ở `.runtime/hydra_ws/artifacts/hydra-openvino-ui-catchup-00805-15s-20261104/`.
+Cadence UHD/live A/B, desktop X11, và runtime trên UHD vẫn chưa được xác nhận.
+Không tăng thời lượng simulator hoặc đặt UHD làm mặc định.
+
+**Cadence replay feasibility audit:** recording complete SHA
+`60dd7fc2…b7bf20`, 85 primary + 87 navigation observations, source timeline
+57.211 s; pose sidecar covers 86/87 navigation frames (startup frame 0 has no
+control tick), and control sidecar has 85/85 source-bound trace rows. The
+existing replay path never calls `control_step` or reads these sidecars, so the
+previous replay A/B is not a control-cadence A/B. Recorder fields are sufficient
+for an isolated replay harness. Pose admission deliberately rejects `replay:`
+clocks at the live control seam, so a harness must preserve that safety boundary,
+pace the recorded timeline, and use a separate non-actuating interface. Current
+UI-on trace p50/p95 control intervals
+327.1/527.4 ms; primary sensor roundtrip 102.56/207.34 ms, NavMap update
+97.22/220.69 ms, exact-map wait 100.19/211.77 ms (p50/p95), n=85/86/85.
+Audit artifact and details: `docs/results/hydra-branch2-live-ui-00805.md`.
+This single-run breakdown does not establish UI causality; no cadence A/B or
+additional simulator run has been made.
+
+**Offline control-cadence A/B follow-up:** a dedicated `replay_control_cadence`
+path and `tools/run_replay_control_cadence_ab.py` now join the checksummed source
+recording to its measured pose/control sidecar and call the existing control
+path using an isolated `replay:` clock and `OfflineReplayActuator`. Offline mode
+is explicit at Coordinator/Navigator/MotionGuard, rejects live clocks and real
+actuator objects; no Habitat client or simulator is created. NavMapper receives
+only pose-bound navigation-depth frames in this mode. The A/B profiles differed
+only in `ui.enabled` and passed preflight. Both arms used the same input SHA
+`60dd7fc2…b7bf20`, 5 s pre-roll, 15 s measured source window, 112 observations,
+42 control ticks, 42/42 exact map matches, and clean shutdown. Control interval
+mean/p50/p95/max was 353.98/331.38/506.79/619.04 ms with UI off and
+355.83/336.27/541.31/722.51 ms with UI on. Replay-generated
+`expired_or_zero` was 0/1; `navigation_source_pending` was 0/0. The fake actuator
+immediately acknowledges fresh nonzero commands and does not model real sensor
+roundtrip/actuation delay: the selected original live window had 3
+`expired_or_zero` and 3 pending. Both detector arms fell back to Torch CPU
+(OpenVINO worker exposed only CPU). This one pair is offline evidence only; it
+does not certify live UHD cadence or open the 300/600 s gate. Artifacts:
+`.runtime/hydra_ws/artifacts/hydra-openvino-control-cadence-ab-00805-20261104/final-15s/`.
+Focused tests: 86 passed, 3 deselected, exit 0; A/B artifact checks and
+`git diff --check` exit 0.
+
+**Live matched A/B preflight recheck:** UI-off/on configs identical except
+`ui.enabled`; both `ready=true`, `issues=[]`, same scene/seed0/initial pose.
+Runtime OpenVINO probe sees `['CPU']`, `/dev/dri` is absent, and
+`xdpyinfo -display :0` cannot open X11. No live simulator was started because
+this session cannot meet the requested UHD + visible desktop condition. The
+live A/B remains pending in a desktop/runtime session exposing both resources.
+
+**Live UHD + X11 matched A/B — bounded, 3 pairs:** the earlier preflight result
+above was superseded when the current host session exposed `/dev/dri` and
+`xdpyinfo :0` succeeded. The profile-pinned OpenVINO interpreter reported
+`['CPU','GPU']`, `Intel(R) UHD Graphics (iGPU)`; both 15 s profiles were
+`ready=true`, identical except `ui.enabled`, with scene 00805, seed 0 and the
+same initial pose. Three sequential pairs ran in order off/on, on/off, off/on.
+All six detector workers reported `backend_active=openvino_gpu` with no fallback;
+all six sensor runs acknowledged seed 0 and shut down cleanly. Every Hydra graph
+export completed at revision 5. All three desktop UI arms rendered their final
+publication with graph revision 5 (publication sequences 40, 38, 38), zero drops,
+and clean UI shutdown.
+
+Control interval mean UI-on minus UI-off by pair was -23.0, +11.0 and +14.5 ms
+(paired mean +0.9 ms); p95 deltas were -10.5, +38.5 and +31.2 ms (paired mean
++19.7 ms). `expired_or_zero` totaled 19 off / 21 on; `navigation_source_pending`
+8 off / 7 on. Mean paired p50 UI-on deltas were +0.1 ms for primary sensor
+roundtrip, -0.1 ms for navigation sensor roundtrip, -2.6 ms for NavMap update
+and -1.9 ms for exact navigation-map wait. The three pairs show no consistent
+mean-cadence effect, while UI-on p95 was higher in two of three pairs; this is
+still a short sample, not a causal or 300/600 s certification.
+
+The CLI returned exit 1 / `outcome=incomplete` on each arm because this Hydra
+profile exports no legacy hierarchy/NavMap/object bundle. In all six artifacts
+the Hydra-native export was complete and runtime shutdown was clean; no worker
+`-9` or UI failure occurred. UI-on had 107–109 coalesced publications and zero
+drops. Stage p50/p95 and per-run counts are in
+`docs/results/hydra-branch2-live-ui-00805.md`; machine-readable rows are in
+`.runtime/hydra_ws/artifacts/live-ui-ab-00805-20261104/live-ab-summary.json`.
+JSON validation and `git diff --check` exit 0. No long run was started.
+
+### Kiet_branch2 / Hydra — live UI verification — 2026-11-04
+
+**Implemented/configured:** giữ profile UHD gốc nguyên trạng; tạo profile local
+riêng với `ui.enabled=true`, publish 2 Hz. Preflight pass, UI transport kiểm
+tra đúng worker pin.
+
+**Correctness-verified:** `tests/test_ui_transport.py`,
+`tests/test_ui_publication_cadence.py`, `tests/test_hydra_projection.py` — 36
+passed, exit 0. Decoder UI đọc publication cuối với Hydra graph revision 4,
+24 nodes/79 edges, status `available`.
+
+**Runtime-validated (bounded):** trong smoke 30 s, cửa sổ `NeuSymNav / Live
+Scene Explorer` xuất hiện trên X11 và là active window. Có 80 UI publication
+sequences, 0 dropped, 190 coalesced; UI và Hydra đóng sạch. Native Hydra export
+đạt revision 6, nhưng UI cuối dừng ở revision 4 nên chưa theo kịp graph cuối.
+Smoke exit 1/incomplete do thiếu legacy hierarchy/NavMap/object bundle. UI-on
+run có 172 frames, 71 `executed`, 7 `expired_or_zero`, 5
+`navigation_source_pending`, translation lower bound 0.283 m.
+
+So với smoke UI-off gần nhất (285 frames, 164 `executed`, 1 pending, 1.304 m),
+throughput UI-on thấp hơn. Đây chưa phải so sánh nhân quả do simulator runs
+riêng; **chưa được kết luận UI không ảnh hưởng cadence điều khiển**. Không tăng
+thời lượng simulator cho tới khi điều tra catch-up cuối và khác biệt throughput.
+Chi tiết: [báo cáo live UI](results/hydra-branch2-live-ui-00805.md).
+
+### Kiet_branch2 / Hydra — bốn hướng tiếp theo — 2026-11-04
+
+**Implemented:** launcher giữ kết quả close/export của Hydra, xác minh graph
+native và promote manifest lên thư mục run; vẫn đánh dấu generic outcome
+`incomplete` khi profile không cung cấp legacy hierarchy/NavMap/object bundle.
+Detector `openvino_gpu` kiểm tra runtime có thiết bị GPU trước khi nạp IR; nếu
+chỉ thấy CPU thì khởi tạo thất bại có lý do rõ ràng để policy fallback báo đúng
+backend đang chạy.
+
+**Correctness-verified:** 7 test OpenVINO pass. Projection actual native graph
+(revision 7, 30 nodes, 102 edges) qua UI offscreen cùng 6 test projection/UI
+pass. Replay 104 RGB-D frames đo UHD worker p50/p95 402/470 ms so với CPU
+1358/1494 ms; UHD nhanh hơn khoảng 3.4x nhưng chỉ 65.3% candidate detections
+khớp CPU theo cùng nhãn và mask IoU >= 0.5, đây không phải đánh giá accuracy.
+Combined focused run có 42 pass, 10 deselected và 3 lỗi checksum UI đã biết
+(`2e6cec…` trong config, `310ae171…` từ source).
+
+**Runtime-validated (30 s bounded):** đúng UHD hoạt động, không fallback;
+Hydra xử lý 12 input, graph revision 9 (50 nodes/120 edges), manifest native
+complete và clean shutdown. Có 164 lệnh `executed`, 10 `expired_or_zero`, 1
+`navigation_source_pending`; net translation lower bound 1.304 m. Goal bị chặn
+được nhả sau 1.079 s/9 map revisions. Lệnh smoke exit 1 và outcome vẫn
+`incomplete` do thiếu legacy bundle; GPU resource sampler không có provider.
+
+**UI desktop:** đã mở cửa sổ Hydra viewer trực tiếp trên X11 `:0` từ graph đã
+ghi (snapshot offline, revision 7: 30 nodes/102 edges), kiểm tra cửa sổ đang ở
+foreground. Có lọc layer và chọn node; ảnh QA tại
+`.runtime/hydra_ws/artifacts/hydra-openvino-navigation-recovery-00805-30s-20261104/hydra-recorded-graph-desktop.png`.
+Đây chưa phải stream live từ coordinator/simulator; widget cũng chưa render
+mesh/cloud. **Chưa chứng minh:** độ chính xác detector trên ground truth, GPU
+memory peak, và H7 acceptance end to end. UHD vẫn opt-in. Artifact:
+`.runtime/hydra_ws/artifacts/hydra-openvino-four-directions-00805-30s-20261104/`;
+chi tiết tại [báo cáo bốn hướng](results/hydra-branch2-navigation-recovery-00805.md).
+
+### Kiet_branch2 / Hydra — navigation recovery checkpoint — 2026-11-04
+
+**Implemented:** a committed frontier with the specific failure
+`committed_goal_blocked:goal_not_traversable` is now abandoned only after at
+least 1 s and 6 distinct fresh map revisions. Other geometric failures retain
+the existing 8 s / 20 revision threshold. Planner traversability, unknown-cell
+handling, depth/map freshness, footprint clearance, collision filtering and
+actuation deadlines are unchanged.
+
+**Correctness-verified:** the focused goal-feedback tests pass (45 passed).
+Offline replay of the previous 30 s capture rebuilt all 160 NavMap revisions
+with zero revision mismatches. The counterfactual watchdog fired at frame 8;
+the old policy held the same blocked goal through frame 56. Commands after the
+counterfactual changes the goal are not comparable with the old recording.
+
+**Runtime-validated (bounded):** one same-profile 30 s live smoke recorded the
+watchdog firing after 1.383 s and 6 map revisions, then selected a different
+reachable goal. It recorded 97 `executed`, 6 `expired_or_zero`, and 1
+`navigation_source_pending`; the previous same-profile run had 54
+`expired_or_zero`. Hydra processed 8 inputs, produced a non-stale revision-7
+snapshot (74 edges), exited cleanly without `-9`, and reported no worker failure.
+The Hydra-native graph export is verified and its manifest is complete (7
+accepted inputs). The top-level legacy hierarchy/NavMap/object bundle remains
+unavailable by design for this Hydra-only profile, so the overall smoke is
+still incomplete; the room pipeline was disabled. GPU resource sampling was
+unavailable. Details: [navigation recovery report](results/hydra-branch2-navigation-recovery-00805.md).
+
+**Verification:** full non-native suite: 2,435 passed, 1 skipped, 9 deselected,
+3 failed, exit 1. The only failures are the known baseline/geometry-only/
+appearance UI script SHA mismatch (`2e6cec…` expected, `310ae171…` actual).
+`tests/test_guard_goal_feedback.py`: 45 passed, exit 0. No run longer than 30 s
+was started and OpenVINO UHD remains opt-in.
+
+### Kiet_branch2 / Hydra — 2026-11-04 — implementation in progress
+
+**OpenVINO UHD integration and bounded live smoke:** the detector now has an
+opt-in, hash-pinned `openvino_gpu` backend. It initializes and compiles before
+the pipeline accepts semantic frames; a configured `torch_cpu` fallback is
+reported explicitly and only applies to initialization failure. Torch CPU
+remains the default. Replaying all 95 recorded primary frames through the real
+detector worker IPC measured 372.2/431.7 ms steady-state p50/p95 on UHD versus
+1,362.2/1,470.0 ms on Torch CPU (about 3.7x/3.4x faster). UHD matched 296/314
+CPU detections by same-label and mask-IoU>=0.5 criteria, with 431 candidates;
+this is agreement, not accuracy, and shows a material output difference.
+
+A subsequent bounded 30 s simulator smoke confirmed that the active backend
+was `openvino_gpu`, with no fallback and 1.69 s warm-up. Preloading removed the
+multi-second first-frame startup penalty: live capture-to-detector-return
+p50/p95 was 669/910 ms over 7 calls, although p95 is above the 750 ms semantic
+TTL. The robot's sampled body poses show 0.708 m net translation, while control
+still recorded 54 `expired_or_zero` outcomes. The run is **incomplete**: five
+Hydra inputs were accepted, then its child exited with `-9`; no live detector
+evidence or object IDs were committed, and no coherent hierarchy/map was
+exported. Offline replay found the cause of the parent validation error: the
+serializer used packed numeric NodeSymbol values for parent and edge endpoints,
+while node IDs used display strings. This was fixed and verified on all six
+retained inputs, including frame 78, with clean worker close and 29-node/106-edge
+revision-5 projection. The live `-9` most likely followed early graph cleanup
+triggered by that projection error; the exact cleanup/exit timestamps were not
+retained. The 54 no-motion results match 54 zero navigation decisions caused by
+a committed goal being non-traversable (53 blocked decisions plus one
+no-progress failure); exact grid-cell cause is absent from the artifact. Keep
+the simulator duration bounded and UHD optional until the graph fix is
+confirmed live and the blocked goal is diagnosed offline. See the
+[OpenVINO integration and smoke report](results/hydra-branch2-openvino-integration-00805.md).
+
+Focused OpenVINO/detector/projection/Hydra runtime checks and shell/format
+checks are recorded in that report. The earlier full CPU suite result remains
+70 passed, 3 known UI script SHA mismatches; it is not a pass for the branch.
+
+**Latest bounded live smoke checkpoint:** 30 s map-00805 smoke after CPU raycast
+warm-up. Startup compiled the Numba signature in **1.270 s**; the first live
+NavMap update was **79.6 ms** (96 updates, p95 121.8 ms, max 148.9 ms), versus
+the prior cold first-update outlier of 2.102 s. No NavMap update exceeded the
+300 ms source TTL and no `navigation_unavailable` control reason was recorded.
+The run captured 192 frames and shut down cleanly, but remains
+`outcome=incomplete`, exit 1, `native_runtime_validated=false`: Hydra processed
+2 inputs and could not export a coherent hierarchy/map. Control reasons include
+33 `expired_or_zero` outcomes, still requiring separate diagnosis. See the
+[JIT warm-up smoke report](results/hydra-branch2-jitwarm-00805.md).
+
+**Offline follow-up diagnosis (same recorded smoke; no new simulator run):** the
+33 `expired_or_zero` outcomes map to consecutive depth frames 3–35. Their depth
+ages were 76.5–171.1 ms, below the 300 ms freshness limit. The actuator uses
+that result for either a command past its 100 ms deadline or a zero linear and
+angular command. The artifact does not retain those per-invocation command
+fields, so it cannot distinguish those cases exactly. Navigation separately
+reports 32 `committed_goal_blocked:goal_not_traversable` decisions; their count
+and interval closely match the zero-result run, making geometric zero commands
+the likely majority, but not a per-frame proof. Semantic throughput is bounded
+by startup and CPU service: selected keyframes were frames 0 and 76; live
+capture-to-detector-return was 22.74 s for frame 0 and 1.83 s for frame 76,
+while Hydra service took 5.50 s and 4.88 s. Both inputs were accepted, but the
+run recorded zero live detector/object evidence commits and zero object IDs.
+This confirms that the smoke did not establish useful semantic/Hydra output.
+Exact evidence and limits are in the [offline smoke diagnosis](results/hydra-branch2-offline-diagnosis-00805.md).
+
+**Detector/iGPU check and recorded-frame A/B (offline only):** after the user
+installed `intel-opencl-icd` `23.43.27642.40-1ubuntu3`, `clinfo` detects one
+Intel OpenCL platform and the Intel Raptor Lake-P UHD Graphics device. Local
+OpenVINO `2026.4.1` enumerates `CPU` and `GPU` (`Intel(R) UHD Graphics (iGPU)`).
+On nine recorded RGB-D frames, OpenVINO UHD inference at 640 px measured
+207.7/250.6 ms p50/p95, versus 1,294.5/1,377.2 ms for the current PyTorch CPU
+baseline (about 6.2x/5.5x faster). It matched 27/28 baseline detections by
+same-label and mask-IoU>=0.5 criteria, with 10 additional candidates. This is
+agreement on nine frames, not ground-truth accuracy. OpenVINO's first GPU
+compile/warm-up was 7.0 s. The production detector still uses PyTorch CPU;
+this offline profile/export did not change app code/configuration or run a
+simulator. CPU size results remain: 640 1,309/1,514 ms; 512 900/947 ms with
+39.3% matched detections; 480 811/1,081 ms with 28.6% matched. Keep 640 pending
+broader quality review. See the
+[UHD/runtime and recorded-frame A/B report](results/hydra-branch2-detector-resolution-ab-00805.md)
+and artifact directory `.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/`.
+
+Earlier bounded smoke failures and startup fixes remain recorded in the
+[initial smoke report](results/hydra-branch2-smoke-00805.md). Longer A/B and
+300 s runs remain gated on semantic result throughput and acceptance.
+
+**Offline latency profile:** replayed 9 captured RGB-D frames with the pinned
+CPU detector, without starting the simulator. Worker initialization took
+22.932 s (model/encoder load 21.370 s); warm inference p50/p95 was 1.301/1.868 s
+and client round trip 1.406/1.967 s. In the live trace, primary and navigation
+capture intervals both had ~295 ms medians, closely matching the 294 ms control
+interval median; this points to sensor/update-to-control pacing as the immediate
+cadence limit. The recording lacks simulator-step, render, NavMap, and scheduler
+boundary timestamps, so those sub-stages cannot yet be separated. Full profile
+and artifacts: [offline latency report](results/hydra-branch2-offline-profile-00805.md).
+
+**Stage-profile follow-up:** added bounded source-bound monotonic timing for
+sensor IPC/decode and worker capture stages, simulator action/step, NavMap update,
+exact-map wait, and control/actuation. One new 30 s smoke recorded 168 frames,
+82 NavMap updates and 83 control loops; cleanup was clean and runtime health had
+no failed workers. Stage p50s: primary sensor round trip 171.6 ms, draw/render
+48.8 ms, readback 8.4 ms, packet normalize/encode 29.1 ms, host decode 23.7 ms;
+NavMap update 73.5 ms and exact-map wait 73.6 ms; actuation IPC 7.1 ms and
+simulator step 0.21 ms. NavMap had a 2.10 s maximum outlier. This localizes
+substantial time in sensor capture/serialization and mapping, while physical
+simulator stepping is negligible in this sample. Smoke outcome remains
+`incomplete` (only 2 Hydra inputs accepted; coherent map/hierarchy export
+unavailable), exit 1, `native_runtime_validated=false`. It is diagnostic evidence,
+not runtime acceptance. See [stage-profile report](results/hydra-branch2-stage-profile-00805.md).
+Focused measurement/sensor suites: **101 passed**, exit 0; Python compilation,
+runner shell syntax, and `git diff --check` also exit 0. The smoke command exited
+1 because it could not export a coherent hierarchy/map, despite clean worker
+shutdown and no runtime error. Overall Hydra live acceptance remains open.
+Offline replay of the exact `downward-depth/frame-1` reproduced a cold NavMapper
+update at 1.79 s wall / 2.88 s process CPU, versus 130 ms after JIT. The raycast
+uses Numba `njit(cache=False)`; runtime now explicitly compiles the exact CPU
+signature during pipeline setup and reports its cost in worker metadata. The
+post-change 30 s smoke removed the first-map stall and related TTL misses. The
+live artifact still has no timestamped CPU/RSS series, so direct host-load
+correlation remains unavailable. See the [outlier investigation](results/hydra-branch2-navmap-outlier-00805.md).
+
+Correctness follow-up: evaluator now validates and accepts bounded source-bound
+`stage` records. Full non-native CPU suite after this change: **2426 passed, 3
+failed, 1 skipped, 9 deselected**, exit 1 (181.87 s). All three failures are the
+pre-existing baseline/geometry-only/appearance UI script SHA mismatch
+(`2e6cec…` expected, `310ae171…` actual). Six focused evaluator/deadline
+regressions pass. Full run is documented in the [JIT warm-up report](results/hydra-branch2-jitwarm-00805.md).
+
+User giao thực hiện kế hoạch Hydra ngày 2026-11-04. H0 đã tạo worktree/branch
+chính xác `Kiet_branch2` tại `.runtime/worktrees/Kiet_branch2`, từ `Kiet_branch`
+HEAD `62f16fcf0b1ae508b49820e0184e99714387c490`; snapshot dirty tree gồm 22
+tracked edits và 69 untracked files, toàn bộ 91 source/config hashes khớp. Checkout
+`Kiet_branch` giữ nguyên HEAD/index và nội dung; không commit.
+
+**Implemented:** H0 provision branch2 venv từ 14 wheel hash-pinned, exact package/native
+parity verified; H1 clone/pin/build Hydra, workspace/Python/VCS/FetchContent dependencies,
+native sysroot, `hydra_python` and Spark-DSG bindings. H2 added CPU-only `HydraCalibration`
+/`HydraFrame`, a provenance-bound RGB-D/body-pose adapter and native transform/depth
+oracles. H3 added deterministic YOLOE-mask label rasterization, pinned custom Hydra
+labelspace and labelspace provenance, with native geometry/object/room fixtures. API audit:
+[Hydra Python binding audit](hydra-python-bindings.md); reports:
+[H0](results/hydra-branch2-baseline.md), [H1](results/hydra-branch2-h1.md),
+[H2](results/hydra-branch2-h2.md), [H3](results/hydra-branch2-h3.md). H4 added the
+bounded child session, selected-input journal, native worker, and replay helper; report:
+[H4](results/hydra-branch2-h4.md). No packages were installed system-wide.
+
+**Correctness-verified:** H0 navigation/controller/MotionGuard 135 passed (exit 0) and
+recorded replay/evaluator 20 passed (exit 0). H1 native build/binding probe passed (exit 0).
+H2 contract/input tests plus existing contract suite: **120 passed** (exit 0). H3 label,
+Hydra frame/adapter/session and existing contract tests: **135 passed** (exit 0). Native plane
+probe: four accepted frames, 3,485 mesh vertices, median world-Y 2.000078 m, correct
+body-camera composition and red RGB sentinel; graph reload preserved mesh. All-invalid
+depth probe produced zero mesh vertices. H3 native empty-detection unknown background
+produced 718 mesh vertices while the invalid patch had none; two same-class detections
+produced stable `O(0)`/`O(1)` across eight frames; the 8×6 m open-space and narrow-linked
+two-room fixtures produced one and two native rooms. Native graphs reloaded successfully.
+H2/H3 commands and artifact hashes are in their reports.
+
+H4 native child step/save/reload/shutdown and exact selected-prefix replay passed. Effective
+TSDF and mesh integrator threads were both2 in child logs; BLAS/OpenMP caps are1. H4 test
+and native artifact hashes are recorded in its report.
+
+**Runtime-validated:** H1 binding smoke, H2/H3 native Hydra fixtures, isolated H4
+native child process, and one bounded post-fix H7 coordinator smoke ran. The
+smoke validates worker startup, two Hydra graph updates/export, clean shutdown,
+and absence of the prior publication mismatch; it did not reach runtime
+acceptance. H5 wires selector/admission into the coordinator; H6 projects native
+graph summaries and exports a verified manifest. Focused H6/H5/H2–H4/UI
+tests: **43 passed** (exit 0). H0 navigation/controller/MotionGuard regressions:
+**135 passed** (exit 0), with all 11 H0 navigation source files hash-identical. A broader
+launcher/configuration check exposed three existing shipped UI worker checksum
+failures (recorded in [H5 report](results/hydra-branch2-h5.md)). No visible UI
+session, mesh/cloud rendering, movement-concurrency test, or H7 A/B/live
+acceptance has run. The bounded smoke did not establish those gates.
+At the time of this checkpoint, the sandbox could not reach `DISPLAY=:0`.
+The later follow-up verified host X11 access and opened the recorded-graph
+viewer on the desktop; that snapshot viewer does not imply a live simulator UI.
+
+H6 report: [native graph projection and export](results/hydra-branch2-h6.md). An
+existing H4 native graph's size/hash was verified and its exact selected-input
+manifest was emitted; H4 separately verified native Spark-DSG reload. H6's offscreen
+publication, DTO, layer filter and selection tests pass. The displayed graph currently
+omits native mesh/cloud rendering and no live room membership selection was observed.
+
+H7 adds a branch/worktree-safe runner and independent fail-closed acceptance checker
+([H7 report](results/hydra-branch2-h7.md)). The checker finds the actual H3 native
+fixture evidence and rejects the isolated H4 artifact because it lacks coordinator
+and A/B evidence. The calibrated local 00805 profile now passes preflight
+(`ready=true`, `issues=[]`, `native_runtime_validated=false`); calibration and
+pin evidence is in the [profile report](results/hydra-branch2-calibration-00805.md).
+
+Final full CPU suite after repairing a worktree-relative test fixture path:
+**2416 passed, 10 skipped, 3 failed**, exit 1 (186.54 s). All remaining failures
+are legacy `baseline`/`geometry-only`/`appearance` UI script SHA assertions
+(`2e6cec…` expected, `310ae171…` actual), not Hydra tests. The exact H0 navigation
+suite passes **135/135**; combined focused Hydra/UI and room-admission suite passes
+**54/54**. `git diff --check` exits 0. Full stdout was not saved separately; exact
+commands and outcomes are in the H6 report.
+
+Final H0 source-manifest audit found 89/91 protected checkout file hashes still
+match; the two mismatches are `docs/implementation-status.md` and the Hydra plan,
+whose protected-checkout modification times are 10:23 local, after the H0
+manifest at 10:03 and before this execution's branch2 edits. Active checkout still
+reports `Kiet_branch` at HEAD `62f16fcf0b1ae508b49820e0184e99714387c490`; its Git
+status was not modified by this execution. All H0 navigation source hashes and
+the 14-package/native-extension lock comparison match. This two-document drift
+remains unresolved against the H0 snapshot.
+
+H0 clean-install wheelhouse and H1 27-wheel Python lock are hash-pinned. Hydra default
+Habitat labelspace marks `0` invalid; H3 must use the planned custom labelspace for unknown
+background. Binding has no Python `stop()`; child teardown relies on C++ destructor.
+
+**Next:** Diagnose the detector IPC timeout in isolation, recording initialize
+versus first-inference elapsed time and child stderr, then repeat only the
+30-second smoke. Two attempts failed before any source frame was committed, so
+latency p50/p95 have no samples and longer A/B runs are premature. Details:
+[00805 smoke report](results/hydra-branch2-smoke-00805.md). Profile preflight
+returns `ready=true`, `issues=[]`; it does not validate runtime behavior. H5
+coordinator/live concurrency validation, H6 visible UI/live integration and
+mesh/cloud rendering remain open.
+
+### Exploration/movement optimization — 2026-11-04 — in progress
+
+User authorizes improving exploration and movement; accepted Rebuild M5 remains
+the room source. Main integrates, Luna workers own scoped policy/controller tests
+and an independent Terra read-only latency review checks difficult seams. No
+sibling writes, installs, model downloads, commits or publication.
+
+Implemented and component-tested: gain/heading-aware selection with8 views per
+boundary and a0.6m new-goal preference (close-goal fallback, held-goal stability),
+committed-goal tracking without repeated boundary extraction, origin-only rolling
+velocity continuity, discrete bounded yaw/translation with0.6m/s² configured ramp,
+guard issuance after geometry checks with ORIGINAL300ms TTL/100ms horizon,
+expired-capture recapture without control/relabeling or raw-recording gaps, and
+UI marker pre-admission source binding. A real recorded corner regression proved
+that the previous14cm controller preview vetoed a MotionGuard-accepted2cm pulse;
+the discrete preview now checks the actual bounded pulse. NavMap10cm is distinct
+from unchanged Rebuild M3/M5 at5cm/stride1. Experimental fresh-map lag remains off:
+its runtime test regressed through added bootstrap/deadline cost.
+
+Latest whole CPU snapshot: **2362 passed /10 skipped**, exit0,169.33s, artifact
+`.runtime/movement-improvement-20261103/full-suite-final.log`. Earlier whole run
+had7 failures: UI observer order was a real regression and restored with an early
+side-effect-free expiry check; profile-constructor fakes were replaced with real
+Navigator/Guard; an asynchronous capture fixture now waits for its first commit.
+All earlier logs are retained. This is correctness evidence, not P10 acceptance.
+
+Latest native snapshot `final-corner-90-run`:90s observation,1.5275m measured
+action translation,2 reached viewpoints/3 goal IDs,0 dual-axis forward commands.
+Deliberately delayed one source350ms, health records one expired capture,
+no worker failure/error, clean shutdown. M3 accepted/latest14, M5r11 with2 valid
+regions and not stale. Outcome remains **incomplete**, not a strict acceptance
+pass; resource-measurement completion remains to be reported with exact checker
+output. Artifacts `.runtime/movement-improvement-20261103/` preserve all variants,
+failed startup/fatal-stale run, phase logs and geometry fixtures.
+
+Hybrid regulated pursuit is implemented behind an explicit flag,33 integrated
+regressions pass, and independent Terra static safety review found no actionable
+regression. Native90s translates1.826m; primary0.5Hz variant2.205m. However the
+300s run translates only2.663m:400/896 pending-map results, late map service
+242–269ms versus92ms early, source age reaching300–338ms. Median forward request
+remains0.2m/s; short remaining evidence lifetime, not curvature, dominates the
+crawl. M3 accepted/latest39, M5r34,2 fresh regions, raw1167/1167, clean shutdown,
+no runtime error; outcome incomplete. Performance objective remains open.
+
+Four-worker isolated early/late replay is42–45ms/frame; one worker is slower and
+not selected. Main measured a11.94MB late UI publication:153–168ms encoding,
+dominated by Python JSON streaming. Luna now owns only `ui_transport.py` and a
+new byte-budget/equivalence test file to add a bounded C-encoder fast path with
+unchanged streaming fallback. Main will compare that with UI1Hz and primary0.5Hz,
+then run final regressions/checker/preflight and update this checkpoint. Full
+evidence and negative results: [movement report](results/exploration-movement-2026-11-04.md).
+
+### M5-only hierarchy cleanup — 2026-11-03
+
+**Implemented:** Rebuild RGB-D M1–M5 now uses accepted M5 polygons as its only
+room partition source. Hierarchy object membership and UI links retain the M5
+map domain plus accepted-map/M5 revisions; stale or rejected publications do
+not produce assigned links. The generated M1–M5 profile omits the legacy
+`workers.region` worker. Removed RoomOwner, stable-room/portal debug projection,
+its UI and hierarchy consumer, replay tool, and RoomOwner-only tests. Removed
+the leftover Control map legend for Confirmed/Tentative/Disputed rooms and portal
+candidates. Generic region processing remains for profiles that do not enable
+`workers.room_pipeline`.
+
+**Correctness-verified:** the new wrong-episode regression failed before the
+fix, proving that a mismatched M5 publication could fall back to generic
+regions; it passes with M5 fail-closed selection. Focused M5/hierarchy tests:
+10 passed (exit 0) before the final legend regression; focused hierarchy/UI suite:
+9 passed (exit 0). Full suite on final source: 2,298 passed, 10 skipped (exit 0,
+192.95 s).
+Runner `bash -n`, generated-profile assertions, and `git diff --check` passed
+(exit 0). Rebuild preflight passed for each locally available calibrated profile
+00800–00809: all `ready=true`, `issues=[]`; each reported
+`native_runtime_validated=false`.
+
+**Not established by this cleanup:** runtime validation for arbitrary maps. Each
+map still requires its own calibrated profile, Habitat scene/navmesh and matching
+Rebuild source/native binary pins; preflight alone is not a runtime result.
+
+### Local motion throughput experiment 00805 — 2026-11-03
+
+Đã giữ nguyên stride 2 và mọi giới hạn an toàn, chỉ giảm `runtime.primary_hz`
+từ 5 xuống 1 trong profile tạm dưới `.runtime/`. Mục đích là dành thêm vòng
+owner thread cho sensor navigation: run nền 180 giây trước đó chỉ đạt khoảng
+1.9 lần lặp/giây nên primary RGB-D đến ở mọi vòng.
+
+**Implemented:** profile thí nghiệm riêng và tùy chọn cấu hình
+`navigation.controller.nominal_speed_mps`; default vẫn 0.15 m/s. Local preflight
+`ready=true`, `issues=[]` (exit 0). Sau khi đo được command forward tối đa
+0.108 m/s ở cấu hình cũ, validator được giới hạn mức danh định tối đa 0.20 m/s.
+Không đổi hard cap 0.2 m/s, depth TTL 300 ms, lệnh 100 ms, checker, M3/M5 source
+hay validator.
+
+**Runtime-validated:** smoke 60 giây lấy 52 primary và 174 navigation pose;
+98 lệnh chạy, quãng đường dịch chuyển quan sát được tối thiểu 0.1574 m. Run
+offscreen 180 giây lấy 153 primary/429 navigation frames, chạy 81 lệnh, translation
+lower bound 0.1211 m; M3 accepted/latest r69, M5 r63 fresh với một polygon hợp lệ.
+Rebuild xử lý 69/153 primary candidates. Chi tiết tại [báo cáo motion
+throughput](results/local-room-motion-00805-2026-11-03.md).
+
+**Correctness-verified:** strict acceptance checker từ chối run 180 giây chỉ vì
+outcome `incomplete`; recording đủ 582/582 frame, UI offscreen đóng sạch, M3/M5
+không stale. Resource measurement support chỉ 552/587 RSS samples, còn 32 mẫu
+truncated; đây là blocker để checker chấp nhận. Run 300 giây nominal 0.20 m/s:
+checker vẫn từ chối chỉ vì `incomplete`; recording đủ 1,003/1,003, M3
+accepted/latest r143, M5 r136 fresh với hai polygon hợp lệ. RSS support
+1,003/1,028, còn 21 mẫu truncated. Smoke 60 giây có lỗi UI vì môi trường chạy
+không nối được `DISPLAY=:0`.
+
+**Chưa chứng minh:** 319/427 control invocation của run 180 giây vẫn gặp
+`navigation_source_pending`; 17 lần depth stale. Chưa có run đạt strict
+acceptance, chưa xác minh đi qua ranh giới phòng, và offscreen không tạo cửa sổ
+live để xem trực tiếp. Ở run 300 giây nominal 0.20, dịch chuyển lower bound
+tăng từ 0.196 m lên 0.266 m so với nominal 0.15 trong cùng thời lượng, nhưng
+max command chỉ tăng 0.108→0.117 m/s và `navigation_source_pending` vẫn là
+441/744 lượt. Đã thử thêm NavMapper `sampling_stride=2` trong profile
+tách riêng, nhưng 381/381 quyết định có depth phù hợp bị chặn tại
+`robot_not_on_observed_free_cell`; không có lệnh chuyển động, M3 chưa accept và
+M5 stale. Không dùng biến thể này. Primary 1 Hz chưa được nâng thành default.
+Không chạy Kaggle.
+
+### So sánh stride 1/2 trên cùng recording 00805 có quay — 2026-11-03
+
+Tìm thấy recording local 00805 hoàn chỉnh 218/218 sensor frames, gồm 108 primary
+RGB-D frame. Camera đi 0.0663 m và quét tổng khoảng 101.2°; có quay nhưng hầu
+như không tịnh tiến, nên đây chưa phải room traversal. Đã replay đủ cùng 108
+frame ở stride 1 và 2 bằng source/binary pins hiện tại; mỗi nhánh đóng session
+sạch, M3/M5 có 108 update và một vùng fresh.
+
+**Correctness-verified:** stride 2 so với stride 1: M3 known-cell recall
+0.9987, occupied recall 0.8938, occupied precision 0.9862, occupied IoU
+0.8827, free recall 0.9992. M5 có một vùng fresh ở mỗi nhánh; polygon IoU
+0.9576, diện tích 8.255 so với 8.074 m². Offline comparator không gọi strict
+acceptance. Một live stride-2 bounded run riêng đã pass strict checker (ghi ở
+bên dưới).
+
+**Runtime-validated:** replay stride 1 mất 824.53 s; stride 2 mất 241.65 s,
+tăng tốc 3.41×. M2 median giảm từ 4.217 s còn 1.093 s mỗi update. Artifact
+JSON và ảnh M3 A/B ở
+`.runtime/local-room-fps-experiment-00805-20261103/stride-comparison-turning-108frames/`.
+
+**Chưa chứng minh:** quãng đường 6.6 cm không kiểm tra khả năng giữ tường/cửa
+khi đi qua ranh giới phòng. Stride 2 vẫn giữ trạng thái thử nghiệm, không đổi
+default; Kaggle chưa chạy lại.
+
+### Bounded live demo Rebuild stride 2 trên map 00805 — 2026-11-03
+
+Đã tạo config tạm stride 2 trong `.runtime/`; stride mặc định production vẫn là
+1. Preflight local `ready=true`, `issues=[]` (exit 0). Run 60 giây với Qt
+offscreen hoàn tất sạch; raw recording đủ 186/186 frame, trong đó 92 primary
+RGB-D frame. Room pipeline xử lý 22/92 candidates; median room service 2.749 s.
+M3 accepted/latest revision 22, M5 revision 11, không stale/replay-required,
+có 1 polygon hợp lệ. Strict acceptance accepted=true (exit 0). Snapshot:
+`.runtime/local-room-fps-experiment-00805-20261103/stride2-live-demo-60s/stride2-accepted-snapshot.png`.
+
+**Giới hạn:** pose chỉ đi 0.0066 m, nên run này không kiểm tra giữ ranh giới khi
+đi qua phòng/hành lang. Lượt đầu không offscreen bị strict checker từ chối vì
+môi trường không có X display; lượt offscreen thứ hai được checker chấp nhận.
+Đây là runtime validation cho stride 2 và M5 trên cảnh gần tĩnh, không chứng minh
+chất lượng trajectory hoặc khuyến nghị bật stride 2 mặc định.
+
+### Thí nghiệm admission Rebuild FPS-cap trên local — 2026-11-03
+
+Không chạy Kaggle trong lượt này. Đã thêm chính sách thử nghiệm opt-in
+`fps_cap_hz` + `latest_wins`; profile FIFO mặc định không đổi. Khi FPS cap cho
+phép frame mới, room queue chỉ giữ tối đa một frame chờ; các frame bị cap hoặc
+bị thay đều có lý do journal riêng. Runtime đo queue wait, room service và source
+age. Journal Rebuild giữ per-update stage timing/point counts. Adapter nay giữ
+trạng thái M3 “đã có tích hợp” riêng với danh sách record bị pop, tránh chọn
+`full_refresh` lặp lại.
+
+**Correctness-verified:** 50 test focused pass (exit 0), local preflight
+`ready=true`/`issues=[]` (exit 0), và `git diff --check` (exit 0). Chuỗi M3 trong
+replay được xác nhận `full_refresh` lần đầu, `partial_update` các lần sau.
+
+**Runtime-validated:** local bounded run 00805 ở 0.25 Hz, 30 giây, đủ 132/132
+sensor frame; 65 room candidates, 57 FPS-limited, 8 offers, 3 pending frames
+được thay, 5 processed, 0 queue rejection. M3 accepted/latest=5, M5 revision 3
+có một polygon hợp lệ, không stale; acceptance checker accepted=true (exit 0).
+Đối chứng cùng raw recording: chọn 8/65 frame, known-cell recall 0.9992,
+occupied recall 0.9660, occupied IoU 0.8987; một polygon ở cả hai map, IoU
+0.9165. Đây mới là run gần như đứng yên (path 0.0478 m), không chứng minh
+coverage khi đi qua phòng/hành lang.
+
+Timing full replay p50: M1 37 ms, M2 2.825 s, M3 78 ms, residual ngoài timer
+M1/M2/M3 là 2.101 s; M4+M5 khoảng 7.1 ms. M2 timer bao gồm Python validate,
+ASCII serialize và IPC qua `OctoMapWorker.integrate`, không chỉ OctoMap native;
+residual chứa `ScanPoint` construction cùng bookkeeping, chưa được cô lập bằng
+profiler. Chi tiết metrics/artifacts và giới hạn ở [local FPS-cap
+report](results/local-room-fps-cap-00805-2026-11-03.md).
+
+### M2 profile và stride comparison local — 2026-11-03
+
+**Implemented:** thêm công cụ profiler diagnostic cho worker (phase wall timers
+và tùy chọn cProfile) và tool replay full sequence với stride 1/2/4. Không sửa
+source Rebuild, không đổi stride mặc định, acceptance hoặc Kaggle bundle.
+
+**Correctness-verified:** Python compile/CLI help và `git diff --check` đạt.
+
+**Runtime-validated:** phase timing trên 3 primary frames cho integrate wrapper
+8.523 s tổng: pipe write 4.129 s, response read 1.306 s, point validation
+0.033 s và format/other wrapper remainder 3.056 s. cProfile đếm khoảng 916k
+`ScanPoint` generation/constructor calls qua ba frame; profiling wall time bị
+phóng đại, chỉ dùng call counts để xác định hotspot. Full replay 65 frame:
+stride 1 mất 369.08 s; stride 2 mất 109.76 s (3.36×) và giữ M3 occupied recall
+0.8912, occupied IoU 0.8851, M5 polygon IoU 0.9659; stride 4 mất 39.79 s
+(9.27×) nhưng occupied recall giảm còn 0.7415 / IoU 0.7267. M5 có một vùng
+fresh ở cả ba variant. Báo cáo và artifacts tại [M2/stride report](results/local-room-m2-stride-00805-2026-11-03.md).
+
+**Chưa chứng minh:** trajectory vẫn chỉ đi 0.0478 m; chưa có bằng chứng về
+ranh giới phòng khi đi qua scene, run dài hoặc map khác. Stride 1 vẫn là mặc
+định production; stride 2 chỉ là ứng viên để thử tiếp trên trajectory có
+translation/turning và nhiều room boundaries. Acceptance không nới.
+
+### Kaggle room-queue throughput evidence for map 00805 — 2026-11-03
+
+Recorded user-provided output for bounded run
+`20261103T103038Z-53d2b0a0-180s`: 335 Rebuild room offers, 26 enqueued/admitted/
+processed, 309 queue drops (92.24%). This is the **00805 room lane**, not a
+92% loss of all sensor data: the separate raw recording certificate reports
+672/672 frames durable with no source gaps. M3 accepted/latest revision 26 and
+M5 revision 22 were non-stale at shutdown. The strict acceptance output and
+coverage evidence for this exact run were not included, so M5 acceptance and
+scene coverage remain unproven. The detailed evidence and source semantics are
+recorded in `docs/results/kaggle-room-queue-throughput-00805-2026-11-03.md`.
+
+### Kaggle bundle v4: import được, nhưng smoke bị chặn bởi DNS — 2026-11-03
+
+Đã mở draft `NeuSymNav Full M1-M5 Smoke 00805`, gắn dataset private
+`rebuild-rgbd-00805-full` (Version 4), xác nhận GPU `T4 x2` đang được chọn và
+Internet đang bật. Draft đã lưu đúng notebook chứa pin cho source tree
+`9eab6fd4...`, detector diagnostic `6ec70d2c...` và GPU lock `e70fbd22...`.
+
+**Implemented:** không có thay đổi source/runtime trong lượt này. Dataset gắn vào
+draft và cấu hình GPU/Internet đã được xác nhận bằng UI. **Correctness-verified:**
+draft hiện đúng tên notebook và input dataset; không có preflight nào được chạy.
+**Runtime-validated:** hai lần Run All đều dừng ở cell bootstrap trước khi cài
+micromamba, tạo Habitat/Python environments, preflight hoặc chạy RGB-D. Cả hai
+lần báo `socket.gaierror: [Errno -3] Temporary failure in name resolution` khi
+đọc `https://micro.mamba.pm/api/micromamba/linux-64/latest` (URLError); lần hai
+cũng lỗi DNS. Không có bằng chứng hạ tầng GPU/room pipeline đã chạy. Draft
+session đã được stop sau lỗi để nhả GPU.
+
+Kết luận: đây là lỗi phân giải tên miền/egress từ kernel Kaggle dù UI báo
+Internet bật; không phải lỗi map/profile hoặc acceptance. Chưa sửa local bundle
+và không đổi timeout, queue hay checker. Cần thử lại khi Kaggle kernel phân giải
+được `micro.mamba.pm` và các host conda/pip; sau đó Run All từ đầu, xác nhận
+preflight `ready=true`, rồi mới đánh giá kết quả M5. Artifact hiện có là traceback
+trong output của draft Kaggle trên; không có result archive mới. Lệnh kiểm chứng
+cục bộ chưa chạy vì không có thay đổi file hoặc code trong lượt này.
+
+### Kaggle bundle v3 đã publish nội bộ; smoke mới đang chờ editor — 2026-11-03
+
+Lần kiểm tra notebook trước smoke phát hiện cell exporter gán lại `run_dir`
+thành một đường dẫn 180 giây cố định từ lượt cũ. Điều đó có thể làm phần
+export/acceptance đọc nhầm run cũ sau khi run mới hoàn tất. Đã bỏ gán đường dẫn
+cố định; exporter, log và archive nay nằm dưới thư mục `run_root` của lượt hiện
+tại. Notebook chỉ nhận bundle đúng pin source/helper/GPU lock và tìm bundle ZIP
+qua manifest, không phụ thuộc tên ZIP cũ.
+
+**Implemented:** sửa đường dẫn run-scoped trong notebook, xác thực helper và
+GPU lock khi resolve ZIP hoặc bundle đã bung, thêm hướng dẫn chạy lặp lại và
+cổng nghiêm ngặt trước khi chạy lâu; thêm `validate_bundle.py` để kiểm integrity
+ZIP, đường dẫn member, bundle/map/GPU identity và SHA của notebook/helper/GPU
+lock trước khi upload.
+**Correctness-verified:** 6 kiểm tra `test_detector_diagnostic` đạt; notebook
+JSON hợp lệ, 6 code cell parse AST, `git diff --check` đạt. Bundle
+`.runtime/kaggle/rebuild-rgbd-00805-full-gpu-stable-v3.zip` có kích thước
+346,429,803 bytes; `workflow_notebook_sha256=3418d590c829a361b5cd562683f268c91bc6ccf83750045d840bd65c928a01a3`, helper SHA
+`6ec70d2c2235dcd2169c574d24c1baa104c1aeb7582c5ad209649e03c2e9216a`, GPU lock
+SHA `e70fbd2261057cd183908f2ce0c1997980342ab776ade8f792289cbfe3280eb6`. Kaggle
+xác nhận tạo **Dataset Version 4 (Private)** thành công. Verifier có 4 test
+pass; kiểm tra cả ZIP và thư mục bundle v3 trả `OK`, exit 0; `git diff --check`
+đạt.
+**Runtime-validated:** chưa chạy notebook đã sửa. Notebook editor vẫn hiển thị
+`Editor Loading`, các cell và `Run All` bị disable; log Chrome ghi Cloud
+Firestore backend `unavailable` nhiều lần ở cả tab ban đầu và tab editor mới.
+Vì vậy chưa import/đồng bộ notebook SHA mới vào Kaggle draft, chưa chạy
+preflight/smoke mới và chưa có kết quả M5 mới. Không kết luận workflow hoặc run
+dài đã ổn định.
+
+Bundle/profile hiện vẫn giới hạn 600 giây, còn smoke Kaggle trước đó bị
+incomplete/reject. Chỉ chuyển sang run dài sau khi notebook đúng SHA chạy được
+bounded smoke và acceptance nghiêm ngặt pass; chưa có bằng chứng pipeline duyệt
+hết scene trong một session Kaggle.
+
+### Kaggle full M1–M5 smoke sau sửa Habitat depth — 2026-11-03
+
+Đã tách `LD_LIBRARY_PATH` native Rebuild khỏi tiến trình Habitat sensor bằng
+thay đổi ở `HabitatPoseSource`; đây là cách biệt lập thư viện Mesa/EGL sau khi
+bundle native làm primary depth trả toàn số 0. Test hồi quy xác nhận sensor
+worker không nhận override đó. Bundle GPU mới đã được upload thành Kaggle
+Dataset Version 3 (Private), notebook đọc đúng source SHA
+`9eab6fd4bc96150edd5e2d0e4f4b32ecafd78b0b87715f590bba51b69f1110a7`.
+
+**Implemented:** cô lập môi trường thư viện sensor; notebook full GPU sử dụng
+bundle đúng pin. **Correctness-verified:** test client sensor và preflight local
+đạt. **Runtime-validated:** Kaggle preflight `ready=true`, `issues=[]`, exit 0;
+T4 CUDA runtime và Triton hiện diện. Run cấu hình 180 giây dừng sớm sau 72.43
+giây wall với `admission_stop=runtime_health_failed`; raw recording hoàn chỉnh
+144/144 frame. M3/M5 có
+`accepted_m3=latest_m3=5`, `m5=2`, không stale và có 1 polygon hợp lệ. Tuy
+nhiên CLI exit 1 / `outcome=failed`, runtime shutdown không sạch, graph recorder
+`offered=1 / durable=1 / missing=2`, measurement và resource cleanup chưa
+complete; hierarchy export không có. Acceptance **reject** với các lý do run
+không completed, runtime shutdown không sạch, room pipeline failed/replay cần
+thiết và revision/clock mismatch trong bundle export. Không nới checker.
+
+Detector recipe ghi `device=cuda:0`, runtime Torch `2.7.1+cu126`; tuy nhiên
+request detector đầu tiên chưa hoàn tất nên chưa có bằng chứng một inference
+thành công trên GPU. Raycast đã chạy thực trên T4: 71 request, worker `ready`,
+timing gần nhất 14.89 ms end-to-end. Graph scheduler `offered=accepted=1`,
+`processed=0`, lỗi `worker whole-operation deadline exceeded`; cấu hình detector
+của attempt là deadline 5.0 giây. `run.stderr.log` trong artifact là 0 byte,
+nên substage chậm trong phép infer (serialize/write, detector inference hay
+response/decode) chưa được xác định. Đọc mã xác nhận deadline 5 giây bắt đầu
+sau khi worker initialize xong; nó bao trùm serialize/write request, inference
+trong worker, serialize/write response, JSON decode, contract validation. Vì
+timeout chỉ báo `whole-operation`, artifact hiện tại không phân biệt các phần
+này. Đã thử chạy một cell đo riêng sau khi khởi động Kaggle Draft Session mới,
+nhưng `/kaggle/working` của phiên trước không còn chứa `attempts/*-startup.json`
+hoặc frame. Cell thăm dò đó đã được xóa và GPU session đã dừng; chưa đo được
+substage trên T4. Đọc frame keyframe đã tải về trên máy local:
+JSON 3,277,984 bytes, `from_dict` 16.8 ms và serialize request 24.8 ms median
+trong 5 lượt. Đây chỉ là host CPU measurement; không chứng minh stage nào chậm
+trên Kaggle/T4.
+
+Room queue nhận 70 frame, xử lý 5, drop 65 (92.9%). Snapshot timing cuối: M2
+2,335.9 ms; M1–M3 tổng 3,862.6 ms; M4/M5 khoảng 12.8 ms. Đây là một snapshot,
+không phải benchmark phân bố. Kết quả M5 polygon hợp lệ chưa đủ để chấp nhận
+run. Artifact đầy đủ được tải về ở
+`/home/kiettran05/Downloads/rebuild-rgbd-00805-m1-m5-results-180s/`; Kaggle
+session đã dừng sau khi xuất kết quả.
+
+Kiểm chứng: `.venv/bin/python -m pytest tests/test_sensor_adapter.py
+tests/test_sensor_deadline.py tests/test_sensor_execution_metadata.py
+tests/test_rebuild_rgbd_input.py tests/test_rebuild_room_session.py -q` → 49
+passed, exit 0. Bundle local preflight `ready=true`,
+`issues=[]`, exit 0. Kaggle preflight exit 0; Kaggle run exit 1; exporter tạo
+JSON, ảnh M3/M5 và archive nhưng acceptance false. Bước kế tiếp là đo riêng
+serialize/write, inference CUDA, response/decode trên cùng input frame. Cần
+đưa frame và startup recipe vào Kaggle input bền vững hoặc thêm telemetry stage
+vào worker rồi chạy lại smoke có pin mới; sau đó mới quyết định thay đổi code
+hay profile. Không tăng timeout, queue cap hoặc nới acceptance trước khi có
+bằng chứng.
+
+### Tích hợp GPU vào Kaggle bundle 00805 — 2026-11-03
+
+Kaggle notebook nay dùng lock `requirements-host-kaggle-gpu.txt` (PyTorch
+2.7.1+cu126/TorchVision 0.22.1+cu126), kiểm tra CUDA và Triton có thiết bị
+thật, đặt YOLOE detector trên `cuda:0`, đồng thời thêm worker Triton CUDA cho
+NavMapper. `configure_runtime.py` vẫn giữ mặc định CPU; notebook GPU phải chọn
+CUDA rõ ràng và dừng nếu thiếu GPU/backend. Lock CPU hiện có không đổi. Habitat
+renderer vẫn dùng llvmpipe; Rebuild native M1–M5 room mapping vẫn chạy CPU.
+GPU raycast chỉ tăng tốc NavMapper/control occupancy, không phải M3/M5 Rebuild.
+Acceptance checker và ngưỡng không đổi.
+
+**Implemented:** notebook, lock CUDA, runtime profile và worker cấu hình GPU.
+**Correctness-verified:** test `test_configure_runtime.py` xác nhận chọn CUDA,
+raycast worker path và giữ nguyên pin assets; notebook cells compile được.
+**Runtime-validated:** chưa chạy bundle mới trên Kaggle. Các số đo T4 trước đó
+chứng minh riêng detector/raycast backend, chưa chứng minh integration này trong
+full live pipeline hoặc M1–M5 acceptance.
+
+Kiểm chứng task này: `.venv/bin/python -m unittest
+kaggle.rebuild_rgbd_00805.test_configure_runtime -v` → exit 0 (1 test);
+JSON notebook/6 Python cells compile → exit 0; runtime configurator từ bundle
+mới tạo profile CUDA thành công và giữ nguyên SHA M2/M3, M4. Bundle mới
+`.runtime/kaggle/rebuild-rgbd-00805-full-gpu.zip` (~331 MiB) đã build, có GPU
+lock và manifest pin. Chưa xác minh CUDA wheel installation, GPU raycast
+startup hoặc acceptance trên Kaggle; cần thay dataset cũ bằng bundle mới rồi
+chạy preflight/smoke. Acceptance gate không đổi.
+
+### Kaggle GPU stage matrix và thiết kế runner nhiều map — 2026-11-03
+
+Đo ngắn trên Kaggle GPU (2×T4 nhìn thấy, chỉ chạy tuần tự trên GPU 0). YOLOE
+adapter trên frame RGB Habitat 00805: warm median CPU 0.522 s / CUDA 0.0716 s,
+7.28×; device đặt `cuda:0`, detection count/label khớp nhưng mask area khác
+75,935 so với 75,299 pixel. Chưa đo mask IoU. Môi trường đo là Torch
+2.11.0+cu130 của kernel Kaggle, khác pin bundle `torch==2.7.1+cpu`; chưa chứng
+minh bundle runtime hiện tại tự chạy detector trên GPU. Habitat-Sim 0.3.3 trả
+renderer Mesa llvmpipe; hai T4 không được sử dụng ở lượt capture. Production
+`GpuRaycastClient`/Triton chạy Tesla T4: 4,096 tia, CPU Python median 0.2889 s,
+GPU end-to-end 0.01356 s (21.3×), năm occupancy masks khớp chính xác. Đây là
+raycast NavMapper, không phải tăng tốc Rebuild room M1–M5.
+
+Ma trận và giới hạn: `kaggle/rebuild_rgbd_multimap/GPU_STAGE_MATRIX_00805.md`.
+Thiết kế profile riêng từng map, preflight scene/navmesh/calibration/floor/pins,
+và smoke gate trước campaign: `kaggle/rebuild_rgbd_multimap/RUNNER_DESIGN.md`.
+Runner nhiều map chưa được implement; chưa có profiles map khác trong bundle.
+
+**Implemented:** phép đo ngắn đã chạy; ma trận và thiết kế lưu trong folder
+Kaggle riêng. Tích hợp Kaggle GPU runtime được ghi ở checkpoint mới phía trên.
+**Correctness-verified:** raycast masks CPU/GPU
+chính xác trên bộ tia đo; YOLOE cho cùng detection class/label và score gần
+nhau nhưng segmentation mask chưa chứng minh tương đương. **Runtime-validated:**
+detector và Triton chạy CUDA T4; Habitat RGB-D chạy llvmpipe. Full M1–M5 smoke
+vẫn `incomplete`, acceptance reject và 0 M5 region; không bắt đầu campaign.
+
+Kiểm chứng: Kaggle Habitat probe exit 0; detector benchmark exit 0; raycast
+benchmark exit 0. JSON lưu trong Kaggle working ở
+`gpu-stage-matrix/{detector-00805,raycast-00805}.json` và
+`gpu-stage-matrix/habitat-00805/habitat_probe.json`. Archive JSON gộp đã tạo
+thành công (`gpu-stage-matrix/gpu-stage-matrix-00805-json-evidence.zip`, 4,779
+bytes) và link nằm ở cell cuối notebook draft. Chưa tải archive về local hoặc
+lưu Kaggle Version. `git diff --check` exit 0; test suite không chạy.
+
+### Kaggle full M1–M5 smoke cho map 00805 — 2026-11-03
+
+Bundle riêng được chuẩn bị ở `kaggle/rebuild_rgbd_00805/`; ZIP local ở
+`.runtime/kaggle/rebuild-rgbd-00805-full.zip` (331 MiB). Kaggle draft đã nhập
+notebook, gắn dataset private, tạo Python 3.12 host và Python 3.9 với
+Habitat-Sim 0.3.3. Không sửa runtime `src/`.
+
+**Implemented:** notebook hỗ trợ input đã bung thành thư mục; sửa CLIP vocab
+Kaggle tự đổi từ `.txt.gz` thành `.txt` bằng cách dựng bản gzip trong working;
+cài CLIP vào host env để interpreter probe cô lập `-I` tìm thấy module; chép
+native workers sang writable working và đặt executable bit lại vì dataset không
+giữ Unix mode; giới hạn smoke Kaggle rõ ràng ở `raw_cap=2 GiB`,
+`total_cap=3 GiB`, `archive_cap=256 MiB`. Notebook xuất M3/M5, hierarchy, timing,
+acceptance report và archive có link tải trong output.
+
+**Correctness-verified:** preflight trên Kaggle `ready=true`, `issues=[]`, exit 0;
+M23/M4/source SHA đúng pin và `ldd` không thiếu thư viện. Notebook JSON và code
+cell parse hợp lệ tại local. CLIP host import và Habitat-Sim 0.3.3 import pass.
+
+**Runtime-validated trên Kaggle:** smoke cấu hình 60 giây kết thúc sau 103.29 giây
+wall time, 118 frame, recording complete và shutdown sạch. CLI exit 1,
+`outcome=incomplete`; room worker xử lý 9/58 frame gửi, 49 frame bị queue đầy.
+Snapshot cuối M3 revision 9 nhưng không có accepted M3 pair; M5 stale/không có
+revision và có 0 vùng hợp lệ. Acceptance **reject** vì run incomplete, M3 không
+được accept, M5 không ghép M3 mới nhất, stale và không có region. Hierarchy
+export có 4 node / 2 edge. Một snapshot timing: M2 2307 ms, M1/M2/M3 tổng
+4112 ms; đây là một mẫu, không phải benchmark ổn định. Kaggle render là Mesa
+llvmpipe, CUDA không có.
+
+Kết quả và ảnh PNG/JSON/log nằm trong Kaggle working output; archive
+`rebuild-rgbd-00805-m1-m5-results.zip` được tạo và notebook có link tải trực tiếp.
+Dataset chưa được cập nhật bằng notebook sửa local; Kaggle draft đang có bản sửa
+và kết quả. Smoke không được coi là M5 thành công. Nguyên nhân bước kế tiếp cần
+điều tra là throughput queue (58 offered / 9 processed) và thời điểm M3 snapshot
+được accept; không tăng acceptance leniency.
+
+Kiểm chứng: Kaggle preflight exit 0; CLI smoke exit 1 nhưng tạo summary/recording;
+exporter exit 0 tạo `review.json`, PNG map/hierarchy và acceptance false; archive
+được tạo trong `/kaggle/working`. Chưa lưu Kaggle notebook version hay tải archive
+về workspace local.
+
+### Kaggle 180 giây: queue throughput và incomplete gate — 2026-11-03
+
+Lượt live mới chạy 180 giây, wall time 242.57 giây, 346 frame; preflight exit 0,
+raw recording hoàn chỉnh, graph recorder `offered=1 / durable=1 / missing=0`,
+shutdown sạch và không có cap breach. CLI vẫn trả exit 1 / `incomplete`: artifact
+measurement có `completion.complete=false` vì resource sampler không đạt đủ
+support. RSS chỉ có 438/560 sample hợp lệ (122 sample trễ/truncated, 2 lỗi đọc;
+max gap 2.138 giây); GPU provider không khả dụng và không có sample. Đây là gate
+resource evidence trong measurement exporter, không phải room queue hay M5.
+
+Room queue nhận 172 frame, xử lý 23, drop 149 vì queue đầy (86.6%); payload 9.03
+MB/frame, byte cap giữ 32 MiB và tối đa 2 pending. Throughput quan sát là 0.095
+frame xử lý/giây wall. Timing cuối: M2 2,990.7 ms, M1–M3 tổng 5,166.4 ms; M4/M5
+1.84 ms. Đây là snapshot cuối, chưa phải phân bố benchmark. M2 là phần chiếm thời
+gian lớn trong snapshot, còn bounded queue làm các frame đến lúc worker bận bị
+drop theo đúng policy.
+
+M3 cuối revision 23 nhưng accepted M3 không có; M5 revision null, stale và 0
+region hợp lệ. Acceptance checker exit 1/reject với đủ năm lý do: run incomplete,
+thiếu accepted M3, M5 không pair latest M3, M5 stale/unavailable, không có region.
+Không nới checker. Result JSON/archive 180 giây được tạo trong Kaggle working;
+chưa lưu Kaggle version hoặc tải archive về local. Runtime source không đổi.
+
+### Kaggle Habitat probe cho map 00805 — 2026-11-03
+
+Đã tạo bộ thử riêng dưới `kaggle/rebuild_rgbd_00805/` mà không sửa runtime
+`src/`. `prepare_input.py` tạo input bundle riêng 35 MiB và ZIP upload 30 MiB
+trong `.runtime/kaggle/rebuild-rgbd-00805-input-final.zip`; gồm profile/calibration
+đã lược đường dẫn máy, scene + navmesh 00805, Habitat worker, Rebuild source
+closure và hai binary đúng SHA. Bộ này chỉ kiểm tra Habitat, chưa đóng gói full
+NeuSymNav M1–M5, detector environment/models hay UI runtime.
+
+Habitat probe chạy thành công trên máy hiện tại bằng Habitat-Sim 0.3.3/Python
+3.9: renderer llvmpipe OpenGL 4.5; primary 480x640 RGB-D có 307,200 pixel depth
+hợp lệ, downward depth 180x240 có 43,200 pixel hợp lệ; elapsed 11.98 s, exit 0.
+Artifact: `.runtime/kaggle/local-habitat-smoke-00805/`. Habitat phát cảnh báo
+semantic descriptor vắng mặt; probe chỉ dùng RGB-D hình học, không nạp semantic
+GT. Project runner preflight cục bộ vẫn trả `ready=true`, `issues=[]`, exit 0.
+
+Notebook Kaggle đã được nhập vào tài khoản, gắn dataset private và chạy thành
+công sau khi bật Internet cho phiên cài dependency. Kaggle base là Python 3.13;
+notebook tạo môi trường Python 3.9, cài Habitat-Sim 0.3.3 headless (85 gói,
+370 MB tải xuống) và xác nhận `Habitat import: 0.3.3 False`.
+
+**Runtime-validated trên Kaggle cho Habitat RGB-D map 00805:** các hash scene,
+navmesh, scene config, Rebuild binaries và source closure 50 file khớp manifest;
+capture hoàn tất trong 17.25 s. Primary RGB `[480,640,3]`, depth `[480,640]`
+có 307,200 pixel hợp lệ (0.433–0.619 m); downward depth `[180,240]` có 43,200
+pixel hợp lệ (0.262–2.129 m). Report và ảnh RGB/depth còn trong Kaggle notebook
+draft. Renderer là Mesa llvmpipe / OpenGL 4.5; không có CUDA GPU. Cảnh basis
+thiếu semantic descriptor nên Habitat cảnh báo; probe không dùng semantic GT.
+Internet đã tắt lại và session đã dừng sau run.
+
+Ảnh `depth.png` ban đầu gần như đen do preview scale cố định 0.1–10 m, trong khi
+primary frame chỉ có range khoảng 0.433–0.619 m; report xác nhận 307,200/307,200
+pixel hợp lệ. Đã sửa helper trong bundle Kaggle: preview stretch depth hợp lệ theo
+percentile 2–98 từng frame, invalid vẫn đen; JSON ghi range và phương pháp scale.
+Đây chỉ là biến đổi hiển thị, không đổi depth đo được. Kiểm chứng: fixture depth
+hẹp xác nhận stretch 0–255 và invalid=đen → exit 0; `/home/kiettran05/miniconda3/envs/habitat/bin/python`
+chạy lại helper trên scene 00805 → exit 0, 307,200/307,200 depth pixel hợp lệ,
+range preview 0.4455–0.6141 m; ảnh nhìn rõ gradient thay vì gần đen. Artifact:
+`.runtime/kaggle/local-habitat-smoke-00805-depth-preview-v2/`. `py_compile`, kiểm
+JSON notebook và `git diff --check` đều exit 0; không chạy test suite. Input
+dataset đã upload và ảnh trong notebook draft Kaggle vẫn là bản cũ cho đến khi
+bundle mới được upload.
+
+**Phạm vi chưa chứng minh:** chưa chạy NeuSymNav full M1–M5 trên Kaggle, chưa
+runtime-validate graph exporter ở Kaggle, và chưa kiểm tra map khác. Local
+runner preflight vẫn `ready=true`, `issues=[]`; local Habitat probe cũng pass.
+Notebook/run: `https://www.kaggle.com/code/kittrnmuhaha/neusymnav-habitat-rgb-d-probe-00805/edit`;
+dataset private: `https://www.kaggle.com/datasets/kittrnmuhaha/neusymnav-rebuild-rgb-d-habitat-probe-00805`.
+
+### Dọn run artifacts và đánh giá Kaggle — 2026-11-02
+
+Đợt dọn đầu đã xóa 20 thư mục run thất bại/chưa hoàn tất, không được tài liệu
+tham chiếu: giải phóng 18.27 GiB. Sau đó người dùng yêu cầu xóa toàn bộ nội dung
+`runs/`; đã dọn thêm 66 entries, giải phóng 34.64 GiB. `runs/` hiện rỗng. Các
+recording, summaries và kết quả runtime đã bị xóa; để có lại cần chạy demo mới.
+Không sửa/xóa mã nguồn:
+hai runner trông tương tự nhưng một chạy M4/M5 trên occupancy map sẵn có, runner
+còn lại chạy RGB-D M1–M5, nên chưa có bằng chứng chúng là code thừa.
+
+Kaggle phù hợp để benchmark headless có checkpoint, nhưng chưa phải cách tăng tốc
+đã được chứng minh cho graph rebuild: theo tài liệu Kaggle hiện hành, notebook
+có giới hạn 12 giờ, ổ autosaved 20 GB, và máy GPU vẫn cấp 4 CPU cores. M1–M5
+đang dùng Rebuild native mapping/decomposition trên CPU; GPU Kaggle không tự
+tăng tốc các stage này. Cần đo riêng thời gian M1–M5 và kiểm tra khả năng build
+native workers, simulator/scene assets, cùng cách xem UI từ notebook trước khi
+chuyển run. Nguồn tài liệu: https://www.kaggle.com/docs/notebooks.
+
+Kiểm chứng cleanup: preflight xác nhận cả 20 đường dẫn đều ignored, không tracked
+và không được docs/tools/src/tests/.runtime tham chiếu; `du -sh runs` 54 GiB →
+35 GiB; `git diff --check` exit 0. Tests không chạy; chưa benchmark Kaggle hoặc
+profile stage latency. Mã nguồn: chưa có file nào được xác nhận là dead code.
+
+### CI follow-up sau commit 8d7409d — 2026-11-02
+
+Đã sửa failure trong CI: fixtures `Pipeline.__new__` thiếu `_room_publication`;
+config/session tests dùng đường dẫn tuyệt đối của máy dev thay vì Rebuild fixture
+trong `tmp_path`; splitter test không chừa vùng di chuyển vượt minimum pane;
+source-only fixture dùng shutdown budget mặc định quá ngắn; worker timeout test
+dùng 50 ms nên có thể timeout ngay startup; virtual-clock test poll dồn dập và
+starve graph worker. Các thay đổi là test/fixture, không nới runtime acceptance.
+
+Kiểm chứng đúng workflow: `pytest tests -q -m 'not native' --tb=short` →
+2310 passed, 1 skipped, 9 deselected, exit 0; `tools/check_github_payload.py`
+→ ready/exit 0; `neusymnav --help` và launcher fixture preflight → exit 0.
+Các sửa test được commit `1347ff2` và push lên `Kiet_branch`; commit chỉ chứa 7
+file test/fixture. Không gồm docs hoặc run artifacts.
+
+### Rebuild RGB-D runner cho map bất kỳ — 2026-11-02
+
+Đối chiếu R6 trong `docs/rebuild-full-room-pipeline-plan.md`: runner không còn
+chặn map ngoài `0080x`. `tools/run_rebuild_rgbd_map_demo.sh MAP` nhận mã map an
+toàn bất kỳ và `--config PATH` nhận profile calibrated ở vị trí tùy chọn; root
+checkout Rebuild có thể đặt qua `NEUSYMNAV_REBUILD_ROOT`. Profile phát sinh vẫn
+pin M2/M3 executable, M4 executable và Python source closure cố định.
+
+Xác minh: `bash -n tools/run_rebuild_rgbd_map_demo.sh` → exit 0;
+preflight của 00800–00809 đều exit 0, `ready=true`, `issues=[]` (gồm 00803 và
+00804). Sau đó 00803 chạy offscreen 30 giây: 128 frame ghi đủ, shutdown sạch,
+M3 latest/accepted rev8, M5 rev8 với 2 polygon hợp lệ không stale; acceptance
+checker `accepted=true`. Artifact:
+`runs/rebuild-rgbd-prepush-00803-30s/`. Đây là runtime validation cho 00803;
+các map còn lại mới preflight. Chưa có `configs/demo-007*.local.json` trong checkout
+này, vì vậy map 007xx chưa được runtime/preflight xác nhận ở đây. Mã nguồn
+runner đã mở rộng cho 007xx; để chạy cần cung cấp scene asset, profile RGB-D
+đã hiệu chuẩn và provenance floor cho map đó. Những profile/assets local không
+được commit nên push NeuSymNav một mình không tự đem chúng sang máy teammate.
+Quét checkout hiện tại cũng không thấy scene basis `00770` trong Rebuild asset
+tree (dù có P10 config `00770`, config này trỏ tới đường dẫn máy khác và chưa
+phải profile có thể chạy tại đây).
+Đây là thay đổi R6 (đóng giới hạn mã map trong runner), không chứng minh mọi
+map đều có calibration hoặc chất lượng phân vùng đạt yêu cầu.
+
+### Follow-up M4 contour topology — 2026-11-02
+
+The next Rebuild M4 source fix addresses the saved frame-243 contour in the
+OpenCV 4.6 build used by the official worker. `CHAIN_APPROX_SIMPLE` may encode
+a boundary touch where a contour vertex lies inside another segment; repeated
+vertex splitting alone missed that contact. The wrapper now inserts those
+contact vertices before splitting, and discards a recursively produced
+two-point retraced spur while retaining its non-degenerate sibling loop. The
+M4 fallback area guard and M5 polygon validator are unchanged.
+
+The exact captured frame-243 mask probe now returns a valid 3,327.5-pixel loop
+from the 142-point source contour. Rebuilt official worker SHA-256:
+`6ff1fb5ba2275c9311004bcb7bd41995a7f4c64c76107dda8fba785d964a3693`; generated
+`wrapper.cpp` matches the source. The 22-frame admitted recording replay with
+that binary processes all 22 records. The first four updates have no region;
+M5 accepts updates for M3 revisions 5–22, including frame243 at revision 19,
+and finishes with a valid 7.9975 m² region on M3 revision 22. The final replay
+record is not stale. Artifact:
+`.runtime/rebuild-m4-vertex-diagnostic/live-run-22frame-degenerate-loop-replay.json`.
+
+Current-pin synthetic source parity passes 3/3 frames. An offscreen 30-second
+RGB-D run completed and admitted/processed all 7 room frames; M3 reached rev7,
+M5 rev3 with one valid region, `stale=false`, and clean shutdown. Its acceptance
+checker passes. A direct pinned-source oracle over the same 7 recorded frames
+also passes exact M3 state/origin/revision/height-mask parity and exact M5
+region ID/polygon parity. Artifacts:
+`runs/rebuild-rgbd-currentpin-offscreen-00805-30s-20261102/` and
+`runs/rebuild-rgbd-source-oracle-20261102-m4-topology-currentpin-recorded/parity-report.json/parity-report.json`.
+Preflight is `ready=true`, `issues=[]`; all use M4 pin `6ff1fb5b…`.
+
+The 29-frame admitted sequence from an older run profile also replays against
+this pin: M5 accepts revisions 5–29 with two regions at M3 rev29 and no M4
+failures. Artifact:
+`.runtime/rebuild-m4-vertex-diagnostic/live-run-29frame-topology-replay.json`.
+Therefore the M4 fix is implemented, correctness-verified on exact mask and
+22/29-frame replays, and runtime-validated in a bounded offscreen integration
+smoke. It is not yet validated in a visible 180-second run: `xdpyinfo` cannot
+connect to `DISPLAY=:0`. R8 visible live acceptance remains open. See the newest
+section in `docs/rebuild-full-room-pipeline-plan.md` and the source diagnosis
+report.
+
+Verification for this checkpoint: Rebuild `cmake --build build/native-m4-dude
+-j2 --target occusg_dude_worker` → exit 0; NeuSymNav shell syntax and
+`git diff --check` → exit 0; `bash tools/run_rebuild_rgbd_map_demo.sh 00805
+--preflight` → exit 0, ready/no issues; `tools/compare_rebuild_rgbd_source_oracle.py
+--frames 3` → exit 0, parity 3/3; the current-pin recorded oracle over 7 frames
+→ exit 0, parity pass; 30-second offscreen run → exit 0, 7/7 room frames; demo
+acceptance checker → exit 0, accepted; 22- and 29-frame saved replays → exit 0.
+`xdpyinfo` → exit 1 (`unable to open display :0`). No unit-test suite was run.
+
+### Follow-up live demo viewer crash — 2026-11-02
+
+Inspection of `runs/rebuild-rgbd-live-00805-180s-m4-topology/summary.json` and
+`ui/desktop.log` shows the viewer raised `KeyError: 'source_region'` in
+`SpatialSceneWidget.paintEvent()` while sorting hierarchy nodes. The viewer
+process exited `-6`; the main pipeline continued through its 180-second run.
+The run captured 844 sensor frames and finished its raw and room-pipeline
+recordings cleanly, but outcome is `incomplete` and the acceptance checker
+rejects it because the UI failed and resource sampling was incomplete.
+
+The completed pipeline processed 26/421 offered room updates (395 queue drops).
+It ended at accepted/latest M3 rev26 and M5 rev21, with two valid non-stale
+regions, 8.7313 m² and 1.6088 m² by polygon area. This confirms the contour fix
+is producing valid geometry in the 180-second run; the low update throughput
+and absence of room ground-truth scoring mean semantic segmentation quality is
+not yet established.
+
+`spatial_scene.py` now ranks `source_region` hierarchy nodes explicitly, places
+them from their polygon geometry, and draws current M5 outlines in a distinct
+color. A new 30-second offscreen run after the fix completes with UI failure
+null, one valid M5 region, no stale state, and acceptance checker `accepted=true`.
+Artifact: `runs/rebuild-rgbd-ui-source-region-fix-00805-30s-20261102/`.
+Verification command exits 0. The same visible 180-second command can now be
+rerun; R8 remains open until it completes with UI healthy and the checker passes.
+
+### Alternate local Rebuild maps — 2026-11-02
+
+Prepared two additional calibrated local profiles for the Rebuild RGB-D runner:
+00802 (`wcojb4TFT35`) and 00806 (`tQ5s4ShP627`). Their scene assets and
+calibration data were already present; only the pinned `habitat_worker.py`
+checksum was stale after the existing calibration-ID precision update. The
+local profile checksums now match the current worker source. Both map
+preflights return exit 0 with `ready=true`, `issues=[]`.
+
+Map 00802 has now completed a visible 180-second run at the current M4 pin.
+Outcome is `completed`, 1,114 captured frames, clean UI/resources, and the demo
+acceptance checker returns `accepted=true`. Final state is M3/M5 rev30,
+`regions_stale=false`, with two valid adjacent M5 polygons of 8.620 m² and
+2.874 m². The screenshots correspond to this run. Throughput remains limited:
+the room lane processed 30/556 offers and dropped 526 to its bounded queue.
+This proves the pipeline can produce and publish two current M5 regions on
+00802; no semantic room ground-truth score is available. Map 00806 is
+preflight-ready but has not yet had a runtime or M5 acceptance run.
+Artifact: `runs/rebuild-rgbd-live-00802-180s/`.
+
+### Full Rebuild room pipeline — R0–R7 partial source-oracle — 2026-11-02
+
+User authorized implementation from `docs/rebuild-full-room-pipeline-plan.md`;
+no subagents used. R0 source/caller audit and pins are recorded in
+`docs/rebuild-full-room-audit.md`. In a later explicit instruction, the user
+authorized a narrowly scoped M4 fix in Rebuild; 3DSG remains untouched.
+
+R1 contract, R2 direct RGB-D adapter, R3 isolated M1–M5 worker/session and R4
+opt-in independent runtime ingress are implemented. The ingress accepts the
+primary `Observation`, not NavMapper geometry; it has a separate bounded queue,
+run-wide recording reservation, telemetry/publication and failure state. The
+progress audit exposed and this checkpoint fixes: accepted M3 revision beyond
+latest, fresh publication with failure/replay state, missing retained accepted
+raster, and absent host-side binding of worker responses to admitted frame/prefix
+and startup pins. The integrated 30-second Habitat smoke completes through the
+new lane. A five-frame prefix of its admitted Rebuild recording also passes
+direct pinned-source M1–M5 parity. An audit-reproduced malformed M5 polygon is
+now rejected transactionally inside the worker: latest M3 continues, prior
+accepted M5 stays paired/stale, and invalid geometry does not poison the whole
+session. A visible 180-second run opened the live UI. Diagnosis shows the raw M4
+contour was already self-intersecting; M5 preserved it unchanged, so its final
+publication has fresh M3 and no accepted M5. Follow-up verified that the saved
+run's M4 settings match checked-in Rebuild caller defaults (1.5 m threshold,
+0.5 m safety, `source` preprocessing), and replayed the admitted prefix while
+capturing the exact M3 preprocessing mask. Source inspection found a
+`Point2d`→integer `cv::Point` conversion in contour extraction; the current
+trace proves the frame-39 bridge already exists in OpenCV `findContours` output
+before DuDe; its integral `Point2d` ring is unchanged by conversion. Three
+diagonal-only mask contacts explain the weakly-simple boundary. User then
+authorized a source fix in Rebuild. M4 now splits weakly-simple repeated-vertex
+contours into simple loops, resolves diagonal-only foreground contacts
+deterministically, bypasses the raster round-trip for already-simple
+incremental contours, and rejects self-intersecting output before accepting it.
+Originals of the three changed files are backed up at
+`.runtime/rebuild-m4-vertex-diagnostic/original-source-backup/`. The first
+corrected official M4 binary pin was
+`5e34759d1c32197ee207c408579604fb797e86839d034d5752ac42b222a9608d`; its exact
+29-frame replay passed with M3 rev29, M5 rev24 bound to M3 rev29, two valid
+regions, not stale. A 3/3 synthetic direct-source parity oracle also passes.
+One requested visible 180-second live run remains unaccepted: the UI cannot
+connect to `DISPLAY=:0`, room lane processed 22/289 offers, and M5 ended stale
+(accepted M3 rev18 vs latest M3 rev22); the checker exits 1. See the source-fix
+report linked below. Native empty-episode behavior, cumulative OctoMap voxel cap,
+full R8 acceptance and room-quality comparison remain open.
+Native empty-episode behavior and cumulative
+OctoMap voxel cap remain unverified/missing; full R8 acceptance and room-quality
+comparison remain open.
+
+R5 carries latest and retained accepted M3 map snapshots with the exact M5 pair;
+UI has distinct Control map and Rebuild M3/M5 tabs, a Latest/Accepted map
+selector, and does not overlay old M5 on a different latest M3 revision. Profile
+auto-selects Rebuild M3/M5 when its lane is enabled. Raw M5 polygons and
+footprint membership now enter hierarchy as separate `source_region` nodes and
+domain-tagged edges on NeuSymNav's existing canonical object IDs. Stale/replay
+or floor mismatch marks source membership unavailable. Control-map membership
+and Stable Room source remain separately identified. Final export writes
+`room-pipeline.json` separately from control `nav.json` and hierarchy, with
+manifest checksum/source revisions. Cross-check: implementation-plan P07
+failure state, P08 source-age/UI and P09 config/export. The final focused suite
+and hierarchy coverage are recorded in the audit-response report.
+R6 adds `tools/run_rebuild_rgbd_map_demo.sh` and versioned profile
+`rebuild-rgbd-m1-m5-v1`. It derives a map-specific runtime config from the
+existing calibrated local profile, pins M2/M3, M4 and the Rebuild Python source
+closure, allows 60 seconds for Habitat startup, then invokes the existing CLI
+preflight or bounded demo wrapper. The sensor calibration identity now hashes
+the actual mount quantized at 1e-6 so body motion does not create a false
+calibration change; per-frame world pose remains unmodified. It
+does not alter the baseline or the older M4/M5 runner. The config parser now
+allows this exact profile ID. Shell syntax and the 00805 preflight passed. A
+bounded 30-second Habitat smoke exercised the integrated M1–M5 lane; this is
+runtime-integrated evidence, not R8 acceptance. R1 has
+no independent review. R7 has three-frame synthetic and five-frame recorded
+Habitat source-oracle parity; historical caller parity remains open. The live
+smoke was completed with 7/7 admitted room frames processed, but 60/67 room
+offers were rejected by the bounded queue; this is not R8 acceptance. No
+installation, training, download, commit or publish. Reports:
+[R6 runner checkpoint](docs/results/rebuild-rgbd-runner-2026-11-02.md),
+[audit](docs/rebuild-full-room-audit.md),
+[architecture](docs/architecture.md); native smoke artifact:
+`runs/rebuild-room-native-smoke-20261102-final/session/`.
+
+R6 verification: `bash -n tools/run_rebuild_rgbd_map_demo.sh` → exit 0;
+`bash tools/run_rebuild_rgbd_map_demo.sh 00805 --preflight` → ready/exit 0.
+Generated profile: `.runtime/rebuild-rgbd-m1-m5-v1/configs/map-00805.json`.
+
+Progress audit response, live smoke and recorded-source evidence:
+[audit response](docs/results/rebuild-rgbd-progress-audit-response-2026-11-02.md),
+[live smoke report](docs/results/rebuild-rgbd-live-smoke-2026-11-02.md).
+The final focused CPU suite for this checkpoint passed 141 tests in 27.03s;
+preflight is ready with no issues, shell syntax and `git diff --check` pass.
+Root-cause details, polygon hashes, and gate results:
+[M5 polygon diagnosis](docs/results/rebuild-rgbd-m5-invalid-polygon-diagnosis-2026-11-02.md).
+
+Latest R8 blocker diagnosis: exact replay of the 22 admitted live frames with
+the first corrected M4 pin showed frame243's full fallback generated a simple
+0.11875 m² candidate against the prior 7.7175 m² region while M3 free cells
+increased slightly (45.85%→45.93%). M5's existing 85% area-drop guard correctly
+rejected it. Rebuild's fallback now preserves the prior M4 state when candidate
+area is below 15% of prior stable area. Official M4 pin is
+`b7c31163135740eb93a66ec56e2cb2abd0cb02e417bd75edbd97a34d9d83a164`; build
+completed. This prevents state poisoning, but does not recover freshness: final
+replay state remains accepted M3 rev18/M5 rev13 vs latest M3 rev22. Native logs
+show expanded wrapper rejected 4/4 contours; full fallback received 12 contours,
+rejected 11, and kept only a 47.5-pixel region from a 3,503-pixel connected M4
+mask component. Topology-safe extraction that preserves the large component is
+still open; no new live demo was run. See
+`.runtime/rebuild-m4-vertex-diagnostic/live-frame243-native-stderr.txt` and
+`.runtime/rebuild-m4-vertex-diagnostic/live-run-22frame-after-area-guard-replay-final.json`.
+For pin `b7c31163…`, source containment is implemented and the 22-frame
+regression replay confirms the fallback no longer replaces stable M4 state;
+full source-oracle parity and the original 29-frame replay have not been rerun
+against this new pin. It is not runtime-validated for live acceptance.
+
 ### User-authorized publication in logical commits — 2026-10-30
 
 User explicitly requests allcurrentlocalchanges committed byfunction andpushedto
@@ -1565,6 +3703,337 @@ and explicitGPUraycastgate. Independent post-delta22tests0/1.59s, scopedACCEPT
 retained;392finalpins recorded, only2declaredpostnative deltas; finaldiffcheck0.
 Wholemap display implementation and CPUcorrectness verified; actualnative-data
 view validated withincomponent scope, whole45srun remainsincomplete/RSS1.
+
+### Recent DuDe room-cut audit — 2026-10-31
+
+User asks whether recent demos actually cut geometry into multiple rooms.
+Read-only audit, no implementation/config changes. Final artifacts from local
+070220/map00802 and070734/map00805 each contain one region, at region revisions
+934/map935 and734/map735 respectively. Both native room inputs remain81x81@.05m
+(4.05x4.05m). Full accumulated overview is UI-only; coordinator still feeds local
+NavSnapshot into RegionBackend/RegionGrid. Room persistence/support over the whole
+explored floor remains unimplemented as noted in earlier checkpoints.
+
+Correctness/evidence verified: exact startup binary SHA matches current local
+worker; strict saved contract decode. Two isolated cold CPU-native final-grid
+queries exit0, both success/accept_incremental/kernel_invoked=true/one rawregion,
+not fallback/reused in these probes. Historical inputs only, no live control,
+sensor/GPU/pipeline run. This does not reconstruct live incremental history.
+No full per-request region/rejection history is persisted, so no claim that
+intermediate output was always one region. The00805 run's whole failure is body
+pose stale, not recorded region-worker death; neither run certifies room quality.
+Current local binary differs from separately patched GPU recipe; no causal
+one-region claim from that difference. No threshold tuning or invented Room nodes.
+
+Artifacts: .runtime/dude-audit-20261031/{audit.py,audit.log,result.json,report.md,
+worker/}. Command in report, exit0; diffcheck0. Implemented: audit/report only;
+runtime-validated scope: two cold native region requests. Whole-floor semantic
+rooms, persistent geometry/membership and room-GT quality remain unproven.
+
+### Accumulated room input fix — 2026-10-31
+
+User authorizes implementation following the above audit. Implemented separate
+region-lane full-resolution room NavSnapshot from immutable raw measured history,
+not coarsened UI overview; local control/safety snapshot unchanged. Exact mapper
+robot/source/frame/clock/floor/calibration binding, FREE-only floor support and
+float64 historical clearance lower bound. Raw4096tile/16MiB and dense1Mcell bounds;
+missing/stale/incomplete/oversized history yields stale/unavailable, no silent
+crop/coarsen. Native reset on origin/res/shape changes retains Python canonical
+tracking against accumulated geometry. Room/floor/edge historical scope and
+extent, bounded request/raw-count/status/reset/rejection telemetry. Place admission
+remains local/fresh; historical published paths have no motion certificate.
+
+Correctness-verified: initial118focused0/11.77s; final accumulated/cadence22pass0/
+4.93s. Independent P06 ACCEPT:53map/runtime+30display+16post-fix+6post-fixture
+tests0, native controlled two-room rerun0. Startup local-unavailable provenance
+finding fixed and scope pinned atomically with nav/region pair; deterministic
+interleaving regression added. Frozen final fullCPU2229passed/1skipped/9deselected,
+exit0/175.58s (`full-cpu-final-verified.log`). Prior full gate1execution-proof
+failure/isolatedfailure retained; its20ms capture fixture wrapper alone now1s,
+all real-source/seed/resolution/nativefalse assertions unchanged, no runtimeTTL
+change. Main52proof/wiring0 and independent1test0; sharedhelper remains20ms.
+
+Native CPU controlled geometry: expansion1->2chambers, actual cut/separatecenters,
+stableleftIDoutsidecurrentrightlocalwindow, FREE->occupied removesleftregion at
+samebounds,12assertions exit0; inspectedPNGs. Additional origin(-.05,-.05) pad/reset
+keeps worldgeometry overlap>0.999999,exit0. Synthetic counts are not roomGT quality.
+
+Runtime-validated: once60s Intel/CPU map00805, exit0/completed/errornull,435frames,
+215acceptedregions/1initialnofree,14native resets,cleanworkers/noobservererror or
+sampled capbreach. Accumulated room76x101@.05m vslocalcontrol81², samefinal source/
+revision;175knownoccupiedcells retained outside local, no freeoutside in this run.
+Travel lowerbound.52448m/aggregateactuationcompletefalse,2objectcommits/noassigned
+membership. Real final1region: no claim of realmultiroom/semanticaccuracy/coverage/
+P10/latency certification. Native thresholds and assets unchanged.
+
+Artifacts `.runtime/accumulated-rooms-20261031/` (logs/nativefixtures/PNGs/review/
+live-result.json/sourcehashes), `runs/demo-accumulated-rooms-60s-20261031/`;
+plan `docs/accumulated-room-map-plan.md`, report
+`docs/results/accumulated-rooms-2026-10-31.md`. Preflightreadytrue/exit0,diffcheck0.
+No downloads/training/siblingwrites/commit/push/publish. Restart demo to apply,
+e.g. bash tools/run_map_demo.sh 00805 600. Source input limitation from prior audit
+is fixed; full-map room quality still requires sufficient measured coverage and
+independent evaluation.
+
+### Stable Room layer implementation started — 2026-11-02
+
+User authorizes tentative/confirmed/disputed Room identity separate from DuDe,
+portal/door/structure evidence, revisable boundaries and split/merge lineage;
+first scope is stable segmentation/debug UI only. No room-guided navigation.
+Three Luna6.0High workers own new policy, composer integration, and UI respectively;
+main owns shared coordination/docs/verification. Earlier dispatches hit usage
+limits before source writes; retry now, no claimed implementation/test pass yet.
+Baseline HEAD9b90d317 plus existing accumulated-map edits preserved, including
+user orchestration file. Plan docs/room-stability-plan.md. No downloads/training/
+sibling writes/commit/push authorized or performed. Final evidence/limits pending.
+
+### Stable Room policy + UI final checkpoint — 2026-11-02
+
+Implemented: separate temporal RoomOwner (tentative/confirmed/disputed), source-bound
+transactional evidence history, stable IDs despite proposal-only DuDe changes,
+held aggregate/split/merge with shared-boundary evidence + predecessor/events,
+optional committed door corroboration and independent metric occupancy portal
+candidates. Door not mandatory; portal not passage proof. Source association
+ambiguity is explicit, stale/rejected updates do not refresh confidence, caps
+publish unavailable. New measured cell/class support is not multi-view evidence.
+UI adds Room stability tab and accepted-vs-DuDe geometry in map/3D with reasons,
+support/lineage; original zoom/orbit/splitter/popup retained. Raw-region object
+membership and control/safety unchanged. Thresholds conservative/provisional;
+axis-aligned portals, exact partition recurrence and250kcell policy cap limits.
+
+Execution: initial Luna6.0High scaffold/integration/UI; main found core structural
+state-machine invariants unresolved, escalated only core refinement to TerraHigh.
+Independent LunaHigh review43focused+10probes0, then12cadence follow-up0; no Astra.
+Intermediate full CPU failures preserved:12map-only helper failures,2GTstartup/
+splitter failures,1frozenclock-fixture timeout. Fixed product bugs and deterministic
+fixture correction; no GTnormalization, TTL/cadence or assertion weakening.
+
+Correctness-verified final frozen wholeCPU2260passed/1skipped/9deselected exit0,
+167.48s: `.runtime/room-stability-20261102/full-cpu-complete.log`. Single skip is
+explicitGPUauthorizationgate; native9 not claimed pass. Final11source/test/tool
+hashes verified, diffcheck0. Archived actualmap216/76x101 source passed Room repeat
+invariance, UI wire roundtrip and inspected offscreen rendering; one tentativeRoom.
+
+Runtime component smoke: sandbox first30s attempt failed sensorstartup whole-op
+deadline before seedACK/graph, retained. Separately approved outside-sandbox30s
+map00805 completed exit0/errornull/227frames/cleanworkers, one real object commit,
+non-stale source112 Roompublication with one tentativeRoom/support1. No causal
+sensorfix from boundarychange; no assignedmembership/multiroomquality/coverage/
+latency or overallnative/P10 claim (native_runtime_validated remainsfalse).
+General accepted-update scheduler independence and multi-view confirmation unproven.
+
+Report docs/results/room-stability-2026-11-02.md; design docs/room-stability-design.md;
+artifacts `.runtime/room-stability-20261102/`, original native run
+`runs/demo-room-stability-30s-native-20261102/` and failed sandbox run retained.
+Preflight00805readytrue0. No installs/downloads/training/siblingwrites/commit/push.
+User orchestration edits and prior accumulated-map changes preserved. Restart demo
+for UI/policy; `bash tools/run_map_demo.sh 00805 600`.
+
+### Rebuild M4/M5 backend + hidden portals — 2026-11-02
+
+User explicitly authorizes runnable Rebuild room-backend comparison and temporarily
+hiding P tentative; conserve tokens, one Luna6.0High implementer, main independent
+backend review/UI/verification. Actual readonly Rebuild source M4 worker + source
+M5 guard/tracker now selected via workers.region.backend=rebuild_m4_m5/source_root;
+source M5 is canonical region owner, transactional validation preserves accepted
+source pair on rejection, native-only extent reset retains M5 identity. Pinned
+worker7868c892... and50-file source aggregate60aebf8a...; private imports/no sibling
+bytecode writes. Same accumulated measured occupancy, original source preprocessing,
+not a full OctoMap/RGB-D mapping replacement. Baseline backend retained.
+
+Portal overlays and list entries hidden by default in map/3D/Room stability;
+Portals(debug) toggles them. Selected mode visible in subtitle/actual_profile.
+Command `bash tools/run_rebuild_map_demo.sh 00805 600` (or --preflight); wrapper
+uses existing local runner environment, generates ignored pinned profile. No source
+sibling edits/model downloads/installs/training/commit/push. Prior dirty work kept.
+
+Correctness-verified final wholeCPU2267passed/1skipped/9deselected exit0/148.19s;
+8finalcode/test/wrapperhashes unchanged, diffcheck0. Actual cold native equalinput
+comparison: savedmap486 gives1vs1region/matchedIoU.7587; map1682 gives2vs2/.8618,.9234;
+synthetic chambers+corridor3vs3/IoU1.0. Different binary AND preprocessing, so no
+isolated kernel-quality claim. Unknown remains unknown in control; source outlines
+can extend at unknown boundary. No historical incremental replay/GTquality claim.
+
+Runtime component validated: approved native00805Rebuild30s completed0/errornull,
+254frames/cleanworkers/125accepted of130requests,14extentresets;1initialno-free+
+4non-simplepolygonrejections retainedoldgeometry. Finalmap130,76x101@.05,1M5region/
+1tentativeRoom; exact externalworker/source/policy in telemetry, no silentfallback.
+Overallnative_runtime_validated remainsfalse, no P10/semanticaccuracy/coverage or
+performancecomparison claim. RoomOwner remains separate and can hold native splits.
+
+Artifacts `.runtime/rebuild-backend-20261102/`, native run
+`runs/demo-rebuild-00805-30s-20261102/`; design docs/rebuild-backend.md and
+report docs/results/rebuild-room-backend-2026-11-02.md. Intermediate wrongtestpath
+exit4 and legacyworkerconfig KeyError95-testfail retained; fixed lookup without
+weakeningtests. Fullfinal run above is sole whole-suite pass claim for this change.
+
+### Full Rebuild RGB-D room branch plan — 2026-11-02
+
+User requests detailed plan BEFORE implementation. Wrote
+`docs/rebuild-full-room-pipeline-plan.md`: R0–R8 source/caller audit, versioned
+geometry-map contract, RGB-D adapter, isolated persistent Rebuild M1–M5 session,
+bounded admission/replay, runtime/hierarchy/UI/export/runner, source parity and
+fixed A/B/C comparison. Primary RGB-D baseline, control/downward lane unchanged;
+M3 display distinct from control map, source M5 visible before Stable Room policy.
+Original ObjectOwner retained, no second semantic/object ID owner. Pin M2/M3
+binary61747752... plus currentM4/source closure; no fabricated NavSnapshot safety
+fields, no GT mapping, no fallback hidden behind Rebuild label. LunaHigh default,
+escalation by reproduced technical risk; independent frozen review gates.
+
+Verification: read-only source inspection + executable existence/hash only;
+document diffcheck recorded below. No implementation/native/demo/benchmark/
+install/download/training/source-sibling edits/commit/push. This planning request
+does not authorize executing R0–R8; previous M4/M5 smoke/tests not reused as pass
+for the new RGB-D branch. Missing runtime/quality evidence explicitly planned.
+Plan document verification: `git diff --check` exit0; no product tests run because
+this task changes documentation only. Artifact: the linked detailed plan.
+
+### Read-only full Rebuild plan progress audit — 2026-11-02
+
+Historical snapshot from before the subsequent user authorization to implement.
+Its findings describe that earlier checkout and are superseded by the current
+checkpoint at the top of this file and the audit response linked there.
+
+User requests status/issues review, tests if needed; no product implementation.
+Current workspace has added R1contracts/R2adapter/R3worker+session/R4roomlane/
+R5separateUI+export/R6runner since original plan-only checkpoint. R0–R6 partial,
+not all gatesclosed; R7nativeoracle/ABC and R8integratedlive remainopen. Existing
+native1frame synthetic smoke not equivalent to integrated Habitat live.
+
+Fresh focused47passed/9.33s exit0; runner00805preflight readytrue/issues[] exit0;
+private probes exit0 reproduce publiccontract allowing acceptedM3future revision
+(latest1,accepted2,fresh) and replay_requiredtrue withfreshregions. Not claimed
+observed in native live. R5doesnot consumeRebuildregions inhierarchy/membership,
+Controlmap defaulttab and legacyregionlane remain; acceptedoldM3 raster notretained
+inDTO, oldregions safelyomitted fromnewmap. CumulativeOctoMapcap/parity/review gates
+unproven. Plan§8/status prose stale vs implementation files. No product/testsource
+changes or new simulator/native campaign; previous dirtywork preserved.
+
+Artifacts `.runtime/rebuild-rgbd-progress-audit-20261102/{report.md,focused.log,
+preflight.log,probes.py,probes.json}`. Commandsexits inreport; diffcheck0. Next steps
+are findings toresolve upon authorization, not silently performed during audit.
+
+
+### Kiet_branch2 / Hydra — map/control cadence sau khi defer overview — 2026-11-05
+
+- **Implemented:** NavSnapshot được publish ngay sau core map update; tile overview và room input tùy chọn chạy sau publish. Không có region worker thì bỏ hẳn tạo room tiles. Freshness 300 ms và guard footprint/clearance không đổi.
+- **Correctness-verified:** focused suite: `./.venv/bin/python -m pytest tests/test_runtime_scheduling.py tests/test_navmap.py tests/test_runtime_measurement_wiring.py -q` — 67 passed, exit 0.
+- **Runtime-validated:** same-profile UI-on smoke 30 s exit 0; artifact `.runtime/hydra_ws/artifacts/hydra-cadence-overview-publication-00805-20261105/ui-on-30s/`. `navmap_update` p95 164.1 ms; control wait p95 164.9 ms (baseline 196.9/198.0 ms). Freshness remains 300 ms. One pending remains at final frame while map update is in flight; body lower bound 0.765 m. Recording 238/238 and Hydra export revision 7 complete; UI sequence 67 rendered; clean shutdown. 7 zero-motion/expired outcomes remain, and GPU resource sampler is unavailable, so resource boundedness and long-run behavior remain unproven.
+- **Next gate:** inspect/resolve control-before-map-start scheduling at terminal frame and maintain verified counter/resource evidence; do not infer readiness for 60/120/300/600 s from this 30 s confirmation.
+- **Detailed result and cadence audit:** `docs/results/hydra-branch2-navigation-recovery-00805.md` and `.runtime/hydra_ws/artifacts/hydra-cadence-overview-publication-00805-20261105/ui-on-30s/cadence-smoke-audit.json`.
+
+
+### Kiet_branch2 / Hydra — pending do run deadline — 2026-11-05
+
+- **Root cause:** capture cuối có thể trả về sau run deadline; exact navigation wait bị cắt ở `run_deadline`, nhưng launcher cũ vẫn gọi `control_step()` dù map worker chưa publish source đó.
+- **Implemented:** không phát control sau khi duration hết; ghi source vào `run_deadline_skips` riêng, không giả là executed/pending. Freshness gate 300 ms, map exactness và safety không đổi.
+- **Correctness-verified:** test đỏ trước sửa, xanh sau sửa; `tests/test_long_runtime.py` — 22 passed. Tập focused rộng hơn: 104 passed, 3 test UI SHA cấu hình fail do hash cũ trong YAML so với script hiện tại (ngoài thay đổi).
+- **Runtime-validated:** cùng profile/scene/seed/UI, smoke 30 s exit 0; terminal frame 132 được ghi thành một `run_deadline_skip`, wait 0.018 ms, map worker bắt đầu 0.8 ms sau wait và publish khoảng 189.5 ms sau đó. Không gọi control thiếu map ở ranh giới duration. Recording 243/243, export revision 8, UI 71 rendered, shutdown sạch.
+- **Remaining:** còn 3 in-run `navigation_source_pending`, depth age 301.4–306.1 ms; `navmap_update` p95/max 187.1/339.4 ms. Freshness gate đang chặn đúng các source quá hạn. Chưa đủ điều kiện chạy dài hơn; GPU resource sampling cũng chưa khả dụng.
+- **Artifact:** `.runtime/hydra_ws/artifacts/hydra-run-deadline-control-skip-00805-20261105/ui-on-30s/`; chi tiết tại `docs/results/hydra-branch2-navigation-recovery-00805.md`.
+
+
+### Kiet_branch2 / Hydra — phân rã pending 27/92/131 và thử tối ưu raycast — 2026-11-05
+
+- **Offline diagnosis:** frame 27 có sensor roundtrip/decode 72.1/91.3 ms và capture→map-start 165.2 ms; map update 187.1 ms. Frame 92: sensor 30.6/11.5 ms, dispatch 42.5 ms, map 279.7 ms. Frame 131: sensor 31.4/11.7 ms, dispatch 43.6 ms, map 339.4 ms. Raycast 109.4/166.3/195.3 ms; core vote integration 125.3/58.5/65.7 ms. Frame 27 nghiêng về sensor/dispatch; 92/131 nghiêng về raycast/map core. Age 301–306 ms vượt gate 300 ms đúng cách.
+- **Implemented / experiment:** đã thử stride 2 chỉ trên free-space ray traversal, giữ endpoint/floor hits; mặc định vẫn stride 1. Offline 133 recorded frames giảm map update p95 143.3→73.5 ms, raycast p95 114.4→37.3 ms và không tạo FREE evidence mới so với baseline.
+- **Correctness/runtime decision:** focused mapping suite — 56 passed, exit 0. Nhưng UI-on smoke 30 s với stride 2 dù hoàn tất recording 349/349, Hydra export rev1/UI final seq61 và shutdown sạch, có 0 accepted commands, 227 `expired_or_zero` (`robot_not_on_observed_free_cell`), translation lower bound 0.0 m. **Ứng viên bị bác bỏ cho runtime**; không nâng cấp thời lượng và không đổi freshness/footprint gate.
+- **Resources:** RSS 421 mẫu; GPU/VRAM theo process chưa có provider hữu dụng. Artifact `.runtime/hydra_ws/artifacts/hydra-free-ray-stride2-00805-20261105/ui-on-30s/`. Báo cáo phân rã và lệnh kiểm chứng: `docs/results/hydra-branch2-pending-decomposition-00805.md`.
+- **Next:** giữ stride 1; tối ưu raycast/core mà không loại evidence, chứng minh occupancy/bootstrap offline trước smoke 30 s kế tiếp. Chưa có bằng chứng cho run 60/120/300/600 s.
+
+
+### Kiet_branch2 / Hydra long-demo readiness — 2026-11-05
+
+- **D0 implemented:** durable profile `configs/demo-00805.hydra-long-demo.local.json`, current SHA `3170649c387e3770265f2895137a4574b1968a59043a9d252bf65625ad6aafcd`; preflight ready/issues[] exit0. UHD check returned OpenVINO `['CPU','GPU']`; `xdpyinfo :0` connected.
+- **D1 implemented/correctness-verified:** Hydra native 3D positions/edges and layer counts feed SpatialSceneWidget; measured RGB-D cloud comes from exact recording source. Bounded incremental source index and final graph flush were added; final rendered artifact source matches graph source at 0 ns lag. Focused tests: 85 passed. Screenshot: `.runtime/hydra_ws/artifacts/hydra-readiness-D1-00805-20261105/ui-on-30s-final-verified/ui-screen.png`.
+- **Runtime-validated 30s:** `.runtime/hydra_ws/artifacts/hydra-readiness-D1-00805-20261105/ui-on-30s-cloud-flush/`, completed/error null; 265/265 recording, Hydra export revision8, UI sequence62, 146/146 proofs, 1.024m translation lower bound, clean shutdown. Control interval p95 377.7ms; NavMap update p95/max146.3/243.5ms; one `expired_before_step` at frame28/301.1ms; 10 `expired_or_zero` zero-motion outcomes; no `navigation_source_pending`. RSS377/377; GPU memory provider unavailable.
+- **Runtime-validated 60s:** `.runtime/hydra_ws/artifacts/hydra-readiness-D1-00805-20261105/ui-on-60s-cloud-flush/`, completed; 515/515 recording, graph revision16, UI sequence127, 276/276 proofs, 2.237m translation, clean shutdown. One `navigation_source_pending` at frame283/depth303ms (1/291=0.34%); control interval p95 360.8ms; map update p95/max158.9/301.3ms. RSS615/615; GPU memory provider unavailable.
+- **120s not passed:** `.runtime/hydra_ws/artifacts/hydra-readiness-D1-00805-20261105/ui-on-120s-first-gated/`, CLI exit1 and `outcome=incomplete`, although recording986/986, Hydra revision29, UI sequence242, export and shutdown succeeded. There were 3 in-run pending sources (depth301.6–331.4ms), 3 expired-before-step events, 16 zero-motion outcomes, 6/546 freshness misses (1.10%), and translation lower bound4.539m. Control interval p95 rose mildly to388.5ms; map update p95/max148.5/295.9ms, with raycast/vote tails up to184.4/179.2ms. Three run thirds showed map-update p95/max144.2/241.6 →150.3/281.4 →155.4/295.9ms.
+- **Incomplete cause:** one RSS sample (1030/1031 supported) exhausted three trials after `FileNotFoundError` while reading a `/proc/<pid>/task/<tid>/children` path for a thread that disappeared. Implemented a narrow check that ignores only a vanished task directory while retaining process identity and the full second census. Resource/proc focused suite: 88 passed, exit0; runtime validation remains outstanding.
+- **Latency experiment:** NavMap intrinsics/pixel-lattice cache preserved exact recorded snapshot output; on 58 frames p50 preflight 13.588→12.738ms, p95 14.356→14.734ms, so it does not clear the tail. Offline raycast-worker A/B on80 recorded frames had identical snapshot SHA; four workers were fastest (update p50/p95/max126.3/137.7/143.2ms). Keep stride1/workers4; do not relax 300ms freshness.
+- **Next:** validate RSS fix with bounded30s, continue D2 map-core tail investigation, then repeat60/120 only after gates pass. Two clean120s runs are still needed before300s. No300/600 or second-map run was attempted. The full suite baseline was2436 passed/10 skipped/32 failed before these edits and has not been rerun after them.
+- **Detailed checkpoint:** `docs/results/hydra-long-demo-readiness-2026-11-05.md`; current gate ledger: `.superpowers/sdd/hydra-long-demo-readiness-plan-2026-11-05/progress.md`.
+
+
+### Hydra ObjectNav roadmap implementation checkpoint — 2026-11-06
+
+- **Implemented:** A1 shared Hydra graph visibility for 2D/3D; A2 immutable revision-pinned evidence contracts/index and query seam; B1 observed-place support extraction and offline room partition evaluator; C1 offline source-bound control-stage attribution.
+- **Correctness-verified:** focused UI 26 passed; evidence/query/session 34 passed; room quality/GT isolation 17 passed; measurement evaluator 86 passed; `git diff --check` exit 0. These are focused checks only, not a repository-wide suite.
+- **Runtime-validated from existing artifacts only:** A2 probe reloaded an existing 00805 `.sparkdsg`: manifest/hash match; 4 objects had valid bounding boxes and mesh support indices into a finite 6,379-vertex mesh. Cross-revision mesh-index stability and pose-correction history are unverified. B1 extracted 34 place points assigned to one room; no independent annotation was present, so room quality is unavailable. C1 analyzed an existing 60s trace (6,668 stage records, complete, 0 unbound): NavMap update p95/max 209.97/290.15 ms; core integration 149.24/218.30 ms; raycast 88.29/186.30 ms; control navigation wait 210.55/275.82 ms; primary sensor roundtrip 158.56/225.16 ms. Nested intervals overlap and are not additive.
+- **Not implemented / not proven:** A2 detection sidecar and current-revision geometric association; A3 asynchronous object evidence gallery; A4 pure ObjectNav contracts/approach/verification; B2/B3 room text-label context/worker/UI; C2 process isolation; C3 profile accounting and live ladder. No new simulator run, live UI screenshot, detector/model download, model inference, or actuator change was made. C2 native actuation remains behind independent safety review; current session policy disallows subagent delegation, so that review has not been obtained.
+- **Read scope:** inventoried 145 package Python files and 199 test files; read the full affected modules and their contracts/call paths for the implemented slices. A literal line-by-line read of all repository code is not complete and is not claimed.
+- **Artifacts and ledger:** `.superpowers/sdd/2026-11-06-hydra-objectnav-roadmap/progress.md`, `runs/hydra-objectnav/A2/capabilities.json`, `runs/hydra-objectnav/B1/room-quality-00805-60s-NEW.json`, `runs/hydra-objectnav/C1/profile-control-stages-00805-60s-NEW.json`.
+- **B2 added after this checkpoint:** bounded text-only `RoomContext` and revision-pinned `RoomLabelProposal/Result` contracts, with stale/invalid/insufficient-evidence abstention. Focused B2/query checks: 15 passed. No model asset or inference runtime was found; B3 does not run a real SLM. A1 native UI smoke remains unavailable in this session because `xdpyinfo -display :0` exited 1, so no screenshot/runtime validation is claimed.
+
+### Room SLM pilot — S0/S1 checkpoint — 2026-11-08
+
+- **S0 implemented / correctness-verified:** checked all 17 entries in `docs/baselines/hydra-room-slm-pilot-2026-11-08.lock.json`; all byte counts and SHA256 values match. HEAD `62f16fcf0b1ae508b49820e0184e99714387c490`, branch `Kiet_branch2`; baseline worktree was already dirty at 297 paths, manifest SHA `4a2bf1cd34e690bee9f4e0452ebf29503ea05f62164852181d87a91b24d8544b`. Kept existing dirty content.
+- **S0 inventory:** `runs/room-slm-pilot/S0/{baseline-check,inventory}.json`. i5-13420H, 12 logical CPUs, ~6.88 GB available RAM, ~1.99 GB swap already used. No Qwen3-1.7B GGUF, llama.cpp executable/runtime, `llama_cpp` Python binding, or Qwen1.7B cache found in checked workspace/worktree locations. Official Qwen source is Apache-2.0, model repo lists 4.08 GB; no exact official Q4_K_M GGUF artifact was pinned, so converted output size remains estimate 0.9–1.2 GB and must be measured. No download/install occurred. A historical 00805 replay revision has a loaded Hydra library SHA matching the geometry lock; it is not current pilot runtime evidence. No user-supplied 00807 run.
+- **S1 implemented:** immutable request identity binds episode/run/native room/revision/prefix/geometry/context/world epoch; relations are direct parent edges from the same Hydra projection; rooms with no objects still receive host-abstain requests. Publication envelope checks exact full key. `validate_room_label` maps `invalid_output` to `invalid`, requires nonempty support with assigned membership, and abstains for unavailable/truncated contexts. No graph/native geometry mutations.
+- **S1 correctness-verified:** RED captured at `runs/room-slm-pilot/S1-red.log`; final focused command `./.venv/bin/python -m pytest tests/test_room_label_requests.py tests/test_room_context.py tests/test_room_label_contract.py -q` — 19 passed, exit 0 (`runs/room-slm-pilot/S1-final.log`). Runtime-validated: not applicable; no SLM/worker call.
+- **S2 onward:** not yet implemented. Model/runtime asset gate remains unavailable; continue offline prompt/adapter/rule baseline, backend failure fixtures, annotation protocol/evaluator and fake-worker/service correctness. Do not connect live UI until offline quality/resource gates are evidenced.
+
+### Room SLM pilot — S2 checkpoint — 2026-11-08
+
+- **S2 implemented:** deterministic English prompt with pinned schema and categories drawn only from the request's canonical taxonomy; includes object IDs/categories, assigned membership, association status, evidence count and only native parent relations. Prompt never includes episode/run/room IDs, coordinates, labels/GT or raw untrusted class strings. Token count must fit exact budget (max 3072); truncation, stale/missing geometry and unavailable object support produce typed `insufficient_evidence` before model invocation.
+- **Strict adapter:** exact JSON field set; no prose repair; bounds alternatives≤2, support≤8, reason≤256 chars, response≤16 KiB; validates canonical labels, known IDs and assigned membership. Host assigns room/revision/context/model/prompt hashes. Malformed or unsupported replies become `invalid_output`. Baseline `room-label-rules-v1` uses explicit semantic anchors only and abstains for weak/contradictory evidence; it is not ground truth.
+- **Correctness-verified:** RED at `runs/room-slm-pilot/S2-red.log`; final focused command `./.venv/bin/python -m pytest tests/test_room_label_requests.py tests/test_room_context.py tests/test_room_label_contract.py tests/test_room_label_prompt.py tests/test_room_label_adapter.py -q` — 39 passed, exit 0 (`runs/room-slm-pilot/S2-focused.log`). Hashes/schema are in `runs/room-slm-pilot/S2/pinned-hashes.json`.
+- **Runtime-validated:** none. Fixtures and rule baseline tests do not establish SLM semantic quality; no model/runtime available, no detector-backed semantic evaluation set established. S3 subprocess backend/config fixtures remain next; S4/S6 offline contracts can proceed, but live UI is gated.
+
+### Room SLM pilot — S3 offline snapshot / S6 protocol checkpoint — 2026-11-08
+
+- **S3 implemented:** local-only CPU `llama-server` adapter, disabled-by-default config, strict prompt/schema and `tools/infer_room_labels.py`; no remote fallback. Snapshot builder binds request identity to native room IDs, graph revision/prefix, graph/config/build/source/taxonomy hashes and native membership. Calibration ID uses the profile/revision ID when present; for this locked profile, which has no separate calibration ID, the request records a deterministic ID derived from the native calibration hash. The snapshot records that visual object evidence is not present.
+- **S3 correctness-verified:** subprocess fake-server tests are in `runs/room-slm-pilot/S3-green.log` (6 passed, exit 0); CLI fixture test `runs/room-slm-pilot/S3-cli-green.log` (1 passed, exit 0). Snapshot/revision tests and relevant contracts passed as part of the fresh combined command below. Real model/runtime inference was not possible: Qwen3-1.7B GGUF and llama.cpp are absent and remain unpinned. No download or install was performed.
+- **Asset follow-up:** official `Qwen/Qwen3-1.7B-GGUF` is Q8_0 (1.83 GB) and does not publish Q4_K_M; the official Transformers repository is 4.08 GB. The plan's Q4_K_M target therefore needs a permitted conversion or a deliberate quantization change. The 0.9–1.2 GB Q4 size remains an estimate. Official llama.cpp documents Linux installation/build routes; no runtime was installed. See the pilot report for the constraint.
+- **S3 runtime artifact validation:** built three immutable requests from native 00805 replay graph revision 45 at `runs/room-slm-pilot/S3/00805-r45/`; each has 12, 1, and 1 native semantic object(s), all three contexts are untruncated and membership-assigned. On identical contexts, rules v1 returned one `unknown` (contradictory anchors) and two `insufficient_evidence` abstentions; the disabled SLM backend returned `unavailable:model_runtime_disabled` on all three. This validates snapshot/dispatch/result provenance only, not model quality. The source run is detector-backed according to the pinned run metadata, but this graph snapshot contains no reviewed image/object association evidence or room GT, so it cannot score room-label accuracy.
+- **S6 implemented / correctness-verified:** frozen annotation protocol at `docs/results/room-slm-pilot-annotation-protocol-2026-11-08.md`; evaluator handles one selected context per physical room, multi-label references, missing annotations, geometry unavailable, distinct-context flips, support validity, coverage/selective accuracy/macro F1/confusion, latency and RSS fields. Synthetic correctness tests are in `tests/test_room_label_evaluation.py`; these are evaluator tests only, not semantic quality evidence. No annotation manifest or quality score exists yet.
+- **Fresh verification:** `PYTHONPATH=.:src .venv/bin/pytest -q tests/test_room_slm_backend.py tests/test_room_label_evaluation.py tests/test_room_label_snapshot.py tests/test_room_label_requests.py tests/test_room_label_contract.py tests/test_room_context.py tests/test_hydra_scene_graph_query.py tests/test_room_label_prompt.py tests/test_room_label_adapter.py tests/test_room_slm_cli.py` — 64 passed, exit 0. The first combined run exposed and fixed a nested-tokenizer deadline call; this passing rerun covers the fix. `git diff --check` — exit 0. S2 pin artifact refreshed at `runs/room-slm-pilot/S2/pinned-hashes.json`; model/runtime/tokenizer/template hashes are explicitly null.
+- **Not implemented / not proven:** S4 bounded async worker/service is gated on offline quality/resource results; S5 UI/live shadow is gated and remains unconnected. S6 final scoring is blocked by model/runtime assets and reviewed annotations (target ≥12 physical rooms / ≥3 scenes). No real SLM inference, latency/RSS measurement, or quality comparison ran; no UI or live worker integration claim.
+- **Pilot report:** `docs/results/room-slm-pilot-2026-11-08.md` consolidates outcomes, source snapshot limitations and exact next gates. No changes to default profiles or external source repositories.
+
+### Room SLM pilot — image audit, CPU runtime and real inference — 2026-11-08
+
+- **S1 implemented:** `tools/audit_room_object_visual_association.py` verifies native graph and RGB-D recording hashes, projects native mesh support through recorded calibration/pose into depth, and emits per-object overlays/contact sheets. The visual annotation draft is `runs/room-slm-pilot/S1/annotations/image-reviewed-room-labels.json`. It contains 7 labeled physical-room candidates across 3 scenes, 4 distinct contexts and 1 eligible semantic sample; target 12 independent rooms is unmet. Visual labels are an AI-agent draft, not human ground truth. It records observed wrong associations (`00805 O(0) bed→sofa`, `O(21) wardrobe→door`), merged 00805/00806 `R(0)` contexts, and the incomplete outer certificate on 00807 bathroom evidence.
+- **S2 implemented/runtime-validated:** official `Qwen/Qwen3-1.7B` revision `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e` downloaded, converted locally to F16 GGUF then Q4_K_M (1,282,439,168 bytes; SHA256 `9954a72ab369f967d40520ea5fd161485bf82593f9050ae8a93528e90aa4163f`). Official llama.cpp `b12189` commit `80d2c0c2c56e4a1bbf74be98f64b99927bf230bc` built Release/CPU/OpenMP; server SHA256 `39810101b9c23983133c660f6ec1ca96188d989b1e87cba66026f813645939cb`. All model/tokenizer/template/runtime input and binary hashes are recorded in `runs/room-slm-pilot/S2/model-runtime-lock.json`; enabled settings are run-scoped in `runs/room-slm-pilot/S2/qwen3-1.7b-q4km-cpu.json`. Shared experimental config remains disabled.
+- **S3 runtime-validated, quality gate failed:** 5 real CPU single-thread calls across 5 immutable contexts/3 scenes, paired to the rules baseline on the exact same request. Outcomes: SLM 3 timeout / 2 invalid / 0 accepted labels; baseline 1 available / 2 unknown / 2 insufficient evidence. The 00807 living-room baseline proposal follows the `bed` semantic ID, which the image audit shows on a sofa; this is an association error, not a valid correctness score. Latency p50/p95/max `60.95/62.25/62.25 s`; sampled child RSS `2.55–2.57 GB`; 5/5 subprocesses launched and shut down cleanly. Artifact `runs/room-slm-pilot/S3/real-inference-summary.json`; one raw invalid response diagnostic at `runs/room-slm-pilot/S3/00805-r45/real-inference/request-001-raw-diagnostic.json`. No room-label quality metric is reported because there is only one eligible annotation and its inference timed out.
+- **Correctness verification:** first regression run reproduced `launched=false` in a timeout despite child RSS samples. `src/neusymnav/rooms/slm_backend.py` now keeps `last_metrics` attached to the active request metrics; test asserts timeout retains `launched=true` and clean shutdown. Final command `PYTHONPATH=.:src .venv/bin/pytest -q tests/test_room_slm_backend.py tests/test_room_label_evaluation.py tests/test_room_label_snapshot.py tests/test_room_label_requests.py tests/test_room_label_contract.py tests/test_room_context.py tests/test_hydra_scene_graph_query.py tests/test_room_label_prompt.py tests/test_room_label_adapter.py tests/test_room_slm_cli.py tests/test_room_object_visual_association.py` — 66 passed, exit 0. An earlier run with `PYTHONPATH=src` had 3 collection errors; corrected with repository root included. A subsequent run briefly failed the CLI fixture because the shared config had been enabled; enabled config was moved to the run artifact and shared config restored disabled, then the full focused command passed.
+- **Not implemented / not proven:** S4 asynchronous worker and S5 UI/live remain gated; real output failed with timeouts/invalid JSON and annotation target is unmet. No default profile, Hydra geometry, exploration, movement, freshness gate, command horizon or external source repository changed.
+- **Final verification:** lock verifier checked 12 model/tokenizer assets and 3 runtime binaries, zero mismatches, exit 0; shared config `enabled=false`. `git diff --check` — exit 0. Focused test command above — 66 passed, exit 0.
+- **Report:** `docs/results/room-slm-pilot-2026-11-08.md`.
+
+### Real-time navigation, privileged tour and Hydra room checks (00806 benchmark) — 2026-11-09
+
+Session log and per-run numbers: `docs/results/realtime-navigation-tour-2026-11-09.md`, `docs/results/room-slm-latency-2026-11-09.md`. 00806 is the benchmark scene from now on (`configs/demo-00806.hydra-tour-slm.experimental.local.json`).
+
+- **Implemented** (all opt-in through config unless stated):
+  - SLM compact-v2 prompt + semantic cache.
+  - World/goal-selection age and intent TTL split.
+  - `runtime.process_priority`.
+  - Privileged navmesh tour (`navigation.tour`), with relaxed targets, approach, frontier fallback, route-length progress window, motion-aware stuck timer, goal gates and in-place scans.
+  - Real-time pulses (`pulse_ms` / `rotation_pulse_ms`). The worker / host proof caps changed: worker SHA pins updated in 15 Kiet_branch2 profiles.
+  - `gil_switch_interval_ms`, `overview_refresh_s`, `build_overview` fast path.
+  - Hydra graph-lane state-token polling (default for every Hydra profile).
+  - `keyframe_novelty`.
+  - Polygon room GT `docs/results/gt/00806-rooms-gt-v1.json` and `tools/evaluate_rooms_vs_polygon_gt.py`.
+  - `navigation.controller.start_unknown_tolerance`: implemented; **enabled only in `demo-00806.hydra-tour-slm` (0.2) by explicit owner decision 2026-11-09**, disabled elsewhere. It treats UNKNOWN cells inside the robot's own current footprint as FREE, which relaxes the "unknown ≠ free / missing depth blocks motion" invariant and needs an explicit owner decision.
+- **Correctness-verified:**
+  - New tests: `tests/test_navmesh_tour.py`, `tests/test_realtime_navigation_profile.py`, `tests/test_realtime_pulses.py`, `tests/test_gil_overview_throttle.py`, `tests/test_hydra_poll_cache.py`, `tests/test_tour_goal_gates_and_scan.py`, `tests/test_start_footprint_tolerance.py`, `tests/test_quantized_yaw_preflight.py` (cap 3° → 15°).
+  - Container full suite: same 85 environment failures as the untouched baseline; no new failure.
+- **Runtime-validated (user machine):**
+  - Live runs v3–v8 on 00806.
+  - v7/v8: control ≈ 300 commands/min stable over 10 min, `local_depth_map` p50 57–117 ms, 33.5 m in 600 s, tour coverage 76 %.
+  - Room check v8 vs GT v1: west room / bedroom 2 recovered; bedroom 1 split; bathroom and hallway merged.
+- **Not proven:**
+  - Run v9 (gates/scans/denser Hydra input) was stopped by the user after the robot froze. Cause: one UNKNOWN cell in its own footprint blocked planning and the guard, including rotation.
+  - Gates/scans and denser Hydra input therefore have no live result yet.
+  - Hydra room parameters for small rooms are untested.
+  - SLM label quality is unscored.
+- **Update (evening) — tolerance disc mismatch fixed:**
+  - Live v10 (600 s) ran without freezing (26.3 m, tour coverage 71 %), but four later runs with the same code/config (v8.1, v9.1, demo-00806-600s-live, live1) froze at (-5.94, 0.46).
+  - Cause (reproduced on three real snapshots): the local follower and world planner tolerated a footprint disc padded by 0.75 cell, the guard map and guard bootstrap an unpadded one. The follower planned through a cell the guard still saw UNKNOWN, so every forward pulse was refused (`path_segment_blocked`, v9.1: 335×; `bootstrap_blocked` 52×) and the small heading error never triggered a rotation.
+  - Fix (owner-approved 2026-11-09 19:58): one helper `start_footprint.tolerate_robot_footprint` (disc radius = radius + margin + 0.75·resolution) used by world planner, local follower, `MotionGuard.bind_nav` and `NavMapper.bootstrap`. The exception widens from 0.25 m to ≈ 0.29 m around the body; OCCUPIED in the disc and the 0.2 fraction cap still disable it, the swept corridor must still be measured FREE.
+  - Correctness-verified: `tests/test_start_footprint_tolerance.py` (+2 tests, fixture `tests/fixtures/start_footprint_00806_guard_mismatch.json`; the new live test fails on the previous guard). Container full suite: identical 85 environment failures before/after.
+  - Runtime-validated (v11, 600 s, user machine): passed the former freeze point in ≈ 2 s; no freeze; 28.3 m, tour coverage 0.770, 225–377 commands/min. Bathroom dead end still skipped (cause open); Hydra still merges hallway + bathroom at the end of the run (3/5 GT rooms).
 
 ### Hydra/TrackGraph replacement assessment — 2026-11-09
 

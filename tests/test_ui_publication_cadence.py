@@ -14,10 +14,26 @@ from contract_helpers import observation
 from test_display_snapshot import make_publisher
 
 
+def write_ui_stub(script):
+    script.write_text("""import json,os,pathlib,sys,time
+root=pathlib.Path(sys.argv[sys.argv.index('--root')+1])
+print('NEUSYMNAV_UI_READY',flush=True)
+while not (root/'shutdown.json').exists():
+    try:
+        packet=json.loads((root/'publication.json').read_text())
+        sequence=packet['payload']['fields']['publication_sequence']
+        temp=root/'rendered.tmp'
+        temp.write_text(json.dumps({'publication_sequence':sequence}))
+        os.replace(temp,root/'rendered.json')
+    except (OSError,ValueError,KeyError):pass
+    time.sleep(.005)
+""")
+
+
 @contextmanager
-def ui_process(tmp_path, **kwargs):
+def ui_process(tmp_path, *, expect_clean_shutdown=True, **kwargs):
     script = tmp_path / 'idle.py'
-    script.write_text('import time\ntime.sleep(30)\n')
+    write_ui_stub(script)
     ui = ui_transport.UiProcess(tmp_path / 'ipc', python=sys.executable,
         script=script, clock_domain='clock',
         command_handler=lambda c: UiCommandAck(c.request_uuid, 'accepted', None,
@@ -25,13 +41,21 @@ def ui_process(tmp_path, **kwargs):
     try:
         yield ui
     finally:
-        assert ui.close(2)['clean_shutdown']
+        # Cadence assertions use a frozen clock; shutdown waits must progress.
+        clock=ui_transport.time
+        try:
+            ui_transport.time=time
+            report=ui.close(2)
+            assert report['process_reaped'] and not report['publication_thread_pending']
+            assert not report['command_thread_pending'] and not report['reader_pending']
+            if expect_clean_shutdown:assert report['clean_shutdown']
+        finally:ui_transport.time=clock
 
 
 def fixed_clock(monkeypatch):
     now = [1_000_000_000]
     monkeypatch.setattr(ui_transport, 'time', SimpleNamespace(
-        monotonic_ns=lambda: now[0], monotonic=time.monotonic))
+        monotonic_ns=lambda: now[0], monotonic=time.monotonic, sleep=time.sleep))
     return now
 
 

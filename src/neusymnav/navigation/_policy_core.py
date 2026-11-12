@@ -1,4 +1,4 @@
-"""Nearest reachable frontier baseline with goal hysteresis."""
+"""Reachable frontier ranking with goal hysteresis."""
 
 from __future__ import annotations
 
@@ -24,13 +24,25 @@ class PolicyConfig:
     failed_viewpoint_radius_m: float = 0.0
     failed_viewpoint_cooldown_revisions: int = 100
     commit_goal_until_reached: bool = False
+    frontier_gain_weight: float = 0.0
+    frontier_gain_saturation_cells: float = 20.0
+    turn_cost_m_per_rad: float = 0.0
+    min_goal_distance_m: float = 0.0
 
     def __post_init__(self) -> None:
         if (self.goal_hold_s < 0 or not 0 <= self.switch_improvement < 1
                 or self.reached_distance_m <= 0 or self.visited_viewpoint_radius_m < 0
                 or not math.isfinite(self.failed_viewpoint_radius_m)
                 or self.failed_viewpoint_radius_m < 0
-                or self.failed_viewpoint_cooldown_revisions < 1):
+                or self.failed_viewpoint_cooldown_revisions < 1
+                or not math.isfinite(self.frontier_gain_weight)
+                or not 0 <= self.frontier_gain_weight <= 1
+                or not math.isfinite(self.frontier_gain_saturation_cells)
+                or self.frontier_gain_saturation_cells <= 0
+                or not math.isfinite(self.turn_cost_m_per_rad)
+                or self.turn_cost_m_per_rad < 0
+                or not math.isfinite(self.min_goal_distance_m)
+                or self.min_goal_distance_m < 0):
             raise ValueError("invalid exploration policy configuration")
 
 
@@ -46,7 +58,7 @@ class NavigationDecision:
 
 
 class FrontierPolicy:
-    """Choose minimum path-cost frontier; preserve a viable goal across updates."""
+    """Rank safe paths by travel, turn, bounded gain, and optional minimum distance."""
 
     def __init__(self, planner: AStarPlanner, config: PolicyConfig = PolicyConfig()) -> None:
         self.planner = planner
@@ -136,7 +148,10 @@ class FrontierPolicy:
 
     def select(self, *, snapshot: GridSnapshot, frontiers: FrontierSet,
                robot_xy: tuple[float, float], now_monotonic_s: float,
-               allow_validated_start_anchor: bool = False) -> NavigationDecision:
+               allow_validated_start_anchor: bool = False,
+               robot_yaw_rad: float | None = None) -> NavigationDecision:
+        if robot_yaw_rad is not None and not math.isfinite(robot_yaw_rad):
+            raise ValueError("robot_yaw_rad must be finite when provided")
         previous_goal = self._goal
         previous_goal_xy = self._goal_world_xy
         previous_selected_at = self._selected_at
@@ -229,11 +244,50 @@ class FrontierPolicy:
                         blocked_edges=blocked_edges,
                     ))
             if path.success:
-                reachable.append((path.cost_m, frontier, path))
+                score, _turn_cost, _gain_factor = self._ranking_components(
+                    path, frontier, robot_yaw_rad,
+                )
+                reachable.append((score, frontier, path))
             else:
                 path_failures.append(path.reason)
         reachable.sort(key=lambda item: (item[0], item[1].frontier_id))
         diagnostic_candidates = tuple(reachable)
+
+        # A reachable close viewpoint can be useful when it is the only safe
+        # option. The minimum applies to new targets, while a still-reachable
+        # held target remains subject to the normal hysteresis and utility rules.
+        # Measure in world space so map resolution and path detours do not alter
+        # the configured minimum separation.
+        near_goal_candidate_count = 0
+        eligible_goal_candidates = reachable
+        near_goal_fallback = False
+        near_goal_held_goal_retained = False
+        held_matching_candidate = None
+        near_goal_preference_applied = False
+        if self.config.min_goal_distance_m > 0.0:
+            held_matching_candidate = self._match_current(reachable, snapshot)
+            eligible_goal_candidates = [
+                item for item in reachable
+                if math.dist(snapshot.cell_to_world(*item[1].viewpoint_cell), robot_xy)
+                >= self.config.min_goal_distance_m
+            ]
+            near_goal_candidate_count = len(reachable) - len(eligible_goal_candidates)
+            near_goal_fallback = bool(reachable and not eligible_goal_candidates)
+            if eligible_goal_candidates:
+                near_goal_preference_applied = any(
+                    item is not held_matching_candidate
+                    and math.dist(snapshot.cell_to_world(*item[1].viewpoint_cell), robot_xy)
+                    < self.config.min_goal_distance_m
+                    for item in reachable
+                )
+                reachable = list(eligible_goal_candidates)
+                if (held_matching_candidate is not None
+                        and held_matching_candidate not in eligible_goal_candidates):
+                    reachable.append(held_matching_candidate)
+                    reachable.sort(key=lambda item: (item[0], item[1].frontier_id))
+                    near_goal_held_goal_retained = True
+        farther_goal_available = bool(eligible_goal_candidates) and self.config.min_goal_distance_m > 0.0
+        eligible_goal_candidate_count = len(eligible_goal_candidates)
 
         current = self._match_current(reachable, snapshot)
         same_id_candidate = next((item[1] for item in reachable
@@ -283,12 +337,20 @@ class FrontierPolicy:
                                  blocked_edges=blocked_edges,
                              ))
                 if held_path.success:
+                    near_goal_held_goal_retained = bool(
+                        farther_goal_available
+                        and math.dist(self._goal_world_xy, robot_xy)
+                        < self.config.min_goal_distance_m
+                    )
                     held_frontier = replace(
                         self._goal, map_revision=snapshot.revision,
                         viewpoint_cell=held_cell,
                         viewpoint_world_xy=self._goal_world_xy,
                     )
-                    current = (held_path.cost_m, held_frontier, held_path)
+                    held_score, _turn_cost, _gain_factor = self._ranking_components(
+                        held_path, held_frontier, robot_yaw_rad,
+                    )
+                    current = (held_score, held_frontier, held_path)
                     held_goal_recovery = "held_cell_replanned"
                 else:
                     held_goal_recovery = f"held_cell_path_failed:{held_path.reason}"
@@ -301,16 +363,10 @@ class FrontierPolicy:
                            selected_goal.viewpoint_world_xy or
                            snapshot.cell_to_world(*selected_goal.viewpoint_cell))
             # Keep a small, deterministic sample of alternatives in the event
-            # journal. This is diagnostic only: selection still uses the same
-            # path-cost ordering and hysteresis below.
+            # journal; selection and hysteresis use the same gain-adjusted score.
             candidate_sample = [
-                {
-                    "frontier_id": candidate.frontier_id,
-                    "viewpoint_xy": list(snapshot.cell_to_world(*candidate.viewpoint_cell)),
-                    "path_cost_m": cost,
-                    "predicted_gain_cells": candidate.predicted_gain_cells,
-                }
-                for cost, candidate, _path in diagnostic_candidates[:8]
+                _candidate_diagnostic(score, candidate, path)
+                for score, candidate, path in diagnostic_candidates[:8]
             ]
             return {
                 "previous_goal_id": None if previous_goal is None else previous_goal.frontier_id,
@@ -324,6 +380,12 @@ class FrontierPolicy:
                 "candidate_set_status": candidate_status,
                 "reachable_candidate_count": len(diagnostic_candidates),
                 "reachable_candidate_sample": candidate_sample,
+                "minimum_goal_distance_m": self.config.min_goal_distance_m,
+                "near_goal_candidate_count": near_goal_candidate_count,
+                "eligible_goal_candidate_count": eligible_goal_candidate_count,
+                "near_goal_preference_applied": near_goal_preference_applied,
+                "near_goal_held_goal_retained": near_goal_held_goal_retained,
+                "near_goal_fallback": near_goal_fallback,
                 "spatially_suppressed_candidate_count": spatially_suppressed,
                 "visited_viewpoint_radius_m": self.config.visited_viewpoint_radius_m,
                 "failed_spatially_suppressed_candidate_count": failed_spatially_suppressed,
@@ -334,17 +396,36 @@ class FrontierPolicy:
                     snapshot.cell_to_world(*current_goal[1].viewpoint_cell)),
                 "current_goal_distance_m": None if current_goal is None else math.dist(
                     snapshot.cell_to_world(*current_goal[1].viewpoint_cell), robot_xy),
-                "current_goal_path_cost_m": None if current_goal is None else current_goal[0],
+                "current_goal_path_cost_m": None if current_goal is None else current_goal[2].cost_m,
+                "current_goal_gain_adjusted_score_m": None if current_goal is None else current_goal[0],
                 "best_candidate_id": None if best_goal is None else best_goal[1].frontier_id,
                 "best_candidate_xy": None if best_goal is None else list(
                     snapshot.cell_to_world(*best_goal[1].viewpoint_cell)),
-                "best_candidate_path_cost_m": None if best_goal is None else best_goal[0],
+                "best_candidate_path_cost_m": None if best_goal is None else best_goal[2].cost_m,
+                "best_candidate_gain_adjusted_score_m": None if best_goal is None else best_goal[0],
                 "switch_improvement_fraction": improvement,
                 "goal_hold_remaining_s": (None if previous_goal_age is None else
                     max(0.0, self.config.goal_hold_s - previous_goal_age)),
                 "decision_reason": decision_reason,
                 "selected_goal_id": None if selected_goal is None else selected_goal.frontier_id,
                 "selected_goal_xy": None if selected_xy is None else list(selected_xy),
+            }
+
+        def _candidate_diagnostic(score, candidate, path):
+            _score, turn_cost, gain_factor = self._ranking_components(
+                path, candidate, robot_yaw_rad,
+            )
+            distance_m = math.dist(snapshot.cell_to_world(*candidate.viewpoint_cell), robot_xy)
+            return {
+                "frontier_id": candidate.frontier_id,
+                "viewpoint_xy": list(snapshot.cell_to_world(*candidate.viewpoint_cell)),
+                "distance_from_robot_m": distance_m,
+                "meets_minimum_goal_distance": distance_m >= self.config.min_goal_distance_m,
+                "path_cost_m": path.cost_m,
+                "turn_cost_m": turn_cost,
+                "gain_factor": gain_factor,
+                "gain_adjusted_score_m": score,
+                "predicted_gain_cells": candidate.predicted_gain_cells,
             }
         if current is not None:
             goal_distance = math.dist(snapshot.cell_to_world(*current[1].viewpoint_cell), robot_xy)
@@ -404,10 +485,12 @@ class FrontierPolicy:
                 already_viewed = True
                 continue
             self._remember(best[1], best[2], snapshot, now_monotonic_s, preserve_time=False)
+            reason = ("frontier_utility_ranked" if self._ranking_is_enabled()
+                      else "nearest_reachable_frontier")
             return NavigationDecision("MOVE", self._goal, self._goal_path,
-                                      "nearest_reachable_frontier", self._selected_at,
+                                      reason, self._selected_at,
                                       goal_diagnostics=goal_diagnostics(
-                                          decision_reason="nearest_reachable_frontier",
+                                          decision_reason=reason,
                                           best_goal=best, selected_goal=self._goal,
                                       ))
         self._clear_goal()
@@ -517,6 +600,31 @@ class FrontierPolicy:
         self._goal, self._goal_path = frontier, path
         self._goal_world_xy = snapshot.cell_to_world(*frontier.viewpoint_cell)
 
+    def _ranking_is_enabled(self) -> bool:
+        return (self.config.frontier_gain_weight > 0
+                or self.config.turn_cost_m_per_rad > 0)
+
+    def _ranking_components(self, path: PathResult, frontier: Frontier,
+                            robot_yaw_rad: float | None) -> tuple[float, float, float]:
+        """Return bounded gain-adjusted route score, turn cost, and gain factor.
+
+        The gain factor is at most ``1 + frontier_gain_weight``. A larger
+        boundary can therefore discount route cost by a bounded ratio instead
+        of overwhelming travel distance. Turn cost uses the first non-zero
+        segment in the footprint-valid planned path, not the direct bearing.
+        """
+        turn_angle = _first_path_turn_angle(path, robot_yaw_rad)
+        turn_cost = turn_angle * self.config.turn_cost_m_per_rad
+        try:
+            gain_cells = float(frontier.predicted_gain_cells)
+        except (TypeError, ValueError):
+            gain_cells = 0.0
+        gain_fraction = (gain_cells / (gain_cells + self.config.frontier_gain_saturation_cells)
+                         if math.isfinite(gain_cells) and gain_cells > 0 else 0.0)
+        gain_factor = 1.0 + self.config.frontier_gain_weight * gain_fraction
+        score = (path.cost_m + turn_cost) / gain_factor
+        return score, turn_cost, gain_factor
+
     def _clear_goal(self) -> None:
         self._goal = None
         self._goal_path = None
@@ -547,3 +655,16 @@ class FrontierPolicy:
 
 def _edge_key(a: tuple[int, int], b: tuple[int, int]):
     return (a, b) if a <= b else (b, a)
+
+
+def _first_path_turn_angle(path: PathResult, robot_yaw_rad: float | None) -> float:
+    """Measure heading change to the first usable path segment, in radians."""
+    if robot_yaw_rad is None:
+        return 0.0
+    for (row_a, col_a), (row_b, col_b) in zip(path.cells, path.cells[1:]):
+        dx, dy = col_b - col_a, row_b - row_a
+        if dx == 0 and dy == 0:
+            continue
+        desired_yaw = math.atan2(dy, dx)
+        return abs(math.remainder(desired_yaw - robot_yaw_rad, 2.0 * math.pi))
+    return 0.0

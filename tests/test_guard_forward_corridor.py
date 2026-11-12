@@ -7,8 +7,8 @@ from test_navigation import ready_guard
 from test_navmap import down
 
 
-@pytest.mark.parametrize('horizon,expected',[(100_000_000,.10),(1_000_000_000,.20)])
-def test_default_measured_corridor_is_ten_cm_or_actual_command_distance(tmp_path,horizon,expected):
+@pytest.mark.parametrize('horizon,expected',[(100_000_000,.02),(1_000_000_000,.06)])
+def test_measured_bootstrap_corridor_matches_command_distance(tmp_path,horizon,expected):
     previous,nav=ready_guard(tmp_path);mapper=previous.mapper;calls=[]
     bootstrap=mapper.bootstrap
     def record(obs,**kwargs):
@@ -23,6 +23,36 @@ def test_default_measured_corridor_is_ten_cm_or_actual_command_distance(tmp_path
     assert calls[0]['corridor_m']==pytest.approx(expected)
     assert mapper.robot==previous.mapper.robot
     assert mapper.robot.radius_m==.10 and mapper.robot.margin_m==0.
+
+
+def test_obstacle_beyond_actual_swept_footprint_does_not_block_short_pulse(tmp_path):
+    guard,nav=ready_guard(tmp_path)
+    observation=down(2)
+    depth=observation.depth_m.copy()
+    # This measured hit is outside the 2 cm pulse plus robot radius, but inside
+    # the old, unrelated 10 cm minimum lookahead plus that same footprint.
+    depth[40,45]=1.6
+    observation=replace(observation,depth_m=depth)
+    decision=NavigationDecision('goal',((0.,0.),(.05,0.)),.2,0.,nav.revision,'tracking')
+
+    command=guard.filter(decision,observation,1_000_000_000)
+
+    assert command.linear_mps==pytest.approx(.2)
+    assert command.reason=='tracking'
+
+
+def test_obstacle_inside_actual_swept_footprint_still_blocks_short_pulse(tmp_path):
+    guard,nav=ready_guard(tmp_path)
+    observation=down(2)
+    depth=observation.depth_m.copy()
+    depth[40,41]=1.6
+    observation=replace(observation,depth_m=depth)
+    decision=NavigationDecision('goal',((0.,0.),(.05,0.)),.2,0.,nav.revision,'tracking')
+
+    command=guard.filter(decision,observation,1_000_000_000)
+
+    assert command.linear_mps==command.yaw_radps==0.
+    assert command.reason=='bootstrap_blocked'
 
 
 def test_unknown_current_depth_still_blocks_with_shorter_corridor(tmp_path):

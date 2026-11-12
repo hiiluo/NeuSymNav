@@ -98,7 +98,7 @@ def test_live_map_rejects_future_backward_revision_time_and_source_change():
 
 def test_publication_handoff_does_not_wait_for_images_and_shutdown_is_bounded(tmp_path,monkeypatch):
     _,h,m,*_=make_publisher();entered=threading.Event();release=threading.Event()
-    with ui_process(tmp_path,publish_hz=5) as ui:
+    with ui_process(tmp_path,publish_hz=5,expect_clean_shutdown=False) as ui:
         caller=threading.get_ident()
         def stalled(_):
             assert threading.get_ident()!=caller
@@ -125,7 +125,8 @@ def test_real_pipeline_mapper_and_robot_display_advance_during_blocked_inference
     class Mapper:
         def update(self,obs):return nav_for(obs,obs.key.frame_index+1)
     p,_,_=pipeline(tmp_path/'run',detector=Slow(),mapper=Mapper(),clock=time.monotonic_ns)
-    script=tmp_path/'idle.py';script.write_text('import time\ntime.sleep(30)\n')
+    from test_ui_publication_cadence import write_ui_stub
+    script=tmp_path/'idle.py';write_ui_stub(script)
     ui=UiProcess(tmp_path/'ipc',python=sys.executable,script=script,clock_domain=DOMAIN,
         command_handler=p.handle_ui_command,live_nav_provider=p.live_navigation_display,publish_hz=5)
     p.publisher=ui
