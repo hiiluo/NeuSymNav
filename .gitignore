@@ -24,7 +24,13 @@ CMakeCache.txt
 /datasets/
 /models/
 /checkpoints/
-/local-assets/
+/local-assets/*
+!/local-assets/models/
+!/local-assets/datasets/
+/local-assets/models/*
+/local-assets/datasets/*
+!/local-assets/models/.gitkeep
+!/local-assets/datasets/.gitkeep
 /configs/*.local.json
 *.pt
 *.pth

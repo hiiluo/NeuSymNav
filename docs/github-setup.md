@@ -18,6 +18,10 @@ redistribution; private repo cũng không thay đổi các điều khoản đó.
 MIT cho toàn bộ project từ license OccuSG hoặc tự gán license khi chưa chốt quyền.
 Xem`THIRD_PARTY_NOTICES.md` và`native/dude/README.md`.
 
+Hai file `.gitkeep` rỗng giữ sẵn `local-assets/models/` và
+`local-assets/datasets/` trong bản clone. Tải và đặt dữ liệu theo
+[hướng dẫn local-assets](local-assets.md).
+
 ## Clone và CPU
 
 ```sh

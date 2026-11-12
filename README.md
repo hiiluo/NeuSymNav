@@ -15,6 +15,10 @@ Lệnh dùng môi trường/model/dataset đã khai báo trên máy hiện tại
 
 ## Clone mới: chạy kiểm chứng CPU
 
+Nếu cần chạy demo với dữ liệu thật, tải model và dataset theo
+[hướng dẫn chuẩn bị `local-assets`](docs/local-assets.md). Cả profile CPU và GPU
+dùng chung cấu trúc thư mục này.
+
 ```sh
 git clone https://github.com/hiiluo/NeuSymNav.git
 cd NeuSymNav

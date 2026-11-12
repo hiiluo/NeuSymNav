@@ -13,6 +13,7 @@ import subprocess
 
 MAX_FILE_BYTES=10*1024**2
 FORBIDDEN_ROOTS={'.runtime','.venv','runs','data','datasets','models','checkpoints','local-assets','.ssh','.aws','.codex','.agents'}
+LOCAL_ASSET_PLACEHOLDERS={'local-assets/models/.gitkeep','local-assets/datasets/.gitkeep'}
 BINARY_SUFFIXES={'.pt','.pth','.ckpt','.safetensors','.onnx','.engine','.glb','.navmesh','.a','.o','.so'}
 PATTERNS={
     'private_key':re.compile(rb'-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----'),
@@ -42,7 +43,8 @@ def audit(root: Path, *, candidates: bool=False) -> dict:
         def flag(kind):findings.append(dict(path=name,kind=kind))
         if relative.is_absolute() or '..' in relative.parts:
             flag('unsafe_path');continue
-        if (relative.parts[0] in FORBIDDEN_ROOTS or relative.parts[:3]==('native','dude','upstream')
+        if ((relative.parts[0] in FORBIDDEN_ROOTS and name not in LOCAL_ASSET_PLACEHOLDERS)
+                or relative.parts[:3]==('native','dude','upstream')
                 or relative.suffix.lower() in BINARY_SUFFIXES
                 or relative.name=='.git-credentials' or relative.name=='.env' or relative.name.startswith('.env.') and relative.name!='.env.example'
                 or relative.suffix.lower() in {'.pem','.key'}):
@@ -59,6 +61,8 @@ def audit(root: Path, *, candidates: bool=False) -> dict:
             size=int(subprocess.check_output(['git','-C',str(root),'cat-file','-s',oid]));total+=size
             if size>MAX_FILE_BYTES:flag('file_over_10MiB');continue
             content=subprocess.check_output(['git','-C',str(root),'cat-file','blob',oid])
+        if name in LOCAL_ASSET_PLACEHOLDERS and size:
+            flag('excluded_material');continue
         for kind,pattern in PATTERNS.items():
             if pattern.search(content):flag(kind)
     return dict(ready=not findings,scope='git candidates' if candidates else 'exact git index blobs',

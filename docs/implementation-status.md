@@ -1,5 +1,11 @@
 # Trạng thái NeuSymNav
 
+### Bàn giao đường dẫn local-assets — 2026-11-12
+
+- **Implemented:** hai `.gitkeep` rỗng tạo `local-assets/models/` và `local-assets/datasets/` sau clone. Git bỏ qua asset và checker CI chỉ cho phép đúng hai placeholder rỗng dưới root này. [Hướng dẫn local-assets](local-assets.md) ghi nguồn tải, vị trí, SHA-256 và cấu hình Habitat cho 00770/00806.
+- **Correctness-verified:** `.venv/bin/python -m pytest -q tests/test_github_payload.py tests/test_handoff_3dsg_v11.py` — 8 passed, exit 0. Test cho phép placeholder rỗng exit 1 trước thay đổi checker. `python3 tools/check_github_payload.py --candidates` và `git diff --check` exit 0. `bash -n` kiểm tra các lệnh trong hướng dẫn. `sha256sum -c` kiểm tra hai model detector và bốn file HM3D có sẵn. Chạy đoạn tạo cấu hình Habitat từ hướng dẫn trong thư mục tạm cho cả hai scene, exit 0, JSON khớp cấu hình hiện tại và giữ file đã có. Artifacts gồm tài liệu, hai placeholder và test checker.
+- **Runtime-validated:** chưa tải asset mới hoặc chạy demo trên bản clone mới. SHA-256 của GGUF phát hành được đối chiếu với metadata Hugging Face. Profile VLM vẫn cần chuẩn bị theo môi trường máy chạy.
+
 ### VLM publication checkpoint — 2026-11-12
 
 - **Implemented:** publication groups the Qwen3-VL room labeling, KSS replay evaluation, retained VLM labels and archived object-view fallback with their tests and documentation.

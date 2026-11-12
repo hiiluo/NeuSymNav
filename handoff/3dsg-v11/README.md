@@ -16,13 +16,17 @@ Tài liệu nên đọc: `docs/results/realtime-navigation-tour-2026-11-09.md` (
 
 ## Những gì KHÔNG có trong git (phải tự chuẩn bị)
 
+Dùng [hướng dẫn local-assets](../../docs/local-assets.md) để tải từ nguồn gốc,
+kiểm tra SHA-256 và đặt các model và cảnh HM3D đúng đường dẫn. Dùng cùng cấu
+trúc cho cả CPU và GPU.
+
 | Thứ | Ở máy gốc | Cách có |
 |---|---|---|
 | `.venv` (Python 3.12.3, NeuSymNav editable, NumPy 1.26.4, SciPy 1.17.1, Numba 0.61.2, PyQt5 5.15.11) | `<repo>/.venv` | `python3.12 -m venv .venv && .venv/bin/pip install -e '.[dev,ui]' numba==0.61.2`; xem `docs/local-demo-setup-20261030.md` |
 | Habitat (Python 3.9, habitat-sim 0.3.3) | `~/miniconda3/envs/habitat` | conda; sensor chạy với `gpu_device_id=-1` (Mesa EGL) |
-| Cảnh HM3D 00806 (`minival/00806-tQ5s4ShP627`) | `.../habitat_data/versioned_data/hm3d-0.2/hm3d/minival/` | tải bằng tài khoản HM3D/Matterport **của chính bạn** (điều khoản HM3D không cho chia sẻ lại) |
+| Cảnh HM3D 00806 (`minival/00806-tQ5s4ShP627`) | `<repo>/local-assets/datasets/hm3d-minival/versioned_data/hm3d-0.2/hm3d/minival/` | tải bằng tài khoản HM3D/Matterport của bạn |
 | Detector env (Python 3.12, Torch 2.7.1+cpu, Ultralytics 8.4.24, OpenVINO 2026.4.1, CLIP) | `<nsn-home>/.runtime/detector26` | venv riêng |
-| `yoloe-26m-seg.pt`, `mobileclip2_b.ts` | `<nsn-home>/local-assets/models/` | Ultralytics assets v8.4.0 (sha256 có trong profile) |
+| `yoloe-26m-seg.pt`, `mobileclip2_b.ts` | `<repo>/local-assets/models/{yoloe,mobileclip}/` | Ultralytics assets v8.4.0, tạo symlink tại `models/` như trong hướng dẫn local-assets |
 | Model OpenVINO đã export (XML/BIN + `end2end-metadata.json`) | `.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/` | xin Kiệt thư mục này; hoặc chạy detector bằng Torch CPU (`--detector-backend torch`, chậm hơn, khác baseline) |
 | SLM: `llama-server` (llama.cpp `80d2c0c`) và `Qwen3-1.7B-Q4_K_M.gguf` (rev `70d244c`) | `.runtime/room-slm/` | build/convert theo `docs/results/room-slm-pilot-2026-11-08.md`, hoặc xin Kiệt |
 | Workspace Hydra (ROS 2 Jazzy, Hydra `2e58a35`, Spark-DSG `3c40997`, …) | `.runtime/hydra_ws/` | build theo `docs/results/hydra-branch2-h1.md`; các lock nằm trong `hydra_ws/` ở đây |
@@ -35,8 +39,7 @@ Tài liệu nên đọc: `docs/results/realtime-navigation-tour-2026-11-09.md` (
 3. Build Hydra workspace rồi `libhydra.so` (xem bảng).
 4. Sinh các file local và ghim lại sha256 theo máy của bạn:
    ```bash
-   python3 handoff/3dsg-v11/install.py --habitat-data /đường/dẫn/habitat_data
-   # thêm --nsn-home nếu detector26/ và local-assets/ không nằm trong repo
+   python3 handoff/3dsg-v11/install.py --habitat-data "$PWD/local-assets/datasets/hm3d-minival"
    # thêm --detector-backend torch nếu máy không có GPU Intel
    ```
    Tool in từng file đã ghim: `same` (giống hệt baseline), `changed` (khác — bình thường với interpreter Python và `libhydra.so` tự build; **không** bình thường với model, cảnh, taxonomy), `MISSING` (chưa có). Exit 0 khi không thiếu gì. Chạy lại với `--force` sau khi bổ sung.
@@ -66,7 +69,9 @@ Với máy không có GPU, dùng profile CPU và cài Habitat headless với Mes
 
 Profile VLM dùng Qwen3-VL-2B-Instruct GGUF và projector tương ứng. File cấu
 hình gán nhãn phòng ghim `mmproj_path` và `mmproj_sha256` cùng model và runtime
-như cấu hình SLM. Có projector thì UI dùng Qwen3-VL, tự chọn tối đa hai ảnh
+như cấu hình SLM. Xem [đường dẫn model và projector](../../docs/local-assets.md#qwen3-vl).
+`install.py` ở trên tạo profile SLM 00806. Các profile VLM trong ví dụ cần
+được cấu hình trên máy chạy. Có projector thì UI dùng Qwen3-VL, tự chọn tối đa hai ảnh
 RGB từ các frame Hydra đã chấp nhận. Ảnh phải có đủ depth quy được về phòng,
 và nhãn có thể dựa vào ảnh khi danh sách vật thể còn trống.
 

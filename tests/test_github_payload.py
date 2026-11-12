@@ -28,6 +28,23 @@ def test_force_added_runtime_and_native_closure_reject(tmp_path):
     assert {v['path'] for v in x['findings']}=={'.runtime/file','native/dude/upstream/file.cpp'}
 
 
+def test_empty_local_asset_placeholders_pass(tmp_path):
+    r = check(tmp_path, {'local-assets/models/.gitkeep': '', 'local-assets/datasets/.gitkeep': ''})
+    assert r.returncode == 0, r.stdout
+
+
+def test_local_assets_allow_only_empty_placeholders(tmp_path):
+    files = {
+        'local-assets/models/.gitkeep': 'payload',
+        'local-assets/models/model.gguf': 'weights',
+        'local-assets/datasets/manifest.json': '{}',
+        'local-assets/datasets/nested/.gitkeep': '',
+    }
+    r = check(tmp_path, files)
+    assert r.returncode == 1, r.stdout
+    assert {item['path'] for item in json.loads(r.stdout)['findings']} == set(files)
+
+
 def test_secret_report_never_echoes_secret_value(tmp_path):
     secret='ghp_'+'x'*36
     r=check(tmp_path,{'credentials.txt':secret})
