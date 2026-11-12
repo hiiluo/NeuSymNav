@@ -60,7 +60,59 @@ flowchart TD
 
 Object owner quyết định identity và commit. Region owner quyết định geometry/lineage; nhãn phòng không được đổi ID. Hierarchy composer xuất snapshot theo cặp object/map/region revisions đã xác định; không giả transaction chung giữa các owner. Composer dùng đúng NavSnapshot đã tạo ra accepted RegionSnapshot, không yêu cầu bằng latest navigation revision. Region worker pin một input snapshot đang xử lý và một accepted snapshot gần nhất; consumer nhận immutable publication, không giữ lịch sử map vô hạn. Object revision được ghi riêng; membership là quan hệ đối với geometry của source_map_revision, không claim toàn graph đồng thời với control. Publication ghi latest_nav_revision và map lag/age để người dùng thấy độ trễ. Khi worker reject/timeout, giữ geometry cũ với stale=true và không tạo membership mới từ geometry đó (status unavailable). Kết quả accepted trở lại cho phép compose theo map nguồn đã pin; không dùng exact equality với latest nav để làm graph đói cập nhật.
 
+Room input (2026-10-31): nhánh region dựng raster tích lũy ở resolution gốc từ
+immutable measured occupancy tiles, tách khỏi NavSnapshot cục bộ của control.
+Không dùng MapOverview đã coarsen. Tile history giữ phân loại FREE chỉ sau các
+gate planar/height/floor; room NavSnapshot tái dựng floor support và lower-bound
+clearance cho riêng các ô FREE với đúng robot geometry của mapper. Đây là bằng
+chứng lịch sử, không phải depth mới ở mọi ô. Head source/frame/clock/calibration
+và revision được giữ; geometry input scope và extent được công bố riêng.
+
+Dense room input tối đa 1 triệu ô, raw history giữ budget4096tiles/16MiB hiện hành.
+Thiếu, không đầy đủ, sai source hoặc vượt extent thì region stale/unavailable,
+không crop/coarsen để giả complete. Native DuDe reset khi origin/resolution/shape
+đổi, canonical tracker Python vẫn giữ và match với toàn bộ hình học tích lũy.
+Place admission vẫn dựa local source-bound pose; published structural place paths
+có thể được revalidate trên phân loại lịch sử, luôn motion_certificate=false.
+Full accumulated room map không bao giờ trở thành map đầu vào MotionGuard/control.
+
 Navigation mặc định frontier-only. Graph không điều khiển trực tiếp motion trong core. Điều này cho phép xác minh graph mà không trộn tác động của ObjectNav policy vào chất lượng perception.
+
+Navigation movement revision (2026-11-04): live launcher enables discrete
+heading control and gain/heading-aware frontier selection. For this simulator's
+serial action executor, a command is either translation or yaw, with 12°/6°
+heading hysteresis. Hard source TTL300ms, command horizon100ms, cylinder/clearance
+checks, collision-filtered actuation and speed caps remain. Speed is not softly
+derated solely by source age in this mode; actual command lifetime is still
+bounded by the ORIGINAL depth and map captures. The guard issues the command
+after geometry validation, so validation time does not consume a newly issued
+100ms horizon. It rechecks the original evidence expiry at that point.
+
+Bootstrap validates only the forward centerline distance reachable within the
+remaining command horizon and source TTL, with the robot radius/margin and
+curved-pulse expansion applied to the swept capsule. It does not impose an
+extra fixed forward distance. Fresh measured depth must still certify those
+bootstrap cells; the NavSnapshot separately checks FREE state, floor support and
+height clearance over the actual swept footprint and intended path. Unknown or
+occupied cells in either required sweep continue to stop the command.
+
+Gain-aware selection offers up to8 spatially separated views per boundary
+component (64 total), uses bounded boundary-size gain and first-path heading
+cost, and prefers new goals at least0.6m away when a farther reachable goal
+exists. Close reachable goals remain a fallback. A committed target is replanned
+against every current map; boundary extraction resumes when choosing the next
+target. Origin-only rolling does not restart velocity acceleration. Missing map
+output does not count as fresh geometric-failure evidence or erase a short
+existing failure window; pause/error and evidence gaps still reset that window.
+
+Experimental `allow_fresh_map_lag` remains OFF by default: it allows a map from
+an older frame of the same sensor only while both captures are within300ms and
+the current depth/pose independently certifies the whole swept footprint.
+Map source/revision and command depth source remain distinct; no retimestamping.
+Local bootstrap uses a conservative ray subset with the unchanged measured-vote
+kernel, never historical/no-return floor evidence. Native throughput regression
+in this experiment prevents promoting it to the normal demo path. Rebuild M5
+geometry, source pins, guards and membership ownership are unchanged.
 
 ## 4. Contract bắt buộc cho core
 
@@ -154,6 +206,18 @@ to retain600s evidence without silently truncating a4096-record baseline.
 Independent review and measured native evidence are required before claiming
 throughput or long-run validation; P10 campaign protocol remains separate.
 
+Forensic latency telemetry is bounded and observation-only. Resource RSS
+artifacts retain a bounded per-sample trace (timestamps, duration, process count,
+support/error class, phase/PID and sampler disposition) plus bounded provider
+attempt records; this does not change cap enforcement or resource completeness.
+NavMap records source-bound spans for prepare, core integration, projection,
+raycast, vote integration, core snapshot publication, fresh coverage, NavSnapshot,
+overview snapshot and tile overview under the existing whole-update timing.
+Control records carry a versioned navigation diagnostic with goal ID/XY, up to64
+evenly sampled world-space path points, full path point count/truncation,
+lookahead XY, wrapped heading error and decision reason. These traces do not feed
+back into motion, TTL, map selection or UI publication.
+
 UI publication may optionally coalesce before pixel/crop/mask preparation via
 `ui.publish_hz`; skipped publications are display-only, carry no fresh source
 claim, and never delay command ACK processing. The long profile requests2Hz.
@@ -161,3 +225,134 @@ Canonical export obtains hierarchy and its exact immutable nav atomically from
 `Pipeline.snapshot_bundle()`, independent of the UI's retained/coalesced bundle.
 Object checkpoint revision, map revision, episode and clock checks still reject
 incoherent exports; consumers do not relabel stale UI maps to make them match.
+
+Run completion is profile-scoped. A Hydra-only graph profile does not require a
+legacy hierarchy/NavMap/object bundle: it may report `completed` when its
+Hydra-native graph export is complete and recording, measurements, and cleanup
+are complete. Other profiles retain their required export checks. This outcome
+does not set `native_runtime_validated`; that remains a separate P10 acceptance
+gate.
+
+## M5 room ownership (2026-11-03)
+
+For the Rebuild RGB-D M1–M5 profile, accepted and fresh M5 regions are the sole
+room partition source. The hierarchy publishes those source regions and derives
+object membership from their polygons with the M5 map domain, accepted map
+revision and M5 revision attached. Stale, rejected, mismatched or unavailable M5
+results cannot create assigned membership. M5 adjacency is structural metadata,
+not a motion certificate. The temporal RoomOwner, stable-room IDs/states, portal
+hypotheses and their UI/debug projections have been removed.
+
+The older generic region lane remains available only to profiles that do not
+enable `workers.room_pipeline`; it is retained for baseline comparison and is not
+composed alongside M5 regions in the full Rebuild profile. This choice does not
+change ObjectOwner, canonical object IDs, control navigation, occupancy safety or
+the strict M5 polygon validator.
+
+Rebuild comparison backend (2026-11-02): an explicit opt-in
+`workers.region.backend=rebuild_m4_m5` uses the readonly pinned Rebuild M4 worker
+and original source M5 guard/tracker on the same accumulated measured room input.
+The source M5 owns region IDs; publication validation commits a trial M5 processor
+only together with a valid immutable snapshot. Backend diagnostics record external
+source closure/binary hashes and `source` preprocessing, distinct from baseline
+`extended_unknown_boundary`. Navigation occupancy and motion safety are unchanged.
+Portal debug overlays/list are opt-in via UI. See docs/rebuild-backend.md and its
+results report; this extension does not claim the whole Rebuild mapping pipeline.
+
+Full Rebuild RGB-D mapping (2026-11-02): `workers.room_pipeline` receives the
+primary RGB-D `Observation` directly and owns one M1–M5 session per episode. It
+never consumes NavMapper grids and does not participate in control scheduling,
+depth freshness or command deadlines. Its queue, byte budget, failures and
+source/binary pins are reported separately. `RoomPipelinePublication` remains a
+typed source distinct from `NavSnapshot`; the Rebuild hierarchy, map view and
+export consume that source while control navigation stays unchanged. See
+`docs/rebuild-full-room-audit.md` for implementation and validation scope.
+
+The display envelope may carry that publication as an independent typed source
+with its own capture age. The dashboard keeps a separate Rebuild M3/M5 map tab;
+it overlays M5 only when the accepted region revision matches the displayed M3
+revision, and labels an older accepted pair without drawing it over a newer
+raster. Final export writes `room-pipeline.json` separately from `nav.json` and
+the hierarchy. This follows implementation-plan P08/P09's atomic source tagging
+and export manifest; it does not merge M3 into control navigation.
+
+
+### Optional rolling navigation memory (2026-11-06 / Kiet_branch2)
+
+`navigation.mapper.local_retention_s` enables a square cell-aligned control
+window using existing `snapshot_radius_m`. Planar, floor and each height voxel
+retain independent last-observed captures; expiry clears to unknown/unsupported,
+never decays toward FREE. Outside cells/tiles are discarded without archive
+reactivation; per-sensor watermarks replace unbounded rolling frame history.
+Absent setting preserves legacy. Full measured ray collection is unchanged;
+only persistent vote integration is cropped. Current-depth bootstrap, original
+source TTL300ms, command horizon100ms and collision filtering remain mandatory.
+Retention memory age is distinct from control freshness. Historical overview
+and Hydra graph retain their own bounded/publication semantics and are never
+fresh motion certificates. Measured rolling profile selected is2m/10s after2m/30s comparison; experimental
+long performance remains below acceptance (selected300s6.38% refusals). See the dated results
+report; no claim of global planning or ObjectNav completion is added here.
+
+### Optional current-depth control lane (2026-11-06)
+
+`navigation.controller.local_depth_control=true` separates asynchronous world
+NavMapper/Navigator from synchronous measured-depth control. One navigation worker
+owns frontier policy and emits immutable world intent with original source, pose/
+calibration/floor/robot scope, world revision and expiry at originalcapture+2s.
+Intent is a planning input; every moving command still requires a new measured-only
+local NavSnapshot, current pose and unchanged MotionGuard proof (300ms depth/map
+age,100ms horizon, measured floor/height/unknown/swept capsule). Local raster radius
+is min(world radius,max(1m,robot radius+margin+.4m)); outside evidence is unknown.
+Local map revisions increase independently for the whole episode; commands in this
+mode never fall back to world-map revisions. Control skips exact world-map waiting.
+
+Navigation diagnostic schema v2 retains v1 path fields and adds the closed pair
+`control_map_scope=local_measured_depth_v1` / `world_intent` provenance. Null intent
+requires zero motion and no path. Metadata binds registered original captures;
+separate stage timings expose map/follower/guard/world-planner work. Legacy mode
+and v1 remain available. Transient lack of local proof stops immediately while
+persistent recovery uses distinct fresh WORLD revisions; expired intent invalidates
+by identity so a newer publication survives. Fault/pause invalidates the generation.
+Native performance/readiness is established separately in the result report.
+
+Optional `runtime.world_navigation_hz` (local mode only, at most10Hz) limits the
+asynchronous world mapper independently of local depth/capture/control. Cadence
+waits outside locks before taking the latest pending original capture/pose. First
+update is immediate; no catchup queue, no delayed shutdown, no rewritten timestamp.
+World no-path outcomes feed the existing fresh-world-revision recovery watchdog
+when local intent is absent. Runtime diagnostics report both local STOPs and world
+planner reason counts/source age so a low freshness ratio cannot hide starvation.
+
+
+### Hydra optional threshold/seed stability v1 (Kiet_branch2, 2026-11-07)
+
+Worker-only dataset key `neusymnav_room_stability` is consumed before native config
+loading; absent/disabled preserves stock loading. Enabled requires pinned private DSO
+path/SHA and ABI version `neusymnav-room-stability-v1`. The bridge loads before native
+Python bindings and verifies exactly one mapped `libhydra.so`. Build provenance closes
+over native binding, private DSO, policy, bridge and worker source. Accepted responses
+pin this metadata for the episode; snapshot/projection and journal carry bounded native
+decisions bound to accepted source/revision. No GT, labels or UI state enter RoomFinder.
+
+RoomFinder proposes raw PLATEAU thresholds as before, recomputes current components at
+accepted level, and confirms a changed proposal across three strictly newer nonzero
+max-place-update timestamps. This proxy does not prove independent viewpoints. Invalid
+observations reset pending; loss of all held seed support permits raw fallback. Instance
+destruction clears policy state. Neither previous membership replay nor frozen room
+geometry is introduced. This stabilizes threshold choice, not room lifecycle/identity or
+physical/semantic correctness. Control/navigation contracts remain independent.
+
+The profile remains experimental pending repeated cost/live/scene validation; see
+`docs/results/hydra-threshold-seed-stability-2026-11-07.md` and artifact design/evidence.
+
+
+### Optional bundled validation entries (2026-11-07)
+
+`backends/hydra/validation_entry.py` and `runtime/ui_validation_entry.py` are opt-in
+source-confined diagnostic worker entries. Explicit profile script/SHA pins select them;
+normal entrypoints are unchanged. They capture bounded accepted graph summaries and
+actual Qt post-render provenance/screenshots, without sensor, threshold, navigation or
+control changes. Artifacts do not act as runtime worker code. Offscreen proofs do not
+certify physical desktop visibility. The experimental stability profile composed with
+current movement is `configs/demo-00805.hydra-room-stability-local-depth.experimental.local.json`;
+it preserves the existing local-depth profile's runtime/navigation. It remains unpromoted.

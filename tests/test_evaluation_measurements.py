@@ -2,7 +2,9 @@ import copy,json
 import pytest
 from test_runtime_measurement_wiring import session
 from test_runtime_scheduling import source
-from neusymnav.evaluation.measurements import inspect_measurements,trace_metrics,resource_metrics,canonical_sha256
+from neusymnav.evaluation.measurements import (inspect_measurements,trace_metrics,resource_metrics,
+    canonical_sha256,analyze_control_stages)
+from neusymnav.runtime.measurements import TRACE_RECORD_CHARGE
 
 
 def artifact(*,trace_cap=64*1024**2,sample_cap=65536):
@@ -30,6 +32,45 @@ def test_offline_trace_recomputes_queued_latency_and_preserves_partial_execution
     assert metrics['accepted_fraction']['value']==1.
     assert metrics['stale_fraction']['value'] is None
     assert not value['completion']['complete'] and not checked['native_eligible']
+
+
+def test_offline_trace_accepts_and_validates_source_bound_stage_timing():
+    value=artifact();trace=value['collector']['trace']
+    source=copy.deepcopy(trace['records'][0]['source'])
+    capture_ns=source['capture_monotonic_ns']
+    stage=dict(event='stage',source=source,stage='navmap_update',start_ns=capture_ns-10,
+        end_ns=capture_ns+10,duration_ns=20)
+    trace['records'].insert(1,stage);trace['charged_bytes']+=TRACE_RECORD_CHARGE
+    assert inspect(value)['trace']['trace_complete']
+    stage['stage']='unregistered_stage'
+    with pytest.raises(ValueError):inspect(value)
+    stage['stage']='navmap_update'
+    stage['duration_ns']=19
+    with pytest.raises(ValueError):inspect(value)
+
+
+def test_control_stage_report_binds_source_windows_and_does_not_sum_overlapping_phases():
+    value=artifact();trace=value['collector']['trace'];source=copy.deepcopy(trace['records'][0]['source'])
+    capture_ns=source['capture_monotonic_ns']
+    for stage,duration in (('navmap_update',20),('navmap_core_integrate',12),('control_loop',5)):
+        trace['records'].insert(1,dict(event='stage',source=copy.deepcopy(source),stage=stage,
+            start_ns=capture_ns+10,end_ns=capture_ns+10+duration,duration_ns=duration))
+        trace['charged_bytes']+=TRACE_RECORD_CHARGE
+    checked=inspect(value);report=analyze_control_stages(value,checked)
+    assert report['trace_complete'] is True
+    assert report['stages']['navmap_update']['p95_ms']==0.00002
+    assert report['stages']['navmap_core_integrate']['max_ms']==0.000012
+    assert report['stages']['control_loop']['support']==1
+    assert report['composition_note'].startswith('Stage durations overlap')
+
+
+def test_incomplete_stage_trace_reports_observed_support_but_withholds_percentiles():
+    value=artifact(trace_cap=8192);checked=inspect(value)
+    report=analyze_control_stages(value,checked)
+    assert report['trace_complete'] is False
+    assert report['stages']['navmap_update']['support']==0
+    assert report['stages']['navmap_update']['p95_ms'] is None
+    assert report['stages']['navmap_update']['status']=='unavailable'
 
 
 @pytest.mark.parametrize('mutate',[
@@ -98,6 +139,142 @@ def test_resource_sampled_peak_remains_explicitly_sampled_not_absolute():
     assert report['boundedness_certified'] is False
 
 
+def test_resource_sample_trace_has_validated_bounded_provenance():
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report();rss=report['rss']
+    trace=rss['sample_trace']
+    metrics=resource_metrics(report)
+    assert metrics['rss_peak_bytes']['value']['sample_trace_provenance']==dict(
+        schema_version=1,retained_records=len(trace),dropped_records=rss['sample_trace_dropped'],
+        record_cap=rss['sample_trace_cap'],discarded_after_stop=rss['discarded_after_stop'])
+
+
+def test_resource_complete_trace_reconciles_sampled_peak_and_support():
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report()
+    report['rss']['sampled_peak_bytes']=0
+    with pytest.raises(ValueError):resource_metrics(report)
+
+
+def test_resource_complete_trace_rejects_record_peak_below_summary_peak():
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report()
+    for record in report['rss']['sample_trace']:record['rss_bytes']=0
+    assert report['rss']['sampled_peak_bytes']==1234
+    with pytest.raises(ValueError):resource_metrics(report)
+
+
+def test_resource_complete_trace_reconciles_provider_errors_and_aggregate_support():
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report();record=report['rss']['sample_trace'][0]
+    record.update(rss_bytes=None,supported=False,read_errors=1)
+    with pytest.raises(ValueError):resource_metrics(report)
+
+
+@pytest.mark.parametrize('field',[
+    'missing_processes','read_errors','identity_changes','truncated_samples',
+    'first_sample_ns','last_sample_ns','max_sample_gap_ns',
+])
+def test_resource_complete_trace_reconciles_error_and_time_summaries(field):
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report();summary=report['rss']
+    summary[field]=(summary[field] or 0)+1
+    with pytest.raises(ValueError):resource_metrics(report)
+
+
+def test_resource_sampler_rollback_withholds_provider_support_and_adds_read_error():
+    import time
+    from neusymnav.runtime.resources import ResourceSampler,ResourceReading
+    from neusymnav.evaluation.measurements import resource_metrics
+    stamps=None
+    def provider():
+        nonlocal stamps
+        if stamps is None:
+            base=time.monotonic_ns();stamps=iter((base+1,base+100,base+50,base+200))
+        return ResourceReading(next(stamps),1234,1)
+    sampler=ResourceSampler(provider=provider,interval_s=.1)
+    sampler.start();deadline=time.monotonic()+2
+    while sampler.snapshot()['rss']['samples']<4 and time.monotonic()<deadline:time.sleep(.001)
+    report=sampler.close(timeout_s=1.)
+    assert report['rss']['support']==3
+    assert report['rss']['read_errors']==1
+    assert all(record['supported'] for record in report['rss']['sample_trace'])
+    assert resource_metrics(report)['rss_peak_bytes']['value']['sampled_peak_bytes']==1234
+
+
+def test_resource_discarded_after_stop_record_does_not_change_accepted_aggregates():
+    import copy
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report();rss=report['rss']
+    discarded=copy.deepcopy(rss['sample_trace'][-1])
+    discarded.update(disposition='discarded_after_stop',rss_bytes=987654321)
+    discarded['sampled_at_ns']=discarded['received_ns']
+    rss['sample_trace'].append(discarded);rss['discarded_after_stop']+=1
+    assert resource_metrics(report)['rss_peak_bytes']['value']['sampled_peak_bytes']==rss['sampled_peak_bytes']
+
+
+def test_resource_dropped_trace_uses_retained_aggregate_lower_bounds():
+    import copy
+    from neusymnav.runtime.resources import MAX_RESOURCE_DIAGNOSTIC_RECORDS
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report();rss=report['rss'];record=copy.deepcopy(rss['sample_trace'][0])
+    rss['sample_trace']=[copy.deepcopy(record) for _ in range(MAX_RESOURCE_DIAGNOSTIC_RECORDS)]
+    rss.update(samples=MAX_RESOURCE_DIAGNOSTIC_RECORDS+1,support=MAX_RESOURCE_DIAGNOSTIC_RECORDS+1,
+        sampled_peak_bytes=record['rss_bytes'],missing_processes=0,read_errors=0,identity_changes=0,
+        truncated_samples=0,first_sample_ns=record['sampled_at_ns'],last_sample_ns=record['sampled_at_ns'],
+        max_sample_gap_ns=0,sample_trace_dropped=1)
+    assert resource_metrics(report)['rss_peak_bytes']['support']==MAX_RESOURCE_DIAGNOSTIC_RECORDS+1
+    report['complete']=False
+    rss['support']=MAX_RESOURCE_DIAGNOSTIC_RECORDS-1
+    with pytest.raises(ValueError):resource_metrics(report)
+
+
+def _current_control_invocation_report():
+    from neusymnav.runtime.launcher import _ControlInvocations
+    obs=source();trace=_ControlInvocations(4)
+    trace.record(1,navigation_ready=True)
+    trace.skip_run_deadline(obs,navigation_ready=True)
+    trace.skip_run_deadline(obs,navigation_ready=False)
+    return trace.snapshot(obs.clock_domain)
+
+
+def test_control_invocation_inspector_accepts_current_producer_deadline_skips():
+    from neusymnav.evaluation.measurements import inspect_control_invocations
+    value=_current_control_invocation_report()
+    assert value['run_deadline_skips']['total']==2
+    assert inspect_control_invocations(value,clock_domain=value['clock_domain'])['complete']
+
+
+def test_control_invocation_inspector_keeps_older_artifact_without_deadline_skips():
+    from neusymnav.evaluation.measurements import inspect_control_invocations
+    value=_current_control_invocation_report();value.pop('run_deadline_skips')
+    assert inspect_control_invocations(value,clock_domain=value['clock_domain'])['complete']
+
+
+@pytest.mark.parametrize('mutate',[
+    lambda value:value['run_deadline_skips'].update(total=1),
+    lambda value:value['run_deadline_skips'].update(navigation_ready=True),
+    lambda value:value['run_deadline_skips']['last_source'].update(frame_index=True),
+    lambda value:value['run_deadline_skips']['last_source'].update(extra='field'),
+])
+def test_control_invocation_inspector_rejects_forged_deadline_skips(mutate):
+    from neusymnav.evaluation.measurements import inspect_control_invocations
+    value=_current_control_invocation_report();mutate(value)
+    with pytest.raises(ValueError):inspect_control_invocations(value,clock_domain=value['clock_domain'])
+
+
+@pytest.mark.parametrize('mutate',[
+    lambda rss:rss.update(sample_trace_schema_version=2),
+    lambda rss:rss['sample_trace'][0].update(unexpected='field'),
+    lambda rss:rss.update(discarded_after_stop=rss['discarded_after_stop']+1),
+    lambda rss:rss['sample_trace'][0].update(received_ns=0),
+])
+def test_resource_sample_trace_rejects_unknown_or_inconsistent_provenance(mutate):
+    from neusymnav.evaluation.measurements import resource_metrics
+    report=resource_report();mutate(report['rss'])
+    with pytest.raises(ValueError):resource_metrics(report)
+
+
 @pytest.mark.parametrize('mutate',[
     lambda x:x['rss'].update(support=x['rss']['samples']+1),
     lambda x:x['gpu'].update(sampled_peak_bytes=0),
@@ -130,8 +307,11 @@ def moving_artifact():
     m.capture(obs)
     pose=dict(source=obs.key,capture_monotonic_ns=obs.capture_monotonic_ns,clock_domain=obs.clock_domain,pose_version=obs.pose_version,robot_xy=(0.,0.),yaw_rad=0.)
     m.pose(obs,pose)
-    from types import SimpleNamespace
-    m.control(obs,proof['actions'][-1]['post_step_monotonic_ns'],{'reason':'executed'},command=command,proof=proof,decision=SimpleNamespace(goal_id='frontier1',map_revision=1),profile='baseline')
+    from neusymnav.contracts import NavigationDecision
+    decision=NavigationDecision('frontier1',((1.,2.),),command.linear_mps,
+        command.yaw_radps,command.map_revision,'frontier')
+    m.control(obs,proof['actions'][-1]['post_step_monotonic_ns'],{'reason':'executed'},
+        command=command,proof=proof,decision=decision,profile='baseline')
     return json.loads(json.dumps(m.finalize(runtime_report={'clean_shutdown':True},resources=None,launch_config=launch)))
 
 
@@ -196,6 +376,29 @@ def test_control_return_reason_must_match_attached_actuation_proof():
     record['reason']='control_rejected'
     value['collector']['control_reasons']={'control_rejected':1}
     with pytest.raises(ValueError):inspect(value)
+
+
+@pytest.mark.parametrize('mutate',[
+    lambda value:value.update(extra='unrecognized'),
+    lambda value:value.update(command_deadline_monotonic_ns=value['command_issued_monotonic_ns']-1),
+    lambda value:value.update(decision_linear_mps=float('inf')),
+    lambda value:value.update(failure_detail='invented_failure'),
+])
+def test_control_diagnostics_are_closed_and_bounded(mutate):
+    value=moving_artifact();diagnostics=value['collector']['trace']['records'][1]['diagnostics']
+    mutate(diagnostics)
+    with pytest.raises(ValueError):inspect(value)
+
+
+def test_control_navigation_diagnostics_require_versioned_closed_shape():
+    value=moving_artifact();record=value['collector']['trace']['records'][1]
+    record['navigation']=dict(schema_version=1,goal_id='frontier1',goal_xy=[1.,2.],
+        path_point_count=1,path_sample_xy=[[1.,2.]],path_sample_truncated=False,
+        lookahead_xy=None,heading_error_rad=0.,decision_reason='frontier')
+    assert inspect(value)['actuation']['observed_body_translation_lower_bound_m']['value']==pytest.approx(.01)
+    record['navigation']['schema_version']=2
+    with pytest.raises(ValueError,match='schema'):
+        inspect(value)
 
 
 def test_no_frontier_attribution_has_no_frontier_measurement_support():

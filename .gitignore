@@ -55,3 +55,6 @@ CMakeCache.txt
 .DS_Store
 core
 core.*
+
+# colcon build logs
+/log/

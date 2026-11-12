@@ -9,10 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 import math
+import time
 import numpy as np
 from ..contracts import Observation, NavSnapshot, GridState
 from ._grid import GridSpec
 from ._occupancy_core import OccupancyMapper, DuplicateFrameError, _PreparedMeasuredProjection
+from .rolling import RollingWindow, validate_local_retention_s
 
 
 @dataclass(frozen=True)
@@ -136,32 +138,83 @@ class NavMapper:
                  calibration_hash: str, resolution_m: float=.05, origin_xy=(0.,0.),
                  tile_size_cells: int=64, height_bin_m: float | None=None,
                  min_depth_m: float=.15,max_depth_m: float=5.,sampling_stride: int=4,
+                 free_ray_stride: int=1,
                  snapshot_radius_m: float=8., max_snapshot_cells: int=1_000_000,
                  tile_archive_dir=None, max_active_tiles: int | None=None, raycast_workers: int=1,
-                 raycast_backend=None):
+                 raycast_backend=None, local_retention_s: float | None=None):
         if not isinstance(robot,RobotGeometry) or not floor_datum_source or not math.isfinite(floor_z_m):
             raise ValueError('explicit geometry and calibrated floor datum required')
         if len(calibration_hash)!=64 or any(c not in '0123456789abcdef' for c in calibration_hash):
             raise ValueError('floor calibration SHA-256 required')
         if snapshot_radius_m<=0 or not math.isfinite(snapshot_radius_m):raise ValueError('invalid snapshot radius')
+        local_retention_s=validate_local_retention_s(local_retention_s)
         cells=2*math.ceil(snapshot_radius_m/resolution_m)+1
         if cells*cells>max_snapshot_cells:raise ValueError('snapshot exceeds bounded raster budget')
         if height_bin_m is None: height_bin_m=robot.near_ground_tolerance_m
         if height_bin_m>robot.near_ground_tolerance_m:raise ValueError('height bin exceeds declared near-ground tolerance')
         self.robot=robot;self.floor_z_m=float(floor_z_m);self.floor_datum_source=floor_datum_source
         self.calibration_hash=calibration_hash;self.snapshot_radius_m=snapshot_radius_m
+        self.local_retention_s=local_retention_s
         self._raycast_backend=raycast_backend;self._closed=False
         self._core=OccupancyMapper(GridSpec(resolution_m,tile_size_cells,*origin_xy,floor_z_m),
             robot_height_m=robot.height_m,height_bin_m=height_bin_m,min_depth_m=min_depth_m,
-            max_depth_m=max_depth_m,sampling_stride=sampling_stride,tile_archive_dir=tile_archive_dir,raycast_workers=raycast_workers,
-            raycast_collector=None if raycast_backend is None else raycast_backend.collect)
+            max_depth_m=max_depth_m,sampling_stride=sampling_stride,free_ray_stride=free_ray_stride,
+            tile_archive_dir=tile_archive_dir,raycast_workers=raycast_workers,
+            raycast_collector=None if raycast_backend is None else raycast_backend.collect,
+            local_retention_s=local_retention_s)
         if max_active_tiles is not None:
             if type(max_active_tiles) is not int or max_active_tiles<1:raise ValueError('invalid tile cap')
             n=tile_size_cells**2
-            self._core.MAX_PLANAR_MEMORY_BYTES=max_active_tiles*n*5
-            self._core.MAX_HEIGHT_MEMORY_BYTES=max_active_tiles*n*self._core.height_bin_count*4
+            planar_bytes_per_cell=5+(16 if local_retention_s is not None else 0)
+            height_bytes_per_voxel=4+(8 if local_retention_s is not None else 0)
+            self._core.MAX_PLANAR_MEMORY_BYTES=max_active_tiles*n*planar_bytes_per_cell
+            self._core.MAX_HEIGHT_MEMORY_BYTES=max_active_tiles*n*self._core.height_bin_count*height_bytes_per_voxel
         self._revision=0;self._clock_domain=None;self._frame_watermarks={};self._current_coverage=None
+        self._last_capture_ns=None
         self._overview_tiles=None;self.overview_error=None;self._overview_incomplete=False
+        self._last_update_stages={}
+        self._last_overview_stages={}
+        self._latest_nav=None
+        # The navigation camera intrinsics and sampled pixel lattice are
+        # stable across frames. Cache only this geometry (never depth, masks,
+        # pose, or projected points); a new shape/stride/K replaces the entry.
+        self._ray_geometry_key=None;self._ray_geometry_pixels=None;self._ray_geometry_inverse=None
+        self._retention_diagnostics={}
+        self._refresh_retention_diagnostics()
+
+    @property
+    def last_update_stages(self):
+        """Bounded source-frame timing spans from the most recent update."""
+        return dict(self._last_update_stages)
+
+    @property
+    def last_overview_stages(self):
+        """Optional visualization timing spans from the most recent refresh."""
+        return dict(self._last_overview_stages)
+
+    @property
+    def retention_diagnostics(self):
+        """Cached JSON-safe rolling-policy metrics; reads do not walk mutable tiles."""
+        return dict(self._retention_diagnostics)
+
+    def _refresh_retention_diagnostics(self):
+        memory=self._core.retention_memory_stats()
+        resolution=self._core.grid.resolution_m
+        window_cells=2*math.ceil(self.snapshot_radius_m/resolution)+1
+        tiles_per_axis=math.ceil((window_cells+self._core.grid.tile_size_cells-1)/self._core.grid.tile_size_cells)
+        enabled=self.local_retention_s is not None
+        self._retention_diagnostics={
+            "enabled":enabled,
+            "policy":"local_ttl_window" if enabled else "legacy",
+            "snapshot_radius_m":float(self.snapshot_radius_m),
+            "local_retention_s":self.local_retention_s,
+            "window_cells_per_axis":int(window_cells),
+            "max_window_tiles":int(tiles_per_axis*tiles_per_axis),
+            "archive_access_disabled":enabled,
+            "timestamp_bytes_per_planar_cell":16 if enabled else 0,
+            "timestamp_bytes_per_height_voxel":8 if enabled else 0,
+            **memory,
+        }
 
     def bind_archive_reservation(self, factory):
         """Bind the run owner's budget to actual tile archive transactions."""
@@ -173,6 +226,9 @@ class NavMapper:
         if self._closed:raise RuntimeError('mapper closed')
         self._core.reset(episode_id);self._revision=0;self._clock_domain=None;self._frame_watermarks={};self._current_coverage=None
         self._overview_tiles=None;self.overview_error=None;self._overview_incomplete=False
+        self._last_overview_stages={};self._latest_nav=None
+        self._last_capture_ns=None
+        self._refresh_retention_diagnostics()
 
     def close(self,timeout_s=1.):
         self._closed=True
@@ -189,6 +245,17 @@ class NavMapper:
             no_return=obs.no_return,no_return_range_m=obs.no_return_range_m)
 
     def update(self, observation: Observation) -> NavSnapshot:
+        """Integrate one frame and synchronously refresh the optional UI overview."""
+        nav=self._update_navigation(observation)
+        self.refresh_overview(nav)
+        self._last_update_stages.update(self._last_overview_stages)
+        return nav
+
+    def update_for_control(self, observation: Observation) -> NavSnapshot:
+        """Return the safety map before doing visualization-only overview work."""
+        return self._update_navigation(observation)
+
+    def _update_navigation(self, observation: Observation) -> NavSnapshot:
         if self._closed:raise RuntimeError('mapper closed')
         if not isinstance(observation,Observation):raise ValueError('Observation required')
         if self._clock_domain is not None and observation.clock_domain!=self._clock_domain:
@@ -196,32 +263,93 @@ class NavMapper:
         previous=self._frame_watermarks.get(observation.key.sensor_id)
         if previous is not None and observation.key.frame_index<=previous:
             raise DuplicateFrameError('duplicate or replayed sensor frame')
-        camera_points=self._check_ray_budget(observation)
-        adapted=self._adapt(observation)
-        prepared=None if camera_points is None else _PreparedMeasuredProjection(adapted,camera_points)
-        delta=self._core._integrate(adapted,prepared)
+        if self.local_retention_s is not None:
+            if (self._core._episode_id is not None
+                    and observation.key.episode_id != self._core._episode_id):
+                raise ValueError('reset the mapper before integrating a different episode')
+            capture_ns=int(observation.capture_monotonic_ns)
+            if capture_ns>np.iinfo(np.int64).max:
+                raise ValueError('rolling map capture timestamp exceeds int64 range')
+            if self._last_capture_ns is not None and capture_ns<self._last_capture_ns:
+                raise ValueError('rolling map capture timestamp moved backwards')
+            if (not observation.clock_domain.startswith('replay:')
+                    and capture_ns>time.monotonic_ns()):
+                raise ValueError('rolling map capture timestamp is in the future')
+        self._last_update_stages={}
+        def record_stage(name,started_ns):
+            self._last_update_stages[name]=(started_ns,time.monotonic_ns())
+        started=time.monotonic_ns()
+        try:
+            camera_points=self._check_ray_budget(observation)
+            adapted=self._adapt(observation)
+            prepared=None if camera_points is None else _PreparedMeasuredProjection(adapted,camera_points)
+        finally:record_stage('navmap_prepare',started)
+        started=time.monotonic_ns()
+        rolling_window=None
+        if self.local_retention_s is not None:
+            rolling_window=RollingWindow.centered(self._core.grid,
+                x_m=float(observation.T_world_camera[0,3]),
+                z_m=float(observation.T_world_camera[1,3]),
+                radius_m=self.snapshot_radius_m)
+        try:
+            if self.local_retention_s is None:
+                delta=self._core._integrate(adapted,prepared)
+            else:
+                delta=self._core._integrate(adapted,prepared,rolling_window=rolling_window,
+                    capture_monotonic_ns=int(observation.capture_monotonic_ns))
+        finally:
+            record_stage('navmap_core_integrate',started)
+            self._last_update_stages.update(getattr(self._core,'_last_integrate_stages',{}))
         self._frame_watermarks[observation.key.sensor_id]=observation.key.frame_index
         self._clock_domain=observation.clock_domain;self._revision+=1
+        if self.local_retention_s is not None:
+            self._last_capture_ns=int(observation.capture_monotonic_ns)
         # Only measured rays can certify current-frame bootstrap. Certified
         # no-return rays in the historical map must never enter this proof.
         self._current_coverage=None
         if observation.no_return is None or not observation.no_return.any():
-            coverage=self._coverage_from_votes(observation,delta.frame_votes)
+            started=time.monotonic_ns()
+            try:coverage=self._coverage_from_votes(observation,delta.frame_votes)
+            finally:record_stage('navmap_fresh_coverage',started)
             self._current_coverage=(observation.geometry_hash,coverage)
-        nav=self._snapshot(observation)
+        started=time.monotonic_ns()
+        try:nav=self._snapshot(observation)
+        finally:record_stage('navmap_snapshot',started)
+        self._latest_nav=nav
+        self._refresh_retention_diagnostics()
+        return nav
+
+    def refresh_overview(self, nav: NavSnapshot | None = None):
+        """Refresh optional display tiles after the corresponding NavSnapshot is usable."""
+        if self._closed:raise RuntimeError('mapper closed')
+        nav=self._latest_nav if nav is None else nav
+        if not isinstance(nav,NavSnapshot) or nav.revision!=self._revision:
+            raise ValueError('overview refresh requires the latest navigation snapshot')
+        self._last_overview_stages={}
+        def record_stage(name,started_ns):
+            self._last_overview_stages[name]=(started_ns,time.monotonic_ns())
         try:
             from dataclasses import replace
             from .overview import update_tiles
-            updated=update_tiles(self._overview_tiles,nav,self._core.grid,
-                self._core.snapshot()._cell_arrays,self._core.free_threshold,self._core.occupied_threshold)
+            started=time.monotonic_ns()
+            try:overview_cells=self._core.snapshot()._cell_arrays
+            finally:record_stage('navmap_overview_snapshot',started)
+            started=time.monotonic_ns()
+            try:updated=update_tiles(self._overview_tiles,nav,self._core.grid,
+                overview_cells,self._core.free_threshold,self._core.occupied_threshold)
+            finally:record_stage('navmap_tile_overview',started)
             if self._overview_incomplete: updated=replace(updated,complete=False)
             self._overview_tiles=updated
             self.overview_error=None
         except Exception as exc:
             self._overview_incomplete=True;self.overview_error=exc
-        return nav
+        return self._overview_tiles
 
     def overview_tiles(self):
+        return self._overview_tiles
+
+    def room_input_tiles(self):
+        """Exact immutable measured history; dense room assembly is off this lane."""
         return self._overview_tiles
 
     def _coverage_from_votes(self,obs,votes):
@@ -256,13 +384,31 @@ class NavMapper:
         # Axial clipping alone cannot bound oblique rays from extreme intrinsics.
         # Check the actual projected box before the dense per-frame vote buffers.
         core=self._core;stride=core.sampling_stride
-        vv,uu=np.mgrid[0:obs.depth_m.shape[0]:stride,0:obs.depth_m.shape[1]:stride]
+        shape=obs.depth_m.shape
+        geometry_key=(shape,stride,obs.K.dtype.str,obs.K.shape,obs.K.tobytes())
+        sample_count=((shape[0]+stride-1)//stride)*((shape[1]+stride-1)//stride)
+        if sample_count<=100_000 and geometry_key==self._ray_geometry_key:
+            pixel_rays=self._ray_geometry_pixels;inverse_k=self._ray_geometry_inverse
+        elif sample_count<=100_000:
+            vv,uu=np.mgrid[0:shape[0]:stride,0:shape[1]:stride]
+            pixel_rays=np.empty((sample_count,3),dtype=uu.dtype)
+            pixel_rays[:,0]=uu.ravel();pixel_rays[:,1]=vv.ravel();pixel_rays[:,2]=1
+            inverse_k=np.linalg.inv(obs.K)
+            pixel_rays.flags.writeable=False;inverse_k.flags.writeable=False
+            self._ray_geometry_key=geometry_key;self._ray_geometry_pixels=pixel_rays;self._ray_geometry_inverse=inverse_k
+        else:
+            # Keep large or adversarial inputs on the original bounded path;
+            # do not retain an additional image-sized cache.
+            vv,uu=np.mgrid[0:shape[0]:stride,0:shape[1]:stride]
+            pixel_rays=np.empty((sample_count,3),dtype=uu.dtype)
+            pixel_rays[:,0]=uu.ravel();pixel_rays[:,1]=vv.ravel();pixel_rays[:,2]=1
+            inverse_k=np.linalg.inv(obs.K)
         depths=obs.depth_m[::stride,::stride]
         use=obs.valid_depth[::stride,::stride] & (depths>=core.min_depth_m)&(depths<core.max_depth_m)
         if use.sum()>100_000:raise MemoryError('per-frame ray count budget exceeded')
         points=[];camera_points=None
         if use.any():
-            rays=np.stack((uu[use],vv[use],np.ones(use.sum())),axis=1)@np.linalg.inv(obs.K).T
+            rays=pixel_rays[use.ravel()]@inverse_k.T
             rays/=rays[:,2:3]
             measured_camera_points=rays*depths[use,None]
             points.append(measured_camera_points@obs.T_world_camera[:3,:3].T+obs.T_world_camera[:3,3])
@@ -276,7 +422,7 @@ class NavMapper:
         if obs.no_return is not None and obs.no_return.any():
             mask=obs.no_return[::stride,::stride]
             if mask.sum()>100_000:raise MemoryError('per-frame ray count budget exceeded')
-            rays=np.stack((uu[mask],vv[mask],np.ones(mask.sum())),axis=1)@np.linalg.inv(obs.K).T
+            rays=pixel_rays[mask.ravel()]@inverse_k.T
             rays/=np.linalg.norm(rays,axis=1)[:,None]
             points.append(rays@obs.T_world_camera[:3,:3].T*min(obs.no_return_range_m,core.max_depth_m)+obs.T_world_camera[:3,3])
         if points:
@@ -319,10 +465,16 @@ class NavMapper:
     def world_to_snapshot(nav, xy):
         return math.floor((xy[1]-nav.origin_xy[1])/nav.resolution_m),math.floor((xy[0]-nav.origin_xy[0])/nav.resolution_m)
 
-    def measured_coverage(self, observation):
+    def measured_coverage(self, observation, *, required_bounds_xy=None):
         """Current measured returns only; no historical/no-return floor substitution."""
         cached=self._current_coverage
         if cached is not None and observation.geometry_hash==cached[0]:return cached[1]
+        if required_bounds_xy is not None:
+            from .local_coverage import collect_local_measured_votes
+            votes,_,_=collect_local_measured_votes(observation,self._core,required_bounds_xy)
+            # A fresh, read-only local proof. Never integrate these votes into
+            # history or substitute their source for the map's source.
+            return self._coverage_from_votes(observation,votes)
         from dataclasses import replace
         core=self._core
         current=NavMapper(robot=self.robot,floor_z_m=self.floor_z_m,floor_datum_source=self.floor_datum_source,
@@ -335,23 +487,34 @@ class NavMapper:
         current._core.integrate(current._adapt(measured))
         return current._snapshot(measured,single_frame=True)
 
-    def bootstrap(self, observation, *, robot_xy, yaw_rad, corridor_m, swept_margin_m=0.):
+    def bootstrap(self, observation, *, robot_xy, yaw_rad, corridor_m, swept_margin_m=0.,
+                  start_unknown_fraction=0.):
         if not math.isfinite(corridor_m) or corridor_m<0:raise ValueError('invalid bootstrap corridor')
         if not math.isfinite(swept_margin_m) or swept_margin_m<0:raise ValueError('invalid swept margin')
         if observation.modality!='depth_only' or not np.allclose(observation.T_world_camera[:3,2],(0.,0.,-1.),atol=1e-5,rtol=0):
             return BootstrapResult(False,'bootstrap_blocked',0,0,observation.key)
         if not all(math.isfinite(v) for v in (*robot_xy,yaw_rad)):raise ValueError('invalid bootstrap robot pose')
-        nav=self.measured_coverage(observation)
         end=(robot_xy[0]+corridor_m*math.cos(yaw_rad),robot_xy[1]+corridor_m*math.sin(yaw_rad))
         radius=self.robot.radius_m+self.robot.margin_m+swept_margin_m
         # Bound work before enumerating capsule cells, including invalid robot
         # positions or extremely long requested corridors.
         lo=np.minimum(robot_xy,end)-radius
         hi=np.maximum(robot_xy,end)+radius
+        nav=self.measured_coverage(observation,required_bounds_xy=(lo,hi))
         map_hi=np.asarray(nav.origin_xy)+np.asarray(nav.states.shape[::-1])*nav.resolution_m
         if np.any(lo<=np.asarray(nav.origin_xy)) or np.any(hi>=map_hi):
             return BootstrapResult(False,'bootstrap_blocked',0,0,observation.key)
+        tolerated=0
+        if start_unknown_fraction:
+            # Only the robot's own current footprint disc (no swept margin);
+            # the same disc as the planner, follower and guard map.
+            from ..navigation.start_footprint import tolerate_robot_footprint, validate_tolerance
+            nav,tolerated=tolerate_robot_footprint(nav,robot_xy,self.robot,validate_tolerance(start_unknown_fraction))
         cells=tuple(capsule_cells(nav.origin_xy,nav.resolution_m,robot_xy,end,radius))
         count=sum(0<=r<nav.states.shape[0] and 0<=c<nav.states.shape[1] and nav.states[r,c]==GridState.FREE for r,c in cells)
         ready=count==len(cells) and bool(cells)
-        return BootstrapResult(ready,'bootstrap_ready' if ready else 'bootstrap_blocked',len(cells),count,observation.key)
+        result=BootstrapResult(ready,'bootstrap_ready' if ready else 'bootstrap_blocked',len(cells),count,observation.key)
+        if tolerated:
+            try:object.__setattr__(result,'start_tolerated',tolerated)
+            except (AttributeError,TypeError):pass
+        return result

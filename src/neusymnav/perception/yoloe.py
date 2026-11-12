@@ -5,6 +5,7 @@ source hashes live in runs/p04/source-hashes.json. Native inference is optional.
 """
 from __future__ import annotations
 import hashlib
+import time
 import numpy as np
 from ..contracts.observations import (Detection, DetectionBatch, Taxonomy,
                                      require_rgbd, validate_detection_batch)
@@ -250,7 +251,9 @@ class YOLOEDetector:
     """
     def __init__(self, checkpoint_path, encoder_path, taxonomy: Taxonomy, *,
                  checkpoint_license, model_factory=None, prompt_embedding_provider=None,
-                 imgsz=480, max_detections=30, confidence_threshold=.25, device='cpu'):
+                 imgsz=480, max_detections=30, confidence_threshold=.25, device='cpu',
+                 backend='torch', openvino_model_path=None, openvino_model_sha256=None,
+                 openvino_bin_path=None, openvino_bin_sha256=None):
         self.checkpoint_path=Path(checkpoint_path).expanduser().resolve(strict=True)
         self.encoder_path=Path(encoder_path).expanduser().resolve(strict=True)
         if not self.checkpoint_path.is_file() or not self.encoder_path.is_file():
@@ -263,16 +266,52 @@ class YOLOEDetector:
         if not np.isfinite(confidence_threshold) or not 0<=confidence_threshold<=1:
             raise ValueError('confidence threshold must be in [0,1]')
         if not isinstance(device,str) or not device.strip(): raise ValueError('device is required')
+        if backend not in {'torch','openvino_gpu'}:raise ValueError('unsupported YOLOE backend')
+        if backend=='openvino_gpu':
+            if device!='intel:gpu':raise ValueError('openvino_gpu requires device=intel:gpu')
+            for name,path,digest in (('OpenVINO XML',openvino_model_path,openvino_model_sha256),
+                                     ('OpenVINO BIN',openvino_bin_path,openvino_bin_sha256)):
+                resolved=Path(path).expanduser().resolve(strict=True) if path is not None else None
+                if resolved is None or not resolved.is_file():raise FileNotFoundError(name+' model asset is required')
+                if not isinstance(digest,str) or hashlib.sha256(resolved.read_bytes()).hexdigest()!=digest:
+                    raise ValueError(name+' model checksum mismatch')
+                if name=='OpenVINO XML':self.openvino_model_path=resolved;self.openvino_model_sha256=digest
+                else:self.openvino_bin_path=resolved;self.openvino_bin_sha256=digest
+        elif any(value is not None for value in (openvino_model_path,openvino_model_sha256,openvino_bin_path,openvino_bin_sha256)):
+            raise ValueError('OpenVINO assets require backend=openvino_gpu')
         self.taxonomy=taxonomy
         self.checkpoint_license=checkpoint_license
         self.checkpoint_sha256=hashlib.sha256(self.checkpoint_path.read_bytes()).hexdigest()
         self.encoder_sha256=hashlib.sha256(self.encoder_path.read_bytes()).hexdigest()
         self.imgsz,self.max_detections=imgsz,max_detections
         self.confidence_threshold,self.device=confidence_threshold,device
+        self.backend=backend
         self._factory=model_factory
         self._provider=prompt_embedding_provider or LocalMobileCLIPPromptProvider(self.encoder_path)
         self._model=None
+        self.openvino_device_name=None
         self._lock=RLock()
+
+    def _require_openvino_gpu(self):
+        """Fail before model loading if OpenVINO cannot enumerate a GPU."""
+        try:
+            from openvino import Core
+            core=Core()
+            devices=tuple(str(device) for device in core.available_devices)
+        except Exception as error:
+            raise RuntimeError(f'OpenVINO GPU runtime unavailable: {error}') from error
+        gpu_devices=tuple(device for device in devices
+                          if device=='GPU' or device.startswith('GPU.'))
+        if not gpu_devices:
+            available=', '.join(devices) or 'none'
+            raise RuntimeError(
+                'OpenVINO GPU requested but runtime exposes no GPU '
+                f'(available devices: {available})')
+        try:
+            self.openvino_device_name=str(
+                core.get_property(gpu_devices[0], 'FULL_DEVICE_NAME'))
+        except Exception:
+            self.openvino_device_name=gpu_devices[0]
 
     def _load(self):
         if self._model is not None: return
@@ -281,6 +320,28 @@ class YOLOEDetector:
         if (hashlib.sha256(self.checkpoint_path.read_bytes()).hexdigest()!=self.checkpoint_sha256
             or hashlib.sha256(self.encoder_path.read_bytes()).hexdigest()!=self.encoder_sha256):
             raise ValueError('detector local asset checksum changed')
+        if self.backend=='openvino_gpu':
+            self._require_openvino_gpu()
+            if (hashlib.sha256(self.openvino_model_path.read_bytes()).hexdigest()!=self.openvino_model_sha256
+                or hashlib.sha256(self.openvino_bin_path.read_bytes()).hexdigest()!=self.openvino_bin_sha256):
+                raise ValueError('OpenVINO IR asset checksum changed')
+            if self._factory is None:
+                from ultralytics import YOLO
+                model=YOLO(str(self.openvino_model_path.parent),task='segment')
+            else:
+                model=self._factory(str(self.openvino_model_path.parent),task='segment')
+            names=getattr(model,'names',None)
+            if isinstance(names,dict):
+                try:labels=tuple(names[index] for index in range(len(names)))
+                except KeyError as error:raise ValueError('OpenVINO class names must be contiguous from zero') from error
+            elif isinstance(names,(list,tuple)):
+                labels=tuple(names)
+            else:
+                raise ValueError('OpenVINO model must expose static class names')
+            if labels!=self.taxonomy.categories:
+                raise ValueError('OpenVINO class names do not match taxonomy category order')
+            self._model=model
+            return
         if self._factory is None:
             # Ultralytics' text-model module may auto-install clip. Confirm it
             # exists before importing Ultralytics to keep the adapter offline.
@@ -296,6 +357,19 @@ class YOLOEDetector:
         if embeddings is None: raise ValueError('offline prompt provider returned no embeddings')
         model.set_classes(list(prompts),embeddings)
         self._model=model
+
+    def warmup(self):
+        """Compile the static OpenVINO backend before admitting source frames."""
+        if self.backend!='openvino_gpu':return 0
+        with self._lock:
+            self._load()
+            blank=np.zeros((480,640,3),dtype=np.uint8)
+            started=time.perf_counter_ns()
+            results=list(self._model.predict(source=blank,imgsz=self.imgsz,
+                max_det=self.max_detections,conf=self.confidence_threshold,
+                retina_masks=True,verbose=False,device=self.device))
+            if len(results)!=1:raise ValueError('OpenVINO warm-up requires one model result')
+            return time.perf_counter_ns()-started
 
     def infer(self, observation):
         require_rgbd(observation)

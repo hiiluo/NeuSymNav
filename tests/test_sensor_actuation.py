@@ -123,6 +123,20 @@ def test_worker_fail_closed_and_consumes_source(monkeypatch,change,reason):
     assert not calls and w._navigation_state is None
 
 
+@pytest.mark.parametrize('failure,detail',[
+    ('expired','deadline_expired'),
+    ('zero','zero_motion_command'),
+])
+def test_worker_distinguishes_expired_deadline_from_zero_command(monkeypatch,failure,detail):
+    w,c,calls,clock,_=actuator(monkeypatch)
+    if failure=='expired':c=replace(c,deadline_monotonic_ns=c.issued_monotonic_ns)
+    else:c=replace(c,deadline_monotonic_ns=c.issued_monotonic_ns,linear_mps=0.,yaw_radps=0.)
+    result=execute(w,c)
+    assert result['reason']=='expired_or_zero'
+    assert result['failure_detail']==detail
+    assert not calls
+
+
 def test_pose_revision_map_revision_and_stale_capture_block(monkeypatch):
     for case in ['pose','map','stale']:
         w,c,calls,clock,state=actuator(monkeypatch)

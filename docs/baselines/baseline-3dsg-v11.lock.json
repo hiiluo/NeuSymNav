@@ -1,0 +1,427 @@
+{
+  "schema_version": 1,
+  "name": "baseline-3dsg-v11",
+  "created_utc": "2026-11-11T03:25:34Z",
+  "description": "3DSG stack used by live run tour-00806-600s-v11 (09/11/2026): Hydra core and room finder, SLM room labels, detector, sensor worker and the 00806 profile. Frozen on 11/11/2026 as the reference for ObjectNav A/B comparisons. Room segmentation is auxiliary; change these files only with a new lock name.",
+  "not_locked": [
+    "src/neusymnav/navigation/** (B0 and later phases change exploration, approach and STOP)",
+    "src/neusymnav/mapping/**",
+    "src/neusymnav/runtime/** except room_label_ui_entry.py",
+    "src/neusymnav/evaluation/** and tools/** (offline scoring)",
+    "configs other than the ones listed in the groups"
+  ],
+  "groups": {
+    "hydra": [
+      "src/neusymnav/backends/hydra/*.py",
+      "src/neusymnav/backends/hydra/child.sh",
+      "src/neusymnav/contracts/hydra_graph.py",
+      "src/neusymnav/contracts/hydra_evidence.py",
+      "tools/native/hydra_room_stability/room_finder.cpp",
+      "runs/hydra-objectnav/B1-stability-20261107/native/libhydra.so",
+      "runs/hydra-objectnav/B1-stability-20261107/config-root/stable/**/*.yaml",
+      ".runtime/hydra_ws/env.sh"
+    ],
+    "slm_room_labels": [
+      "src/neusymnav/rooms/*.py",
+      "src/neusymnav/contracts/room_semantics.py",
+      "src/neusymnav/contracts/room_label_publication.py",
+      "src/neusymnav/runtime/room_label_ui_entry.py",
+      "configs/room-label-slm.async-debug.local.json",
+      "configs/room-label-slm.experimental.json"
+    ],
+    "perception": [
+      "src/neusymnav/perception/detector.py",
+      "src/neusymnav/perception/detector_client.py",
+      "src/neusymnav/perception/detector_worker.py",
+      "src/neusymnav/perception/yoloe.py",
+      "src/neusymnav/perception/projector.py",
+      "configs/taxonomy-v1.json"
+    ],
+    "sensor": [
+      "src/neusymnav/sensors/habitat_worker.py"
+    ],
+    "profile": [
+      "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+      "runs/tours/00806-tour-r30.json"
+    ]
+  },
+  "entries": [
+    {
+      "group": "hydra",
+      "path": ".runtime/hydra_ws/env.sh",
+      "bytes": 1514,
+      "sha256": "a3db15c5defd22c99adf639c48e64dea67b2aca6982196f028e489488ed0bb72"
+    },
+    {
+      "group": "hydra",
+      "path": "runs/hydra-objectnav/B1-stability-20261107/config-root/stable/datasets/neusymnav.yaml",
+      "bytes": 2723,
+      "sha256": "45b2874ce46ff0f956cd0e4dc30899dcebd63b225ed914511fb9afbfc83e4a94"
+    },
+    {
+      "group": "hydra",
+      "path": "runs/hydra-objectnav/B1-stability-20261107/config-root/stable/label_spaces/neusymnav_label_space.yaml",
+      "bytes": 2572,
+      "sha256": "ff1eb56f2bd402839c835ac5e53fc7bbd09ff2d3fe142c618e3f596e668b0075"
+    },
+    {
+      "group": "hydra",
+      "path": "runs/hydra-objectnav/B1-stability-20261107/native/libhydra.so",
+      "bytes": 50216888,
+      "sha256": "9364ca487e8826112705d942ff01734cdbe3372fbdcc91c21c42a14a42fb7e4b"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/__init__.py",
+      "bytes": 73,
+      "sha256": "3bd1e4e315146b2dc7d6a55b292519f757fe9005910317bb5db7a1202b788bcd"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/child.sh",
+      "bytes": 135,
+      "sha256": "d296dbb270b89cebd13ec4c9bf6706a753bc4a93d9915e059981e03b3c5d2b50"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/entry.py",
+      "bytes": 351,
+      "sha256": "f098c84c377c232685012e46de9e4fcf0641ad30bee99185e20f676c1f24ade5"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/graph_adapter.py",
+      "bytes": 8608,
+      "sha256": "b91a82dc376385ce207c6063247dda7351ff66689d3b2d0624eb9fe511222675"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/input_adapter.py",
+      "bytes": 3739,
+      "sha256": "978ea1f6ac6c2640b0492e6bc99e41705ed25c88c1dc21460e73ab426703e95e"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/labels.py",
+      "bytes": 4998,
+      "sha256": "e6becab5dc8cfde6b83f9abdfb9e230b2fe410f9048b229456b0b4f587168c57"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/query.py",
+      "bytes": 13260,
+      "sha256": "b3a04ed69fc664244dab54c6a3e037f7178834bbff8005183116cfa6bcd82e22"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/room_stability.py",
+      "bytes": 11921,
+      "sha256": "448d0322dfef406682ccad96a297b841afc0ad40d4420c35bf7099684792b0e3"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/runtime.py",
+      "bytes": 10932,
+      "sha256": "92f2539ff889ff879c3aaad3c566f7374b26638df1af5c21d85cc46a1b480137"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/session.py",
+      "bytes": 36484,
+      "sha256": "8d15cfe70d87adcbbab0f3c5ff9d75d0fd717521c3dced79c7f64e6f92323da4"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/validation_entry.py",
+      "bytes": 2984,
+      "sha256": "b363802fa54b13c813a5d6f1963ec8e5c134429462157ee629fa5859bbb388ab"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/wire.py",
+      "bytes": 4390,
+      "sha256": "509976bb107ddd6386a09ae52995f00ad69744077977524a020c19a35841eedf"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/backends/hydra/worker.py",
+      "bytes": 14801,
+      "sha256": "b47fb56ed740c6f68368e901de71428184d23d85e9825c509bf2f6b477e040a5"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/contracts/hydra_evidence.py",
+      "bytes": 7982,
+      "sha256": "29ab51dfb8d020fdcccdd2ed2ef63d301a3760669543a24d20b11efe33b31f42"
+    },
+    {
+      "group": "hydra",
+      "path": "src/neusymnav/contracts/hydra_graph.py",
+      "bytes": 10849,
+      "sha256": "1f835bbb1973e841f8637317e9b33914baca1143ef7cf98abd504f1d007cb37f"
+    },
+    {
+      "group": "hydra",
+      "path": "tools/native/hydra_room_stability/room_finder.cpp",
+      "bytes": 18073,
+      "sha256": "1c0a7ac828a5681f7d32c77865b91c3c10168764160931f714147fded0f734fd"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "configs/room-label-slm.async-debug.local.json",
+      "bytes": 1214,
+      "sha256": "197f64f3e73889e2dc7f8a432b0ed82714bfcd27da2754f52d925df4d84d7e7f"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "configs/room-label-slm.experimental.json",
+      "bytes": 1169,
+      "sha256": "0a28fca0268a94742d144ef4283fd135f1100e62e3d8e9eb04ae6e81a7e6c33a"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/contracts/room_label_publication.py",
+      "bytes": 2159,
+      "sha256": "967507c4981661cb736c5aced8521e75d12df6fd6e6e38f0d7ab3597b3a3731b"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/contracts/room_semantics.py",
+      "bytes": 8080,
+      "sha256": "02e3111a03e28808e26f55e2c5b0f7f4d5d70eb423392491a6d5dbb98fcb6281"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/__init__.py",
+      "bytes": 76,
+      "sha256": "17a6f36bc5012205cd3b9aa03917b0c318cd769b73e678122c5c4c17a3d27bee"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/compact_policy.py",
+      "bytes": 9463,
+      "sha256": "e856199ce6e835132f92ae434a6b214fce9aaa8558e95bed277113b0d3ca48bb"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/context.py",
+      "bytes": 6507,
+      "sha256": "30aafec3d7a7ee200054dfaa77224c2d99a449d8d9bae286fd7c1cfe825c18fb"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/debug_context.py",
+      "bytes": 3276,
+      "sha256": "93f69ddc33f7eef2748d0efc769850a58fccb213e1e80170d816c870a82522f7"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/debug_runtime.py",
+      "bytes": 2188,
+      "sha256": "ce5bb372a953f31556b34ae9ffd3d416c5a6febe3382e91fc9d8e2461f9b9582"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/debug_types.py",
+      "bytes": 3831,
+      "sha256": "083f8d0ca07f0d20f9bd6a0cf4117b6111f31ee5f71a02740edf859929655870"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/evidence_quality.py",
+      "bytes": 1578,
+      "sha256": "1852635d738e76c02ed4c72793c999708bb6d055dd07ade41fd092a647e8c997"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/label_overlay.py",
+      "bytes": 1662,
+      "sha256": "2633dca997024eb1ad25aaaec51517242b382015c95420ea6d06a8069a793b35"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/labels.py",
+      "bytes": 4564,
+      "sha256": "b5622590ae65b0f684f422659d5ddc9cfd06785aa96d0c8f1226c49670ae1926"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/output_grammar.py",
+      "bytes": 6562,
+      "sha256": "62e2aa5eb08ad7dfb274177876fa3ee66446369e4c695e9d5e86aa04451c02b2"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/persistent_backend.py",
+      "bytes": 30303,
+      "sha256": "199a9b9bfbb77d848566a5707668acb0cacbf5fa0abfcc06dda3110653100cb6"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/prompt.py",
+      "bytes": 5727,
+      "sha256": "b349ebdd4dbc04228c14fee8768b95a353be1b76c86d5166ae146c47a88b293d"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/requests.py",
+      "bytes": 6754,
+      "sha256": "c569672ea7c24b60b8fad731941f596f74e4da2228e449943f19cd1475c860fe"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/service.py",
+      "bytes": 15471,
+      "sha256": "63bbfd675860ec3b53993e5436e312a03681870997131df5c8fd5cb5b4d5b366"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/rooms/slm_backend.py",
+      "bytes": 23338,
+      "sha256": "f0d7d27a924fefe21e869b16afebfe1ae7e3c8911153de725e66a87a3f9ac3f4"
+    },
+    {
+      "group": "slm_room_labels",
+      "path": "src/neusymnav/runtime/room_label_ui_entry.py",
+      "bytes": 4208,
+      "sha256": "7e9c48804036c4e0d927c589e4d0cb8b7d10accabeedea7e5d798495c0f33aa0"
+    },
+    {
+      "group": "perception",
+      "path": "configs/taxonomy-v1.json",
+      "bytes": 1484,
+      "sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    },
+    {
+      "group": "perception",
+      "path": "src/neusymnav/perception/detector.py",
+      "bytes": 497,
+      "sha256": "43f0b3d5bbb9781e43d68a0677005032bf4efe58c893ac4a624de6af093c43f6"
+    },
+    {
+      "group": "perception",
+      "path": "src/neusymnav/perception/detector_client.py",
+      "bytes": 22149,
+      "sha256": "1dbb1d928f7b4ef4b9a3550c2016d17b64143f4d2b08f1840c6e13ca9f8a367d"
+    },
+    {
+      "group": "perception",
+      "path": "src/neusymnav/perception/detector_worker.py",
+      "bytes": 7397,
+      "sha256": "67dc30d56192daf5b2ebd96605053a8cb5405b25ed2b7233bd3b55131ab8794f"
+    },
+    {
+      "group": "perception",
+      "path": "src/neusymnav/perception/projector.py",
+      "bytes": 6465,
+      "sha256": "eebed9c90c23fa5e615fd8470a0f456f9ef54fc863c5ee8104cdce58621b2d88"
+    },
+    {
+      "group": "perception",
+      "path": "src/neusymnav/perception/yoloe.py",
+      "bytes": 21514,
+      "sha256": "ade17d22accd2f6a53cf743e613c4f01ceaa0bc3f4f8c4d455d28e86d4e33f33"
+    },
+    {
+      "group": "sensor",
+      "path": "src/neusymnav/sensors/habitat_worker.py",
+      "bytes": 61396,
+      "sha256": "04c669c4fae7b5d89ed536fe1cd5ed983220eaaa54f2a3637d850697ad47b126"
+    },
+    {
+      "group": "profile",
+      "path": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+      "bytes": 11621,
+      "sha256": "6272d44f091ba555fb5028a86c6a5635ebc7a6b5210e409f5d4c830a817d5b9f"
+    },
+    {
+      "group": "profile",
+      "path": "runs/tours/00806-tour-r30.json",
+      "bytes": 11933,
+      "sha256": "240f64f75031208fc5a584d0db0f640fa850c8c7aa73ffed137016b84d5e1224"
+    }
+  ],
+  "pinned_assets": {
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/detector26/bin/python": {
+      "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/.venv/bin/python": {
+      "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/end2end-metadata.json": {
+      "sha256": "3a5395f117cd3d69b54b2a6ff87683c3b1ce39c83efc6318da8b406bf0d48dff",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/yoloe-26m-seg-e2e_openvino_model/yoloe-26m-seg.bin": {
+      "sha256": "03a705c35ba6c23515d0cbc7f448da339bd2bb35035b71d62917bc335c1c5a69",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/yoloe-26m-seg-e2e_openvino_model/yoloe-26m-seg.xml": {
+      "sha256": "b68fcd9c1537c0461bf8a7a49b47afb513bc2a400a925b43f3d941c45109169b",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/room-slm/llama.cpp/build/bin/llama-server": {
+      "sha256": "39810101b9c23983133c660f6ec1ca96188d989b1e87cba66026f813645939cb",
+      "pinned_by": [
+        "configs/room-label-slm.async-debug.local.json",
+        "configs/room-label-slm.experimental.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/room-slm/models/qwen3-1.7b-hf-70d244c/Qwen3-1.7B-Q4_K_M.gguf": {
+      "sha256": "9954a72ab369f967d40520ea5fd161485bf82593f9050ae8a93528e90aa4163f",
+      "pinned_by": [
+        "configs/room-label-slm.async-debug.local.json",
+        "configs/room-label-slm.experimental.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.venv/bin/python": {
+      "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/local-assets/models/mobileclip2_b.ts": {
+      "sha256": "35d7f213e4d75f38514e4656ad3cb91158bd33e3805d8ac349f23b186f66982f",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/local-assets/models/yoloe-26m-seg.pt": {
+      "sha256": "585f5ec9028fd358035da8d860c27c56be285a795cba2076fba536a4391c2c83",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/Rebuild_3DScene_OccuSG/artifacts/habitat_data/versioned_data/hm3d-0.2/hm3d/minival/00806-tQ5s4ShP627/tQ5s4ShP627.basis.glb": {
+      "sha256": "81c42f0e2d6a471643107682c3673588dd34c523891f1a341d62c0809542f532",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+        "runs/tours/00806-tour-r30.json"
+      ]
+    },
+    "/home/kiettran05/Desktop/test_Room_segmentation/Rebuild_3DScene_OccuSG/artifacts/habitat_data/versioned_data/hm3d-0.2/hm3d/minival/hm3d_minival_basis.scene_dataset_config.json": {
+      "sha256": "2dd70f8e78f06fbaabf47bacc2bd5d0a17c261f3aaafd8ab84dbe8577edb38ae",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    },
+    "/home/kiettran05/miniconda3/envs/habitat/bin/python": {
+      "sha256": "9f8a2e08aa3f40c26cb819b6fe43949cb93cb35a50db04a51350d0e0fea36d2a",
+      "pinned_by": [
+        "configs/demo-00806.hydra-tour-slm.experimental.local.json"
+      ]
+    }
+  }
+}

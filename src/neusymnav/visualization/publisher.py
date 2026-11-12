@@ -18,8 +18,10 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
-from ..contracts import FrameKey, HierarchySnapshot, NavSnapshot, ObjectSnapshot, age_ns
+from ..contracts import (FrameKey, HierarchySnapshot, NavSnapshot, ObjectSnapshot,
+                         RoomPipelinePublication, age_ns)
 from ..mapping.overview import MapOverview
+from ..backends.hydra.graph_adapter import HydraGraphProjection
 
 
 from .robot_overlay import RobotTrack
@@ -236,10 +238,16 @@ class DisplaySources:
     navigation: NavigationOverlay | None = None
     live_nav: NavSnapshot | None = None
     overview: MapOverview | None = None
+    room_pipeline: RoomPipelinePublication | None = None
+    hydra_graph: HydraGraphProjection | None = None
 
     def __post_init__(self) -> None:
         if self.overview is not None and not isinstance(self.overview, MapOverview):
             raise ValueError('typed accumulated map overview required')
+        if self.room_pipeline is not None and not isinstance(self.room_pipeline, RoomPipelinePublication):
+            raise ValueError('typed independent Rebuild room publication required')
+        if self.hydra_graph is not None and not isinstance(self.hydra_graph,HydraGraphProjection):
+            raise ValueError('typed native Hydra graph projection required')
         if self.nav is not None and not isinstance(self.nav, NavSnapshot):
             raise ValueError("nav source must be NavSnapshot or None")
         if self.live_nav is not None and not isinstance(self.live_nav, NavSnapshot):
@@ -331,6 +339,10 @@ class DisplayEnvelope:
             source = self.sources.overview.source_nav
             age_ns(source.capture_monotonic_ns, source.clock_domain,
                    self.published_monotonic_ns, self.clock_domain)
+        if self.sources.room_pipeline is not None:
+            room_map=self.sources.room_pipeline.latest_map
+            age_ns(room_map.capture_monotonic_ns,room_map.clock_domain,
+                   self.published_monotonic_ns,self.clock_domain)
         if self.sources.navigation is not None and self.sources.navigation.clock_domain!=self.clock_domain:
             raise ValueError('planner display clock mismatch')
         image_bytes = sum(
@@ -456,6 +468,56 @@ class DisplayPublisher:
 
     @staticmethod
     def _validate_sources(snapshot: HierarchySnapshot, metrics: DisplayMetrics, sources: DisplaySources) -> None:
+        if sources.hydra_graph is not None and sources.hydra_graph.episode_id!=snapshot.episode_id:
+            raise ValueError('Hydra graph projection belongs to a different episode')
+        source_region_nodes=[node for node in snapshot.nodes.values() if node.kind=='source_region']
+        source_memberships=[node for node in snapshot.nodes.values()
+                            if node.kind=='object' and node.attributes.get('rebuild_region_map_domain_id') is not None]
+        if (source_region_nodes or source_memberships) and sources.room_pipeline is None:
+            raise ValueError('Rebuild hierarchy nodes require their room-pipeline publication')
+        if sources.room_pipeline is not None:
+            publication=sources.room_pipeline
+            room_map=publication.latest_map
+            if publication.episode_id!=snapshot.episode_id or room_map.source.episode_id!=snapshot.episode_id:
+                raise ValueError('Rebuild room map belongs to a different episode')
+            if 'room_map' not in metrics.source_age_ns:
+                raise ValueError('Rebuild room map requires its own source age')
+            if publication.accepted_map_revision is not None and publication.accepted_map_revision>room_map.revision:
+                raise ValueError('accepted M5 map revision cannot be newer than latest M3')
+            expected_stale=publication.regions_stale or publication.replay_required
+            for node in source_region_nodes:
+                attrs=node.attributes
+                if (attrs.get('map_domain_id')!=publication.map_domain_id
+                        or attrs.get('source_map_revision')!=publication.accepted_map_revision
+                        or attrs.get('m5_revision')!=publication.m5_revision
+                        or bool(attrs.get('stale',True))!=expected_stale
+                        or publication.regions is None
+                        or attrs.get('raw_region_id') not in publication.regions.regions):
+                    raise ValueError('Rebuild source-region hierarchy binding mismatch')
+            for node in source_memberships:
+                attrs=node.attributes
+                if (attrs.get('rebuild_region_map_domain_id')!=publication.map_domain_id
+                        or attrs.get('rebuild_region_map_revision')!=publication.accepted_map_revision
+                        or attrs.get('rebuild_region_m5_revision')!=publication.m5_revision
+                        or bool(attrs.get('rebuild_region_stale',True))!=expected_stale):
+                    raise ValueError('Rebuild object-membership hierarchy binding mismatch')
+                status=attrs.get('rebuild_region_membership_status')
+                selected=attrs.get('rebuild_region_membership_id')
+                candidates=tuple(attrs.get('rebuild_region_membership_candidates',()))
+                if expected_stale and status!='unavailable':
+                    raise ValueError('stale Rebuild source cannot assign object membership')
+                if status=='assigned' and (publication.regions is None or selected not in publication.regions.regions):
+                    raise ValueError('Rebuild object membership references a missing source region')
+                if status=='ambiguous' and (publication.regions is None or not set(candidates)<=set(publication.regions.regions)):
+                    raise ValueError('Rebuild ambiguous membership references a missing source region')
+            for edge in snapshot.edges:
+                if edge.kind not in {'contains_source_region','source_region_adjacent_to','in_source_region'}:
+                    continue
+                provenance=edge.provenance
+                if (provenance.get('map_domain_id')!=publication.map_domain_id
+                        or provenance.get('source_map_revision')!=publication.accepted_map_revision
+                        or provenance.get('m5_revision')!=publication.m5_revision):
+                    raise ValueError('Rebuild hierarchy edge source binding mismatch')
         if sources.overview is not None:
             source = sources.overview.source_nav
             live = sources.live_nav

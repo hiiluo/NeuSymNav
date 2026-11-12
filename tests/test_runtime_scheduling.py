@@ -153,6 +153,159 @@ def test_control_progresses_while_detector_and_disk_blocked(tmp_path,monkeypatch
     release.set();assert p.close(2)['clean_shutdown']
 
 
+def test_nav_snapshot_is_published_before_optional_overview_refresh(tmp_path):
+    overview_started=threading.Event();release_overview=threading.Event()
+    room_input_calls=[]
+    class Mapper:
+        def update_for_control(self,obs):return nav_for(obs,obs.key.frame_index+1)
+        def update(self,obs):
+            nav=self.update_for_control(obs)
+            self.refresh_overview(nav)
+            return nav
+        def refresh_overview(self,nav):
+            overview_started.set()
+            assert release_overview.wait(2.)
+        def overview_tiles(self):return None
+        def room_input_tiles(self):room_input_calls.append(1);return None
+        def close(self,timeout_s=1.):return {'clean_shutdown':True}
+    class Guard:
+        def bind_nav(self,nav,**pose):self.nav=nav
+        def filter(self,decision,latest,now):
+            return MotionCommand(latest.key,self.nav.revision,now,now+10_000_000,
+                DOMAIN,.1,0.,'fixture',latest.capture_monotonic_ns)
+    class Navigator:
+        def step(self,nav,xy,yaw,now):
+            return NavigationDecision(None,((0.,0.),),.1,0.,nav.revision,'fixture')
+    class Actuator:
+        def robot_pose(self,obs):
+            return dict(source=obs.key,capture_monotonic_ns=obs.capture_monotonic_ns,
+                clock_domain=DOMAIN,pose_version=obs.pose_version,robot_xy=(0.,0.),yaw_rad=0.)
+        def execute(self,command):return dict(executed=True,reason=command.reason)
+    p,_,_=pipeline(tmp_path,mapper=Mapper(),navigator=Navigator(),guard=Guard())
+    try:
+        depth=source(0,modality='depth_only')
+        p.submit(depth)
+        assert overview_started.wait(1.)
+        assert p._latest_nav is not None and p._latest_nav.source==depth.key
+        assert p.control_step(Actuator())['executed']
+    finally:
+        release_overview.set()
+        report=p.close(3.)
+    assert report['clean_shutdown']
+    assert not room_input_calls
+
+
+def test_rebuild_room_lane_is_independent_and_bounded(tmp_path):
+    started=threading.Event();release=threading.Event();seen=[];main_thread=threading.get_ident()
+    class RoomSession:
+        def __init__(self):
+            self.run_dir=tmp_path/'fake-room-session';self.run_dir.mkdir()
+        @property
+        def health(self):
+            if threading.get_ident()==main_thread and started.is_set() and not release.is_set():
+                raise AssertionError('capture/telemetry path queried blocking room worker state')
+            return {'queue_bytes':0,'failed':False}
+        def submit(self,obs):
+            seen.append(obs.key.frame_index)
+            if len(seen)==1:started.set();release.wait(2)
+            return type('Admission',(),dict(accepted=True,reason='admitted',admission_id=str(obs.key.frame_index)))()
+        def wait_idle(self,timeout_s=.05):return True
+        def snapshot(self):return None
+        def close(self,timeout_s=1.):return {'clean_shutdown':True}
+    class Mapper:
+        def update(self,obs):return nav_for(obs,obs.key.frame_index+1)
+    class Guard:
+        def bind_nav(self,nav,**pose):self.nav=nav
+        def filter(self,decision,latest,now):return MotionCommand(latest.key,self.nav.revision,now,now+10_000_000,DOMAIN,.1,0.,'fixture',latest.capture_monotonic_ns)
+    class Navigator:
+        def step(self,nav,xy,yaw,now):return NavigationDecision(None,((0.,0.),),.1,0.,nav.revision,'fixture')
+    class Actuator:
+        def robot_pose(self,obs):return dict(source=obs.key,capture_monotonic_ns=obs.capture_monotonic_ns,clock_domain=DOMAIN,pose_version=obs.pose_version,robot_xy=(0.,0.),yaw_rad=0.)
+        def execute(self,command):return dict(executed=command.linear_mps!=0,reason=command.reason)
+    p,_,_=pipeline(tmp_path,room_pipeline_factory=RoomSession,mapper=Mapper(),
+                   navigator=Navigator(),guard=Guard())
+    try:
+        p.submit(source(0));assert started.wait(1)
+        durations=[]
+        for index in range(1,4):
+            start=time.monotonic();p.submit(source(index));durations.append(time.monotonic()-start)
+        telemetry=p.telemetry()['room_pipeline']
+        assert max(durations)<.05
+        assert telemetry['queued_frames']==2
+        assert telemetry['counts']['queue_dropped']==1
+        assert telemetry['counts']['rejected']==1
+        navigation=source(0,modality='depth_only');p.submit(navigation)
+        wait_for(lambda:p._latest_nav is not None and p._latest_nav.source==navigation.key)
+        assert p.control_step(Actuator())['executed']
+        assert not p.health.snapshot()['failed']
+    finally:
+        release.set()
+        report=p.close(3.)
+    assert report['clean_shutdown']
+    assert seen==[0,1,2]
+
+
+def test_rebuild_room_fps_cap_and_latest_pending_are_explicit_and_measured(tmp_path):
+    started=threading.Event();release=threading.Event();seen=[];clock=[1_000_000_000]
+    class RoomSession:
+        def __init__(self):
+            self.run_dir=tmp_path/'fps-room-session';self.run_dir.mkdir()
+        @property
+        def health(self):return {'queue_bytes':0,'failed':False}
+        def submit(self,obs):
+            seen.append(obs.key.frame_index)
+            if len(seen)==1:
+                started.set();assert release.wait(2)
+            return type('Admission',(),dict(accepted=True,reason='admitted',admission_id=str(obs.key.frame_index)))()
+        def wait_idle(self,timeout_s=.05):return True
+        def snapshot(self):return None
+        def close(self,timeout_s=1.):return {'clean_shutdown':True}
+
+    p,_,_=pipeline(tmp_path,room_pipeline_factory=RoomSession,clock=lambda:clock[0],
+                   room_fps_cap_hz=2.,room_queue_policy='latest_wins')
+    try:
+        p.submit(source(0,stamp=clock[0]));assert started.wait(1)
+        for index,offset_ms in ((1,100),(2,500),(3,600),(4,1000)):
+            clock[0]=1_000_000_000+offset_ms*1_000_000
+            p.submit(source(index,stamp=clock[0]))
+        telemetry=p.telemetry()['room_pipeline']
+        assert telemetry['queued_frames']==1
+        assert telemetry['counts']['candidates']==5
+        assert telemetry['counts']['fps_limited']==2
+        assert telemetry['counts']['offered']==3
+        assert telemetry['counts']['queue_replaced']==1
+        assert telemetry['counts']['queue_dropped']==1
+    finally:
+        release.set()
+        report=p.close(3.)
+    assert report['clean_shutdown']
+    assert seen==[0,4]
+    metrics=report['metrics']['room_pipeline']['latency_ms']
+    assert metrics['source_age_at_start']['samples']==2
+    assert metrics['queue_wait']['samples']==2
+    assert metrics['service']['samples']==2
+
+
+def test_room_worker_failure_does_not_fail_control_runtime(tmp_path):
+    class FailedRoom:
+        def __init__(self):
+            self.health={'queue_bytes':0,'failed':False}
+            self.run_dir=tmp_path/'failed-room-session';self.run_dir.mkdir()
+        def submit(self,obs):raise RuntimeError('injected room branch failure')
+        def wait_idle(self,timeout_s=.05):return True
+        def snapshot(self):return None
+        def close(self,timeout_s=1.):return {'clean_shutdown':True}
+    p,_,_=pipeline(tmp_path,room_pipeline_factory=FailedRoom)
+    p.submit(source())
+    deadline=time.monotonic()+2.
+    while p.telemetry()['room_pipeline']['failed'] is None and time.monotonic()<deadline:
+        time.sleep(.005)
+    assert p.telemetry()['room_pipeline']['failed']
+    assert not p.health.snapshot()['failed']
+    report=p.close(3.)
+    assert report['room_pipeline_failed'] and not report['clean_shutdown']
+
+
 def test_nonblocking_recorder_counts_inflight_bytes_and_incomplete_drops(tmp_path,monkeypatch):
     from neusymnav.runtime.workers import Journal
     started=threading.Event();release=threading.Event();original=Journal.accept

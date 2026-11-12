@@ -1,0 +1,23 @@
+{
+  "purpose": "Pin Hydra/TEASER++ build-time FetchContent sources not represented in the ROS vcs manifest.",
+  "repositories": {
+    "pmc": {
+      "url": "https://github.com/jingnanshi/pmc.git",
+      "commit": "a2dfd612a501bca83c47206255dbbff619481f97"
+    },
+    "tinyply": {
+      "url": "https://github.com/ddiakopoulos/tinyply.git",
+      "commit": "c9bb690dfe5e9105961e9e28120c48c9ae084bc6"
+    },
+    "spectra": {
+      "url": "https://github.com/jingnanshi/spectra.git",
+      "commit": "5c4fb1de050847988faaaaa50f60e7d3d5f16143",
+      "upstream_tag_or_pin": "5c4fb1de050847988faaaaa50f60e7d3d5f16143"
+    },
+    "nanoflann": {
+      "url": "https://github.com/jlblancoc/nanoflann.git",
+      "commit": "9a653cb243db6a09c94f833b28732b62f033e2b5",
+      "upstream_tag_or_pin": "v1.7.1"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "model_id": "Qwen/Qwen3-1.7B",
+  "model_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+  "model_path": "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/room-slm/models/qwen3-1.7b-hf-70d244c/Qwen3-1.7B-Q4_K_M.gguf",
+  "model_sha256": "9954a72ab369f967d40520ea5fd161485bf82593f9050ae8a93528e90aa4163f",
+  "model_license": "Apache-2.0",
+  "runtime_binary_path": "/home/kiettran05/Desktop/test_Room_segmentation/NeuSymNav/.runtime/worktrees/Kiet_branch2/.runtime/room-slm/llama.cpp/build/bin/llama-server",
+  "runtime_sha256": "39810101b9c23983133c660f6ec1ca96188d989b1e87cba66026f813645939cb",
+  "runtime_commit": "80d2c0c2c56e4a1bbf74be98f64b99927bf230bc",
+  "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+  "chat_template_sha256": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
+  "supports_non_thinking": true,
+  "supports_json_schema": true,
+  "threads": 1,
+  "context_tokens": 4096,
+  "max_input_tokens": 3072,
+  "max_output_tokens": 384,
+  "startup_timeout_s": 60.0,
+  "inference_timeout_s": 60.0
+}

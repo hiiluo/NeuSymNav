@@ -93,7 +93,7 @@ def test_original_native_failed_proofs_are_still_rejected():
             validate_actuation_source_proof(raw['proof'],command,raw['source'],modality='depth_only')
 
 
-@pytest.mark.parametrize('amount',[0.,-1.,float('nan'),float('inf'),4.,1e-100])
+@pytest.mark.parametrize('amount',[0.,-1.,float('nan'),float('inf'),16.,1e-100])
 def test_invalid_or_float32_underflow_amount_has_no_candidate(amount):
     state=BodyState([0,0,0]);instance=SimpleNamespace(agent=SimpleNamespace())
     attach_native_yaw(instance,state)

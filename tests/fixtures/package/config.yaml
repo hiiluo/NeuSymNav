@@ -18,6 +18,9 @@
       "sha256": "bada888ecc343ed647347fc29653c3ae5270700471ad0404d495e9c8ded7752e"
     }
   },
+  "budgets": {
+    "shutdown_timeout_s": 30.0
+  },
   "navigation": {
     "mapper": {
       "snapshot_radius_m": 1.0,

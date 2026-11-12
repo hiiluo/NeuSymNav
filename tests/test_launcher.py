@@ -63,6 +63,51 @@ def test_fixture_replay_commits_real_detection_and_resumes_same_ledger(tmp_path)
     assert again['replay_session']['session_id']==result['replay_session']['session_id']
 
 
+@pytest.mark.parametrize(('ui_clean','expected'),[(True,'completed'),(False,'incomplete')])
+def test_replay_wires_configured_ui_and_requires_its_final_render_ack(tmp_path,monkeypatch,ui_clean,expected):
+    import sys
+    from neusymnav.runtime import launcher,ui_transport
+    from neusymnav.runtime.configuration import file_sha256,load_config
+    from neusymnav.visualization.publisher import DisplayPublisher
+    script=Path(__file__).parents[1]/'src/neusymnav/runtime/ui_transport.py'
+    fixture=Path(__file__).parent/'fixtures/launcher'
+    data=json.loads((fixture/'config.yaml').read_text())
+    (tmp_path/'batches.json').write_bytes((fixture/'batches.json').read_bytes())
+    data['fixture']['detections']['path']='batches.json'
+    data['ui']={'enabled':True,'publish_hz':2}
+    data['workers']={'ui':{
+        'python':{'path':sys.executable,'sha256':file_sha256(sys.executable)},
+        'script':{'path':str(script),'sha256':file_sha256(script)}}}
+    path=tmp_path/'config.json';path.write_text(json.dumps(data))
+    loaded=load_config(path)
+    monkeypatch.setattr(launcher,'_checked',lambda _path:(loaded,{
+        'detections':tmp_path/'batches.json','ui':(Path(sys.executable),script)}))
+    started=[]
+    class FakeUi:
+        def __init__(self,root,*,python,script,clock_domain,command_handler,**kwargs):
+            started.append((root,clock_domain,kwargs));self.publisher=DisplayPublisher(clock_domain=clock_domain)
+        def publish(self,snapshot,metrics):self.publisher.publish(snapshot,metrics)
+        def close(self,timeout_s):return {'clean_shutdown':ui_clean,'final_publication_rendered':ui_clean}
+    monkeypatch.setattr(ui_transport,'UiProcess',FakeUi)
+
+    result=launcher.replay(fixture/'recording',path,out=tmp_path/'replay')
+
+    assert result['outcome']==expected,result
+    assert result['ui_cleanup']['clean_shutdown'] is ui_clean
+    assert len(started)==1 and started[0][2]['publish_hz']==2
+
+
+def test_hydra_graph_replay_omits_nav_mapper_without_recorded_pose(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    from neusymnav.runtime import launcher
+    config=SimpleNamespace(data={'scene_graph':{'backend':'hydra'}})
+    sentinel=object()
+    monkeypatch.setattr(launcher,'_mapper',lambda *_args,**_kwargs:sentinel)
+
+    assert launcher._runtime_mapper(config,tmp_path,'replay:recorded') is None
+    assert launcher._runtime_mapper(config,tmp_path,'host:live') is sentinel
+
+
 def test_config_preserves_venv_interpreter_spelling(tmp_path):
     import sys
     from neusymnav.runtime.configuration import load_config,file_sha256
@@ -292,6 +337,31 @@ def test_appearance_profile_keeps_detector_and_encoder_worker_paths_distinct(tmp
     finally:pipeline.close(2)
 
 
+def test_pipeline_warms_cpu_raycast_before_runtime_workers_start(tmp_path,monkeypatch):
+    from neusymnav.runtime import launcher
+    from neusymnav.runtime.configuration import load_config
+    events=[]
+    class Mapper:
+        def close(self,timeout_s=1.):events.append('mapper_close');return dict(clean_shutdown=True)
+    def make_mapper(*args,**kwargs):events.append('mapper_construct');return Mapper()
+    def warmup():events.append('raycast_warmup');return True
+    monkeypatch.setattr(launcher,'_mapper',make_mapper)
+    monkeypatch.setattr(launcher,'warmup_raycast_kernel',warmup,raising=False)
+    class Recorded:
+        vocabulary_id='fixture-vocabulary'
+    cfg=load_config(config(tmp_path))
+    pipeline=launcher._pipeline_impl(cfg,{},tmp_path/'out','replay:startup-test',
+        lambda:1_000_000_000,recorded=Recorded())
+    try:
+        assert events[:2]==['mapper_construct','raycast_warmup']
+        startup=pipeline._launcher_worker_metadata['navigation_mapper_startup']
+        assert startup['raycast_backend']=='cpu'
+        assert startup['numba_warmed'] is True
+        assert type(startup['warmup_duration_ns']) is int and startup['warmup_duration_ns']>=0
+    finally:
+        pipeline.close(2.)
+
+
 def test_final_export_rejects_ui_retained_nav_mismatching_runtime_hierarchy(tmp_path):
     from test_runtime_scheduling import pipeline,source,nav_for,wait_for,DOMAIN
     from neusymnav.runtime.launcher import _export
@@ -326,6 +396,44 @@ def test_final_export_rejects_ui_retained_nav_mismatching_runtime_hierarchy(tmp_
     assert 'mismatch' in result['export_issue']
     assert not (tmp_path/'hierarchy.json').exists()
     assert not (tmp_path/'nav.json').exists()
+
+
+def test_hydra_native_export_is_promoted_without_claiming_legacy_bundle_complete(tmp_path):
+    from types import SimpleNamespace
+    from neusymnav.runtime.launcher import _export
+
+    native=tmp_path/'hydra'/'native-output';native.mkdir(parents=True)
+    graph=native/'hydra-graph.sparkdsg';graph.write_bytes(b'verified native graph')
+    journal=tmp_path/'hydra'/'journal.jsonl';journal.parent.mkdir(exist_ok=True);journal.write_bytes(b'accepted inputs\n')
+    selected=[dict(graph_revision=1,input_prefix_sha256='c'*64,payload_sha256='d'*64,
+                   payload_bytes=5,source=dict(episode_id='episode',sensor_id='rgbd',frame_index=4))]
+    manifest=dict(schema_version=1,episode_id='episode',run_id='run-1',complete=True,
+        failure_reason=None,graph_path=str(graph),graph_sha256=hashlib.sha256(graph.read_bytes()).hexdigest(),
+        graph_bytes=graph.stat().st_size,graph_revision=1,input_prefix_sha256='c'*64,
+        journal_path=str(journal),journal_sha256=hashlib.sha256(journal.read_bytes()).hexdigest(),
+        selected_inputs=selected)
+    manifest_path=native/'hydra-export-manifest.json'
+    manifest_bytes=(json.dumps(manifest,sort_keys=True,separators=(',',':'))+'\n').encode()
+    manifest_path.write_bytes(manifest_bytes)
+    class Quota:
+        def reserve(self,*args,**kwargs):pass
+        def release(self,*args,**kwargs):pass
+    pipeline=SimpleNamespace(clock_domain='host_monotonic:test',scene_graph_backend='hydra',snapshot_bundle=lambda:(None,None),
+        room_pipeline_snapshot=lambda:None,_control_invocations=None,_final_measurements=None,quota=Quota())
+    close_report=dict(clean_shutdown=True,actual_profile='hydra',metrics=dict(hydra=dict(native_export=dict(
+        complete=True,manifest_path=str(manifest_path),
+        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),graph_asset_verified=True))))
+
+    result=_export(tmp_path,pipeline,close_report,dict(outcome='completed',mode='live'))
+
+    assert result['native_graph_export']['available'] is True
+    assert result['native_graph_export']['complete'] is True
+    assert result['native_graph_export']['manifest_path']=='hydra-export-manifest.json'
+    assert (tmp_path/'hydra-export-manifest.json').read_bytes()==manifest_bytes
+    assert result['hierarchy_available'] is False
+    assert result['legacy_bundle']==dict(expected=False,available=False)
+    assert result['export_issue'] is None
+    assert result['outcome']=='completed'
 
 
 

@@ -6,6 +6,7 @@ A failed try-record must not change admission, TTL or motion safety decisions.
 """
 from dataclasses import asdict, dataclass
 import math
+import json
 import re
 from threading import Lock
 
@@ -20,6 +21,20 @@ CONTEXT_CHARGE = 32_768
 DISTRIBUTION_SAMPLE_CHARGE = 64
 MAX_TRACE_BYTES = 512 * 1024 * 1024
 MAX_INTEGER = (1 << 63) - 1
+TIMING_STAGES = frozenset({
+    'sensor_primary_roundtrip', 'sensor_navigation_roundtrip',
+    'sensor_primary_decode', 'sensor_navigation_decode',
+    'sensor_worker_dispatch', 'sensor_worker_handler', 'sensor_draw_observations',
+    'sensor_readback_observations', 'sensor_packet_normalize_encode',
+    'actuation_roundtrip', 'simulator_step', 'simulator_action', 'simulator_physics_step',
+    'navmap_update', 'navmap_publish', 'navmap_overview_refresh', 'navmap_room_input',
+    'navmap_prepare', 'navmap_integrate_raycast', 'navmap_core_integrate',
+    'navmap_projection', 'navmap_raycast', 'navmap_vote_integration', 'navmap_retention',
+    'navmap_core_snapshot_publish',
+    'navmap_fresh_coverage', 'navmap_snapshot', 'navmap_overview_snapshot',
+    'navmap_tile_overview', 'control_navigation_wait', 'control_loop',
+    'local_depth_map', 'local_path_follow', 'local_motion_guard', 'world_navigation_intent',
+})
 
 
 def _integer(value, name, maximum=MAX_INTEGER, minimum=0):
@@ -42,6 +57,90 @@ def _hash(value, name):
     if type(value) is not str or re.fullmatch('[0-9a-f]{64}', value) is None:
         raise ValueError(f'{name} must be lowercase SHA-256')
     return value
+
+
+def _navigation_diagnostics(value):
+    keys={'goal_id','goal_xy','path_point_count','path_sample_xy','path_sample_truncated',
+          'lookahead_xy','heading_error_rad','decision_reason'}
+    if type(value) is not dict or set(value) not in (keys, keys|{'control_map_scope','world_intent'}):
+        raise ValueError('navigation diagnostics fields mismatch')
+    local='control_map_scope' in value
+    world=None
+    if local:
+        if type(value['control_map_scope']) is not str or value['control_map_scope']!='local_measured_depth_v1':
+            raise ValueError('unsupported control map scope')
+        raw=value['world_intent']
+        if raw is not None:
+            fields={'source','capture_monotonic_ns','clock_domain','map_revision',
+                    'created_monotonic_ns','valid_until_monotonic_ns'}
+            if type(raw) is not dict or set(raw)!=fields:
+                raise ValueError('world intent fields mismatch')
+            key=raw['source']
+            if type(key) is not dict or set(key)!={'episode_id','sensor_id','frame_index'}:
+                raise ValueError('world intent source mismatch')
+            _text(key['episode_id'],'intent episode');_text(key['sensor_id'],'intent sensor')
+            _integer(key['frame_index'],'intent frame')
+            _text(raw['clock_domain'],'intent clock')
+            for name in fields-{'source','clock_domain'}:_integer(raw[name],name)
+            if not (raw['capture_monotonic_ns']<=raw['created_monotonic_ns']<=raw['valid_until_monotonic_ns']
+                    <=raw['capture_monotonic_ns']+2_000_000_000):
+                raise ValueError('world intent time bounds mismatch')
+            world=dict(raw,source=dict(key))
+    goal_id=value['goal_id']
+    if goal_id is not None:_text(goal_id,'goal_id')
+    decision_reason=value['decision_reason'];_text(decision_reason,'decision_reason')
+    def point(raw,name):
+        if raw is None:return None
+        if type(raw) not in (list,tuple) or len(raw)!=2:
+            raise ValueError(name+' must be an XY pair or null')
+        result=[]
+        for item in raw:
+            if type(item) not in (int,float) or not math.isfinite(item) or abs(item)>1_000_000:
+                raise ValueError(name+' must contain bounded finite values')
+            result.append(float(item))
+        return result
+    count=value['path_point_count'];_integer(count,'path_point_count',1_000_000)
+    samples=value['path_sample_xy']
+    if type(samples) is not list or len(samples)>64 or len(samples)>count:
+        raise ValueError('path sample must contain at most 64 points within the full path')
+    points=[point(item,'path_sample_xy') for item in samples]
+    truncated=value['path_sample_truncated']
+    if type(truncated) is not bool or truncated!=(count>len(points)):
+        raise ValueError('path truncation flag must match sampled path size')
+    heading=value['heading_error_rad']
+    if heading is not None and (type(heading) not in (int,float) or not math.isfinite(heading)
+                                or abs(heading)>math.pi+1e-6):
+        raise ValueError('heading_error_rad must be a wrapped finite angle or null')
+    result=dict(schema_version=2 if local else 1,goal_id=goal_id,goal_xy=point(value['goal_xy'],'goal_xy'),
+        path_point_count=count,path_sample_xy=points,path_sample_truncated=truncated,
+        lookahead_xy=point(value['lookahead_xy'],'lookahead_xy'),
+        heading_error_rad=None if heading is None else float(heading),
+        decision_reason=decision_reason)
+    if local:
+        if world is None and (goal_id is not None or count!=0):
+            raise ValueError('null intent requires stopped path')
+        result.update(control_map_scope='local_measured_depth_v1',world_intent=world)
+    return result
+
+
+def _navigation_binding(navigation,source,now_ns,context,captures,diagnostics):
+    # Bind separate planning provenance without treating it as motion proof.
+    if navigation is None or navigation['schema_version']!=2:return
+    world=navigation['world_intent']
+    if world is None:
+        if diagnostics is not None and any(diagnostics[name] not in (None,0,0.) for name in
+                ('decision_linear_mps','decision_yaw_radps','command_linear_mps','command_yaw_radps')):
+            raise ValueError('null world intent cannot command motion')
+        return
+    key=FrameKey(**world['source'])
+    registered=captures(key)
+    if (source is None or key.episode_id!=context.episode_id or key.sensor_id not in context.sensor_ids
+            or world['clock_domain']!=context.clock_domain or registered is None
+            or registered.capture_monotonic_ns!=world['capture_monotonic_ns']
+            or registered.clock_domain!=world['clock_domain']
+            or world['capture_monotonic_ns']>source.capture_monotonic_ns
+            or world['created_monotonic_ns']>now_ns):
+        raise ValueError('world intent execution/source binding mismatch')
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,7 +339,7 @@ class BoundedMeasurements:
         if (len(self._trace)+1)*TRACE_RECORD_CHARGE > self.trace_byte_cap:
             self._bump_attr('_trace_dropped')
             return False
-        # dataclass-to-dict has a fixed number of bounded scalar fields, no arrays.
+        # Navigation records may carry at most 64 bounded XY path samples.
         self._trace.append(dict(event=event, source=asdict(source) if source is not None else None, **fields))
         return True
 
@@ -295,7 +394,8 @@ class BoundedMeasurements:
             return retained and traced
         return self._try(record)
 
-    def try_record_control(self, source, *, now_ns, clock_domain, reason, map_revision):
+    def try_record_control(self, source, *, now_ns, clock_domain, reason, map_revision,
+                           diagnostics=None,navigation_diagnostics=None):
         def record():
             owned = None if source is None else self._source(source)[0]
             _integer(now_ns, 'now_ns')
@@ -309,14 +409,49 @@ class BoundedMeasurements:
                 raise ValueError('control clock cannot go backward')
             if reason not in self._reasons and len(self._reasons) >= 128:
                 raise ValueError('reason vocabulary overflow')
+            if diagnostics is not None:
+                keys={'decision_reason','decision_linear_mps','decision_yaw_radps',
+                      'command_reason','command_linear_mps','command_yaw_radps',
+                      'command_issued_monotonic_ns','command_deadline_monotonic_ns',
+                      'failure_detail'}
+                if type(diagnostics) is not dict or set(diagnostics)!=keys:
+                    raise ValueError('control diagnostics fields mismatch')
+                for name in ('decision_reason','command_reason'):
+                    value=diagnostics[name]
+                    if value is not None:_text(value,name)
+                for name in ('decision_linear_mps','decision_yaw_radps','command_linear_mps','command_yaw_radps'):
+                    value=diagnostics[name]
+                    if value is not None and (type(value) not in (int,float) or not math.isfinite(value) or abs(value)>1e3):
+                        raise ValueError(name+' must be a bounded finite number or null')
+                for name in ('command_issued_monotonic_ns','command_deadline_monotonic_ns'):
+                    value=diagnostics[name]
+                    if value is not None:_integer(value,name)
+                detail=diagnostics['failure_detail']
+                if detail is not None and detail not in ('deadline_expired','zero_motion_command'):
+                    raise ValueError('unknown actuator failure detail')
+            navigation=None if navigation_diagnostics is None else _navigation_diagnostics(navigation_diagnostics)
+            if navigation is not None and navigation['schema_version']==2:
+                # Only v2 records need the extra quota check; legacy closed shape
+                # is already conservatively bounded by TRACE_RECORD_CHARGE.
+                _navigation_binding(navigation,owned,now_ns,self.context,
+                    lambda key: self._captures[key][0] if key in self._captures else None,diagnostics)
+                candidate=dict(event='control',source=None if owned is None else asdict(owned),
+                    now_ns=now_ns,reason=reason,map_revision=map_revision,
+                    depth_age_ns=None if owned is None else now_ns-owned.capture_monotonic_ns,
+                    navigation=navigation)
+                if diagnostics is not None:candidate['diagnostics']=dict(diagnostics)
+                if len(json.dumps(candidate,ensure_ascii=True,allow_nan=False).encode())>TRACE_RECORD_CHARGE:
+                    raise ValueError('v2 control record exceeds charged byte quota')
             self._bump(self._reasons, reason)
             self._last_control_ns = now_ns
             age = None if owned is None else now_ns-owned.capture_monotonic_ns
             retained = True
             if age is not None:
                 retained = self._distributions['control_depth_age_ns'].record(age)
-            traced = self._trace_record('control', owned, now_ns=now_ns, reason=reason,
-                                        map_revision=map_revision, depth_age_ns=age)
+            fields=dict(now_ns=now_ns,reason=reason,map_revision=map_revision,depth_age_ns=age)
+            if diagnostics is not None:fields['diagnostics']=dict(diagnostics)
+            if navigation is not None:fields['navigation']=navigation
+            traced = self._trace_record('control', owned, **fields)
             return retained and traced
         return self._try(record)
 
@@ -327,6 +462,22 @@ class BoundedMeasurements:
                 raise ValueError('unknown admission outcome')
             self._bump(self._admissions, outcome)
             return self._trace_record('admission', owned, outcome=outcome)
+        return self._try(record)
+
+    def try_record_stage(self, source, *, stage, start_ns, end_ns, clock_domain):
+        """Record one source-bound monotonic stage interval as diagnostics only."""
+        def record():
+            owned = self._source(source)[0]
+            if type(stage) is not str or stage not in TIMING_STAGES:
+                raise ValueError('unknown timing stage')
+            _integer(start_ns, 'start_ns')
+            _integer(end_ns, 'end_ns')
+            if end_ns < start_ns:
+                raise ValueError('timing stage end precedes start')
+            if type(clock_domain) is not str or clock_domain != owned.clock_domain:
+                raise ValueError('timing stage clock mismatch')
+            return self._trace_record('stage', owned, stage=stage, start_ns=start_ns,
+                                      end_ns=end_ns, duration_ns=end_ns-start_ns)
         return self._try(record)
 
     def stop(self):

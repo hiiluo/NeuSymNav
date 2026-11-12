@@ -16,6 +16,41 @@ import sys
 import time
 
 
+def _initialize_detector(recipe, taxonomy, detector_factory):
+    def create(backend, device):
+        return detector_factory(recipe['checkpoint_path'],recipe['encoder_path'],taxonomy,
+            checkpoint_license=recipe['checkpoint_license'],imgsz=recipe['imgsz'],
+            max_detections=recipe['max_detections'],confidence_threshold=recipe['confidence_threshold'],
+            device=device,backend=backend,
+            openvino_model_path=recipe['openvino_model_path'] if backend=='openvino_gpu' else None,
+            openvino_model_sha256=recipe['openvino_model_sha256'] if backend=='openvino_gpu' else None,
+            openvino_bin_path=recipe['openvino_bin_path'] if backend=='openvino_gpu' else None,
+            openvino_bin_sha256=recipe['openvino_bin_sha256'] if backend=='openvino_gpu' else None)
+
+    requested=recipe['backend']
+    warmup_ms=0.0
+    fallback_reason=''
+    try:
+        detector=create(requested,recipe['device'])
+        detector._load()
+        if requested=='openvino_gpu':
+            warmup_ms=detector.warmup()/1_000_000.
+    except Exception as exc:
+        if requested!='openvino_gpu' or recipe['fallback_policy']!='torch_cpu':
+            raise
+        fallback_reason=(type(exc).__name__+': '+str(exc))[:500]
+        print('OPENVINO_GPU_INIT_FAILED; using configured Torch CPU fallback: '+fallback_reason,
+              file=sys.stderr,flush=True)
+        detector=create('torch','cpu')
+        detector._load()
+    runtime=dict(backend_requested=requested,backend_active=detector.backend,
+                 fallback_reason=fallback_reason,warmup_ms=f'{warmup_ms:.3f}')
+    if requested=='openvino_gpu':
+        try:runtime['openvino']=importlib.metadata.version('openvino')
+        except importlib.metadata.PackageNotFoundError:runtime['openvino']='unavailable'
+    return detector,runtime
+
+
 def _read(stream, count):
     result = bytearray()
     while len(result) < count:
@@ -63,11 +98,7 @@ def main():
                 recipe = validate_recipe(request['recipe'])
                 taxonomy = Taxonomy.load(recipe['taxonomy_path'])
                 with contextlib.redirect_stdout(sys.stderr):
-                    detector = YOLOEDetector(recipe['checkpoint_path'], recipe['encoder_path'], taxonomy,
-                        checkpoint_license=recipe['checkpoint_license'], imgsz=recipe['imgsz'],
-                        max_detections=recipe['max_detections'], confidence_threshold=recipe['confidence_threshold'],
-                        device=recipe['device'])
-                    detector._load()
+                    detector,backend_runtime=_initialize_detector(recipe,taxonomy,YOLOEDetector)
                 runtime = dict(python=platform.python_version(), numpy=importlib.metadata.version('numpy'),
                                torch=importlib.metadata.version('torch'),
                                ultralytics=importlib.metadata.version('ultralytics'))
@@ -78,6 +109,7 @@ def main():
                     clip_files.append(Path(api.__file__))
                 clip_digest = hashlib.sha256(b''.join(p.read_bytes() for p in clip_files)).hexdigest()
                 runtime['clip'] = str(getattr(clip, '__version__', 'unversioned-local')) + ':sha256:' + clip_digest
+                if recipe['backend']=='openvino_gpu':runtime.update(backend_runtime)
                 digest = hashlib.sha256(json.dumps(recipe, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
                 send(dict(ok=True, wire_version=1, recipe_sha256=digest, runtime=runtime))
             elif request.get('op') == 'infer' and detector is not None:

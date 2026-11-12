@@ -33,7 +33,7 @@ workers:
     python: null
     script:
       path: ../src/neusymnav/runtime/ui_transport.py
-      sha256: 2e6cec8af62f2ae4117d1a8788dd9352115ce8359cad93d65655bc9e2ed28efa
+      sha256: d095f3aa309ef4d87a4b7f5c5309ea3835ea62850a6d0027ff6c1c4f81a00781
   appearance:
     python: null
     script:

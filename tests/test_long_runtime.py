@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 import json
 import sys
+import time
 
 import numpy as np
 import pytest
@@ -86,6 +87,25 @@ def test_control_invocation_trace_retains_actual_starts_and_reports_overflow():
     assert result['total']==4 and result['dropped']==1 and not result['complete']
     assert result['intervals']['count']==3
     assert result['intervals']['miss_50ms']==3 and result['intervals']['miss_100ms']==2
+
+
+def test_run_deadline_skips_unready_final_navigation_without_calling_control():
+    trace=launcher._ControlInvocations(4)
+    source=SimpleNamespace(key=SimpleNamespace(episode_id='episode',sensor_id='navigation',frame_index=17),
+        capture_monotonic_ns=10_000_000,clock_domain='host_monotonic:test')
+    calls=[]
+    pipeline=SimpleNamespace(_control_invocations=trace,
+        control_step=lambda actuator:calls.append(actuator) or dict(executed=False,reason='navigation_source_pending'))
+
+    invoked=launcher._invoke_control_before_run_deadline(
+        pipeline,'actuator',source,navigation_ready=False,run_deadline=time.monotonic()-1.)
+
+    assert invoked is False
+    assert calls==[]
+    result=trace.snapshot(source.clock_domain)
+    assert result['total']==0 and result['result_total']==0
+    assert result['run_deadline_skips']==dict(total=1,navigation_ready=0,navigation_pending=1,
+        last_source=dict(episode_id='episode',sensor_id='navigation',frame_index=17))
 
 
 def test_navigation_transaction_rejects_old_primary_and_keeps_pose_pinned(tmp_path):
@@ -192,7 +212,13 @@ def test_live_multirate_records_every_capture_and_never_reuses_primary(tmp_path,
     assert [r['source_capture_monotonic_ns'] for r in reader.manifest['records']]==[o.capture_monotonic_ns for o in captures]
     trace=json.loads((tmp_path/'run/control-invocations.json').read_text())
     assert trace['complete'] and trace['total']>=len(commands)
-    assert trace['total']==len(navigation)-2  # two startup sources have no control invocation
+    skipped=trace['run_deadline_skips']
+    assert trace['total']+skipped['total']==len(navigation)-2
+    assert skipped['total'] in (0,1)  # final capture may finish at the run deadline
+    if skipped['total']:
+        assert skipped['last_source']==dict(episode_id=navigation[-1].key.episode_id,
+            sensor_id=navigation[-1].key.sensor_id,frame_index=navigation[-1].key.frame_index)
+    # The two startup captures never invoke control; a terminal skip is explicit.
     assert len(set(trace['starts_monotonic_ns']))==trace['total']
     assert result['control_invocations_artifact']['complete']
 

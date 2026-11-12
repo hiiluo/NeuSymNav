@@ -1,0 +1,324 @@
+{
+  "appearance_mode": "off",
+  "budgets": {
+    "archive_cap": 12884901888,
+    "byte_cap": 33554432,
+    "raw_cap": 25769803776,
+    "shutdown_timeout_s": 30.0,
+    "total_cap": 34359738368
+  },
+  "detector": {
+    "backend": "openvino_gpu",
+    "checkpoint": {
+      "path": "@NSN_HOME@/local-assets/models/yoloe-26m-seg.pt",
+      "sha256": "585f5ec9028fd358035da8d860c27c56be285a795cba2076fba536a4391c2c83"
+    },
+    "checkpoint_license": "AGPL-3.0",
+    "confidence_threshold": 0.25,
+    "device": "intel:gpu",
+    "encoder": {
+      "path": "@NSN_HOME@/local-assets/models/mobileclip2_b.ts",
+      "sha256": "35d7f213e4d75f38514e4656ad3cb91158bd33e3805d8ac349f23b186f66982f"
+    },
+    "fallback_policy": "torch_cpu",
+    "imgsz": 640,
+    "max_detections": 30,
+    "openvino_bin": {
+      "path": "@REPO@/.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/yoloe-26m-seg-e2e_openvino_model/yoloe-26m-seg.bin",
+      "sha256": "03a705c35ba6c23515d0cbc7f448da339bd2bb35035b71d62917bc335c1c5a69"
+    },
+    "openvino_metadata": {
+      "path": "@REPO@/.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/end2end-metadata.json",
+      "sha256": "3a5395f117cd3d69b54b2a6ff87683c3b1ce39c83efc6318da8b406bf0d48dff"
+    },
+    "openvino_model": {
+      "path": "@REPO@/.runtime/hydra_ws/artifacts/hydra-cpu-resolution-ab-00805-20261104/openvino-model/yoloe-26m-seg-e2e_openvino_model/yoloe-26m-seg.xml",
+      "sha256": "b68fcd9c1537c0461bf8a7a49b47afb513bc2a400a925b43f3d941c45109169b"
+    },
+    "taxonomy": {
+      "path": "@REPO@/configs/taxonomy-v1.json",
+      "sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    }
+  },
+  "episode": {
+    "floor_id": "floor-0",
+    "id": "local-intel-00806",
+    "primary_sensor_id": "primary-rgbd"
+  },
+  "floor": {
+    "calibration_sha256": "57cbccf3984ca672e6952346976167e13273f72977ecb214205fc8aa0ca328ac",
+    "datum_source": "measured-downward-depth-v1:@NSN_HOME@/.runtime/map-selection-20261030/00806-calibration.json",
+    "z_m": 0.01200807094574019
+  },
+  "keyframe_sampling": "capacity_deferred",
+  "long_demo": {
+    "max_duration_s": 600,
+    "payload_format": "npz_v2"
+  },
+  "measurements": {
+    "capture_cap": 65536,
+    "enabled": true,
+    "gpu_cap_bytes": 5368709120,
+    "proof_record_cap": 20000,
+    "rss_cap_bytes": 10737418240,
+    "rss_retry_wait_s": 0.2,
+    "rss_sample_timeout_s": 1.0,
+    "sample_cap": 65536,
+    "trace_byte_cap": 536870912
+  },
+  "mode": "live",
+  "navigation": {
+    "mapper": {
+      "local_retention_s": 10,
+      "raycast_backend": "cpu",
+      "raycast_workers": 4,
+      "resolution_m": 0.05,
+      "sampling_stride": 1,
+      "snapshot_radius_m": 2,
+      "overview_refresh_s": 2.0
+    },
+    "robot": {
+      "geometry_id": "cylinder-v1",
+      "height_m": 1.5,
+      "margin_m": 0.05,
+      "near_ground_tolerance_m": 0.05,
+      "radius_m": 0.2
+    },
+    "controller": {
+      "local_depth_control": true,
+      "world_goal_max_age_ms": 1500,
+      "world_intent_ttl_ms": 4000,
+      "pulse_ms": 300,
+      "rotation_pulse_ms": 500,
+      "start_unknown_tolerance": 0.2
+    },
+    "tour": {
+      "path": "@REPO@/runs/tours/00806-tour-r30.json",
+      "sha256": "240f64f75031208fc5a584d0db0f640fa850c8c7aa73ffed137016b84d5e1224",
+      "scan_degrees": 360,
+      "scan_step_degrees": 90,
+      "scan_min_separation_m": 2.5,
+      "scan_step_timeout_s": 8
+    }
+  },
+  "profile": "baseline",
+  "replay": {
+    "allow_incomplete": false
+  },
+  "runtime": {
+    "control_sample_cap": 20000,
+    "navigation_hz": 10,
+    "primary_hz": 1.0,
+    "defer_capture_gc": false,
+    "world_navigation_hz": 1.0,
+    "process_priority": {
+      "hydra": 2,
+      "detector": 5,
+      "ui": 8
+    },
+    "gil_switch_interval_ms": 1
+  },
+  "scene_graph": {
+    "backend": "hydra",
+    "hydra": {
+      "calibration": {
+        "K": [
+          [
+            319.99996185302734,
+            0.0,
+            319.5
+          ],
+          [
+            0.0,
+            319.9999809265137,
+            239.5
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "body_T_camera": [
+          [
+            1.0,
+            0.0,
+            -3.7240738330168625e-17,
+            4.440892098500626e-16
+          ],
+          [
+            1.8270412901089202e-17,
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0,
+            1.2000000476837158
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "calibration_id": "habitat:b47b59b1bb57db13cf0639e0a703fbde644c729a8ca73ac122e7c72520c3a9a5",
+        "camera_convention": "optical_x_right_y_down_z_forward_v1",
+        "camera_name": "primary_rgbd",
+        "coordinate_convention": "canonical_z_up_v1",
+        "depth_convention": "metric_axial_v1",
+        "pose_version": 1,
+        "provenance": "Habitat-Sim 0.3.3 actual render projection and measured agent/sensor state at scene 00806; body_T_camera derived from canonical transform composition; new_y_up_v1 -> canonical_z_up_v1; habitat_gl_v1 -> optical basis; geometry-only fixed-pose diagnostic capture; no semantic sensor or GT",
+        "sensor_id": "primary-rgbd",
+        "version": "00806-primary-rgbd-calibration-v1"
+      },
+      "config_root": "@REPO@/runs/hydra-objectnav/B1-stability-20261107/config-root/stable",
+      "dataset_sha256": "45b2874ce46ff0f956cd0e4dc30899dcebd63b225ed914511fb9afbfc83e4a94",
+      "detector_profile_id": "yoloe-26m-seg@sha256:585f5ec9028fd358035da8d860c27c56be285a795cba2076fba536a4391c2c83",
+      "labelspace_sha256": "ff1eb56f2bd402839c835ac5e53fc7bbd09ff2d3fe142c618e3f596e668b0075"
+    }
+  },
+  "schema_version": 1,
+  "sensor_config": {
+    "floor_datum": {
+      "canonical_floor_z_m": 0.01200807094574019,
+      "provenance": "measured-downward-depth-v1:57cbccf3984ca672e6952346976167e13273f72977ecb214205fc8aa0ca328ac",
+      "source_convention": "new_y_up_v1",
+      "source_floor_y_m": 0.01200807094574019
+    },
+    "gpu_device_id": -1,
+    "initial_position": [
+      -5.233062744140625,
+      0.10557794570922852,
+      2.320863723754883
+    ],
+    "initial_rotation_xyzw": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "motion_adapter": "planar_fixed_y_v1",
+    "navigation": {
+      "depth_max_m": 10.0,
+      "depth_min_m": 0.1,
+      "depth_uuid": "navigation_depth_sensor",
+      "hfov_deg": 120.0,
+      "orientation_xyz_rad": [
+        -1.5707963267948966,
+        0.0,
+        0.0
+      ],
+      "position_xyz": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "resolution_hw": [
+        180,
+        240
+      ],
+      "sensor_id": "downward-depth"
+    },
+    "primary": {
+      "depth_max_m": 10.0,
+      "depth_min_m": 0.1,
+      "depth_uuid": "depth_sensor",
+      "hfov_deg": 90.0,
+      "orientation_xyz_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position_xyz": [
+        0.0,
+        1.2,
+        0.0
+      ],
+      "resolution_hw": [
+        480,
+        640
+      ],
+      "rgb_uuid": "color_sensor",
+      "sensor_id": "primary-rgbd"
+    },
+    "scene": {
+      "path": "@HABITAT_DATA@/versioned_data/hm3d-0.2/hm3d/minival/00806-tQ5s4ShP627/tQ5s4ShP627.basis.glb",
+      "sha256": "81c42f0e2d6a471643107682c3673588dd34c523891f1a341d62c0809542f532"
+    },
+    "scene_dataset": {
+      "path": "@HABITAT_DATA@/versioned_data/hm3d-0.2/hm3d/minival/hm3d_minival_basis.scene_dataset_config.json",
+      "sha256": "2dd70f8e78f06fbaabf47bacc2bd5d0a17c261f3aaafd8ab84dbe8577edb38ae"
+    },
+    "seed": 0
+  },
+  "ui": {
+    "enabled": true,
+    "publish_hz": 1.0,
+    "room_label_debug": {
+      "config_path": "@REPO@/configs/room-label-slm.async-debug.local.json",
+      "config_sha256": "197f64f3e73889e2dc7f8a432b0ed82714bfcd27da2754f52d925df4d84d7e7f",
+      "taxonomy_path": "@REPO@/configs/taxonomy-v1.json",
+      "taxonomy_sha256": "04596183aa090cf6d0e561c6d4e469dafca11574f2d21f08202971c3436a2603"
+    }
+  },
+  "workers": {
+    "detector": {
+      "python": {
+        "path": "@NSN_HOME@/.runtime/detector26/bin/python",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      },
+      "script": {
+        "path": "@REPO@/src/neusymnav/perception/detector_worker.py",
+        "sha256": "67dc30d56192daf5b2ebd96605053a8cb5405b25ed2b7233bd3b55131ab8794f"
+      },
+      "startup_timeout_s": 60.0,
+      "timeout_s": 5.0
+    },
+    "hydra": {
+      "artifact_quota_bytes": 2147483648,
+      "python": {
+        "path": "@REPO@/.runtime/hydra_ws/.venv/bin/python",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      },
+      "script": {
+        "path": "@REPO@/src/neusymnav/backends/hydra/entry.py",
+        "sha256": "f098c84c377c232685012e46de9e4fcf0641ad30bee99185e20f676c1f24ade5"
+      },
+      "setup_script": {
+        "path": "@REPO@/.runtime/hydra_ws/env.sh",
+        "sha256": "a3db15c5defd22c99adf639c48e64dea67b2aca6982196f028e489488ed0bb72"
+      },
+      "startup_timeout_s": 10.0,
+      "timeout_s": 30.0
+    },
+    "sensor": {
+      "python": {
+        "path": "@HABITAT_ENV@/bin/python",
+        "sha256": "9f8a2e08aa3f40c26cb819b6fe43949cb93cb35a50db04a51350d0e0fea36d2a"
+      },
+      "script": {
+        "path": "@REPO@/src/neusymnav/sensors/habitat_worker.py",
+        "sha256": "04c669c4fae7b5d89ed536fe1cd5ed983220eaaa54f2a3637d850697ad47b126"
+      },
+      "timeout_s": 30.0
+    },
+    "ui": {
+      "python": {
+        "path": "@REPO@/.venv/bin/python",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      },
+      "script": {
+        "path": "@REPO@/src/neusymnav/runtime/room_label_ui_entry.py",
+        "sha256": "7e9c48804036c4e0d927c589e4d0cb8b7d10accabeedea7e5d798495c0f33aa0"
+      }
+    }
+  },
+  "keyframe_novelty": {
+    "min_translation_m": 0.15,
+    "min_yaw_deg": 15
+  }
+}

@@ -1,4 +1,8 @@
-"""Bounded, immutable display-only history of measured occupancy."""
+"""Bounded immutable measured tiles; coarsened overviews are display-only.
+
+The room lane consumes the exact raw tile history through room_map, not the
+coarsened raster returned by build_overview. Control retains its local map.
+"""
 from dataclasses import dataclass
 import math
 from types import MappingProxyType
@@ -88,6 +92,21 @@ def build_overview(tiles, *, max_cells=1_000_000):
     factor=1
     while ((maxr-minr)//factor+1)*((maxc-minc)//factor+1)>max_cells: factor*=2
     shape=((maxr-minr)//factor+1,(maxc-minc)//factor+1)
+    if factor==1:
+        # Full resolution: each cell is exactly its tile value (tiles never
+        # overlap), so copy tile slices instead of scatter-adding every cell.
+        states=np.full(shape,-1,np.int8)
+        for (tr,tc),tile in tiles.tiles.items():
+            r0,c0=tr*size-minr,tc*size-minc
+            rs,cs=max(0,r0),max(0,c0)
+            re,ce=min(shape[0],r0+size),min(shape[1],c0+size)
+            if rs>=re or cs>=ce: continue
+            block=tile[rs-r0:re-r0,cs-c0:ce-c0]
+            target=states[rs:re,cs:ce]
+            known=block!=-1
+            target[known]=block[known]
+        origin=(tiles.origin_xy[0]+minc*tiles.resolution_m,tiles.origin_xy[1]+minr*tiles.resolution_m)
+        return MapOverview(tiles.source_nav,origin,tiles.resolution_m,states,tiles.complete)
     counts=np.zeros(shape,np.int64); occupied=np.zeros(shape,bool)
     for (tr,tc),tile in tiles.tiles.items():
         r,c=np.nonzero(tile!=-1)

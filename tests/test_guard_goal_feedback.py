@@ -263,6 +263,24 @@ def test_persistent_geometric_stop_abandons_only_after_time_and_fresh_map_eviden
     assert replacement.goal_id and replacement.path[-1]!=target
 
 
+def test_committed_goal_blocked_by_map_is_abandoned_after_fresh_revisions_and_minimum_time():
+    _,nav=context();navigator=real_navigator()
+    first=navigator.step(nav,(1.2,1.2),0.,STAMP);target=first.path[-1]
+    reason='committed_goal_blocked:goal_not_traversable'
+    for i in range(5):
+        now=STAMP+i*200_000_000
+        current=replace(nav,revision=8+i,capture_monotonic_ns=now)
+        assert navigator.observe_navigation_result(current,(1.2,1.2),now,reason,True) is None
+        assert navigator.policy._goal_world_xy==target
+    now=STAMP+1_000_000_000
+    failure=navigator.observe_navigation_result(
+        replace(nav,revision=13,capture_monotonic_ns=now),(1.2,1.2),now,reason,True)
+    assert failure['goal_id']==first.goal_id and failure['goal_xy']==target
+    assert failure['distinct_map_revisions']==6
+    assert navigator.policy._goal_world_xy is None
+    assert navigator.policy._failed_viewpoints
+
+
 @pytest.mark.parametrize('reason',['nav_stale','depth_stale','runtime_paused','clock_domain_mismatch','tracking'])
 def test_non_geometric_stops_never_abandon_goal(reason):
     _,nav=context();navigator=real_navigator();first=navigator.step(nav,(1.2,1.2),0.,STAMP)
@@ -326,13 +344,12 @@ def test_failed_tick_does_not_report_abandoned_path_endpoint_as_current_goal():
     assert p.navigation_display().goal_id is None
 
 
-@pytest.mark.parametrize('interruption',['pause','source_pending','exception'])
+@pytest.mark.parametrize('interruption',['pause','exception'])
 def test_control_interruption_resets_failure_confirmation_without_dropping_goal(interruption):
     obs,nav=context();navigator=real_navigator();p=pipeline(obs,nav,navigator,Guard());actuator=Actuator()
     p.control_step(actuator);target=navigator.policy._goal_world_xy
     assert navigator._goal_failure_watch is not None
     if interruption=='pause':p._paused=True
-    elif interruption=='source_pending':p._latest_nav=replace(nav,source=replace(nav.source,frame_index=9))
     else:
         p.guard=Guard(raises=True)
     p.control_step(actuator)

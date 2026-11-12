@@ -35,6 +35,14 @@ class RunMeasurements:
         if self._closed:return False
         try:return self.collector.try_record_capture(self._source(obs),width=int(obs.depth_m.shape[1]),height=int(obs.depth_m.shape[0]))
         except Exception:self._error();return False
+    def stage(self,obs,name,start_ns,end_ns):
+        """Best-effort source-bound timing; never feeds control or freshness."""
+        if self._closed:return False
+        try:
+            source=self._source(obs)
+            return self.collector.try_record_stage(source,stage=name,start_ns=start_ns,
+                end_ns=end_ns,clock_domain=source.clock_domain)
+        except Exception:self._error();return False
     def admission(self,obs,outcome):
         if self._closed:return False
         try:return self.collector.try_record_admission(self._source(obs),outcome=outcome)
@@ -83,13 +91,33 @@ class RunMeasurements:
                         self._graph['first_assigned_membership']=dict(object_id=edge.source_id,region_id=edge.target_id,object_revision=hierarchy.object_revision,map_revision=hierarchy.map_revision,region_revision=hierarchy.region_revision)
                         break
         except Exception:self._error()
-    def control(self,obs,now_ns,result,*,command=None,decision=None,proof=None,profile):
+    def control(self,obs,now_ns,result,*,command=None,decision=None,proof=None,profile,navigation=None):
         if self._closed:return False
         try:
             src=None if obs is None else self._source(obs)
-            recorded=self.collector.try_record_control(src,now_ns=now_ns,clock_domain=self.context.clock_domain,reason=result.get('reason','unreported_control_result'),map_revision=0 if command is None else command.map_revision)
+            diagnostics=None
+            if command is not None or decision is not None or result.get('failure_detail') is not None:
+                diagnostics=dict(
+                    decision_reason=None if decision is None else decision.reason,
+                    decision_linear_mps=None if decision is None else decision.desired_linear_mps,
+                    decision_yaw_radps=None if decision is None else decision.desired_yaw_radps,
+                    command_reason=None if command is None else command.reason,
+                    command_linear_mps=None if command is None else command.linear_mps,
+                    command_yaw_radps=None if command is None else command.yaw_radps,
+                    command_issued_monotonic_ns=None if command is None else command.issued_monotonic_ns,
+                    command_deadline_monotonic_ns=None if command is None else command.deadline_monotonic_ns,
+                    failure_detail=result.get('failure_detail'))
+            recorded=self.collector.try_record_control(src,now_ns=now_ns,clock_domain=self.context.clock_domain,
+                reason=result.get('reason','unreported_control_result'),
+                map_revision=0 if command is None else command.map_revision,
+                diagnostics=diagnostics,navigation_diagnostics=navigation)
             if command is not None:
-                if proof is None:self._missing_actuation=min(self._missing_actuation+1,2**63-1)
+                # A stopped/expired command has no simulator action and therefore
+                # cannot carry body actuation proof. Count only commands the worker
+                # says it actually executed.
+                if proof is None:
+                    if result.get('executed') is True:
+                        self._missing_actuation=min(self._missing_actuation+1,2**63-1)
                 else:
                     valid=self.actuation.try_record(command,obs,proof,goal_id=None if decision is None else decision.goal_id,decision_map_revision=command.map_revision if decision is None else decision.map_revision,profile=profile)
                     if not valid:self._error()

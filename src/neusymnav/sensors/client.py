@@ -28,6 +28,40 @@ from .habitat_worker import MAX_WIRE_BYTES, _ARRAY_NAMES, _checksum, _canonical,
 _METADATA = {'episode_id', 'sensor_id', 'frame_index', 'capture_monotonic_ns', 'clock_domain',
              'sim_time_s', 'calibration_id', 'pose_version', 'modality',
              'coordinate_convention', 'depth_convention'}
+_WORKER_TIMING_STAGES = {
+    'sensor_draw_observations', 'sensor_readback_observations',
+    'sensor_packet_normalize_encode', 'simulator_step', 'simulator_action',
+    'simulator_physics_step',
+}
+
+
+def _checked_worker_timing(value, *, clock_domain):
+    """Accept only bounded diagnostic timestamps from the same host clock."""
+    fields = {'schema_version','clock_domain','worker_request_received_ns',
+              'worker_handler_start_ns','worker_handler_end_ns','worker_stages'}
+    if not isinstance(value, dict) or set(value) != fields or value.get('schema_version') != 1:
+        return None
+    if value.get('clock_domain') != clock_domain:
+        return None
+    stamps = [value.get(name) for name in ('worker_request_received_ns',
+              'worker_handler_start_ns','worker_handler_end_ns')]
+    if any(type(stamp) is not int or stamp < 0 for stamp in stamps) or stamps != sorted(stamps):
+        return None
+    stages = value.get('worker_stages')
+    if not isinstance(stages, list) or len(stages) > 8:
+        return None
+    owned = []
+    for row in stages:
+        if not isinstance(row, dict) or set(row) != {'stage','start_ns','end_ns'}:
+            return None
+        start, end = row['start_ns'], row['end_ns']
+        if (row['stage'] not in _WORKER_TIMING_STAGES or type(start) is not int or
+                type(end) is not int or not stamps[1] <= start <= end <= stamps[2]):
+            return None
+        owned.append(dict(stage=row['stage'],start_ns=start,end_ns=end))
+    return dict(schema_version=1,clock_domain=clock_domain,
+        worker_request_received_ns=stamps[0],worker_handler_start_ns=stamps[1],
+        worker_handler_end_ns=stamps[2],worker_stages=owned)
 
 
 def _check_deadline(deadline):
@@ -153,13 +187,21 @@ class HabitatPoseSource:
             seed_status='not_requested', actual_resolution_hw={})
         from ..perception.detector_client import _BoundedProcess
         self.timeout_s = timeout_s
-        self._wire = _BoundedProcess(command, timeout_s=timeout_s, response_limit=MAX_WIRE_BYTES, lines=True)
+        # The simulator owns its graphics stack. Native room workers may add
+        # bundled GLX/GLdispatch libraries to the host's LD_LIBRARY_PATH;
+        # inheriting that overlay can silently replace Mesa's sensor render path.
+        self._wire = _BoundedProcess(command, timeout_s=timeout_s, response_limit=MAX_WIRE_BYTES,
+                                     lines=True, unset_environment=('LD_LIBRARY_PATH',))
         self._lock = self._wire.lock
         self._closed = False
         self._last = {}
         self._episode = None
         self._retired_episodes = set()
         self._last_capture_ns = -1
+        self._last_request_timing = None
+        self._last_worker_timing = None
+        self._last_capture_timing = None
+        self._last_actuation_timing = None
         self._domain = None
         self._navigation = None
         self._navigation_pose = None
@@ -212,6 +254,14 @@ class HabitatPoseSource:
         """Independent bounded snapshot; dimensions have decoded-array support."""
         return json.loads(json.dumps(self._runtime_metadata))
 
+    @property
+    def last_capture_timing(self):
+        return copy.deepcopy(self._last_capture_timing)
+
+    @property
+    def last_actuation_timing(self):
+        return copy.deepcopy(self._last_actuation_timing)
+
     def _request(self, op: str, *, _deadline: float | None = None, **values) -> dict:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError('sensor request already in flight')
@@ -220,8 +270,12 @@ class HabitatPoseSource:
             if self._closed or self._wire.closed.is_set():
                 raise RuntimeError('sensor worker is closed')
             deadline = _deadline if _deadline is not None else time.monotonic() + self.timeout_s
+            request_start_ns = time.monotonic_ns()
             self._wire.send(dict(op=op, **values), deadline, limit=4096)
             response = self._wire.receive(deadline)
+            response_received_ns = time.monotonic_ns()
+            self._last_request_timing = dict(start_ns=request_start_ns,end_ns=response_received_ns)
+            self._last_worker_timing = response.get('timing')
             if response.get('ok') is not True:
                 raise RuntimeError('sensor request failed: ' + str(response.get('error')))
             _check_deadline(deadline)
@@ -236,10 +290,14 @@ class HabitatPoseSource:
 
     def _capture(self, op: str, modality: str) -> Observation:
         self._invalidate_actuation_proof()
+        self._last_capture_timing = None
         deadline = time.monotonic() + self.timeout_s
         try:
             response = self._request(op, _deadline=deadline)
+            request_timing = copy.deepcopy(self._last_request_timing)
+            decode_start_ns = time.monotonic_ns()
             result = observation_from_packet(response['packet'], deadline=deadline)
+            decode_end_ns = time.monotonic_ns()
             if result.modality != modality:
                 raise ValueError('sensor modality mismatch')
             if result.clock_domain.startswith('replay:'):
@@ -269,6 +327,17 @@ class HabitatPoseSource:
                 self._navigation = result
                 self._navigation_pose = pose
             self._runtime_metadata['actual_resolution_hw'][lane] = resolution_record
+            worker_timing = _checked_worker_timing(self._last_worker_timing,
+                clock_domain=result.clock_domain)
+            if request_timing is not None and worker_timing is not None:
+                self._last_capture_timing = dict(schema_version=1,clock_domain=result.clock_domain,
+                    host_request_start_ns=request_timing['start_ns'],
+                    host_response_received_ns=request_timing['end_ns'],
+                    host_decode_start_ns=decode_start_ns,host_decode_end_ns=decode_end_ns,
+                    worker_request_received_ns=worker_timing['worker_request_received_ns'],
+                    worker_handler_start_ns=worker_timing['worker_handler_start_ns'],
+                    worker_handler_end_ns=worker_timing['worker_handler_end_ns'],
+                    worker_stages=worker_timing['worker_stages'])
             return result
         except Exception:
             self.close()
@@ -327,6 +396,7 @@ class HabitatPoseSource:
     def execute(self, command: MotionCommand) -> dict:
         deadline = time.monotonic() + self.timeout_s
         generation = self._invalidate_actuation_proof()
+        self._last_actuation_timing = None
         if not isinstance(command, MotionCommand):
             raise TypeError('execute requires MotionCommand')
         observation, self._navigation = self._navigation, None
@@ -336,9 +406,21 @@ class HabitatPoseSource:
         version = observation.pose_version if observation is not None else 0
         try:
             response = self._request('execute', _deadline=deadline, command=asdict(command), pose_version=version)
+            request_timing = copy.deepcopy(self._last_request_timing)
+            worker_timing = _checked_worker_timing(self._last_worker_timing,
+                clock_domain=command.clock_domain)
+            if request_timing is not None and worker_timing is not None:
+                self._last_actuation_timing = dict(schema_version=1,clock_domain=command.clock_domain,
+                    host_request_start_ns=request_timing['start_ns'],
+                    host_response_received_ns=request_timing['end_ns'],
+                    worker_request_received_ns=worker_timing['worker_request_received_ns'],
+                    worker_handler_start_ns=worker_timing['worker_handler_start_ns'],
+                    worker_handler_end_ns=worker_timing['worker_handler_end_ns'],
+                    worker_stages=worker_timing['worker_stages'])
             result = response.get('actuation')
-            if (not isinstance(result, dict) or set(result) != {'executed', 'reason', 'actions', 'displacement_m', 'yaw_rad'}
+            if (not isinstance(result, dict) or set(result) != {'executed', 'reason', 'failure_detail', 'actions', 'displacement_m', 'yaw_rad'}
                     or type(result['executed']) is not bool or not isinstance(result['reason'], str)
+                    or result['failure_detail'] not in (None, 'deadline_expired', 'zero_motion_command')
                     or not isinstance(result['actions'], list)
                     or any(type(result[n]) not in (int, float) or not math.isfinite(result[n])
                            for n in ('displacement_m', 'yaw_rad'))):

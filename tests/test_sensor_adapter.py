@@ -13,7 +13,8 @@ import pytest
 from neusymnav.contracts.observations import require_rgbd
 from neusymnav.sensors.client import HabitatPoseSource, observation_from_packet
 from neusymnav.sensors.habitat_worker import (normalize_capture, encode_packet,
-                                               sensor_pose, intrinsics_from_projection)
+                                               sensor_pose, intrinsics_from_projection,
+                                               _calibration_id)
 
 
 def sample(modality='rgbd'):
@@ -70,6 +71,23 @@ def test_intrinsics_use_actual_projection_and_sensor_extrinsics():
     np.testing.assert_array_equal(sensor_pose(state)[:3, 3], [2., 4., -1.])
 
 
+def test_calibration_identity_is_stable_when_pose_inverse_has_native_float_noise():
+    k = np.array([[320., 0., 319.5], [0., 320., 239.5], [0., 0., 1.]])
+    mount = np.eye(4)
+    mount[:3, 3] = [0., 1.2, 0.]
+    config = dict(position_xyz=[0., 1.2, 0.], orientation_xyz_rad=[0., 0., 0.])
+    noisy = mount.copy()
+    noisy[0, 3] = 2e-7
+    noisy[1, 3] += 1e-7
+    assert _calibration_id(k, mount, config) == _calibration_id(k, noisy, config)
+    changed_mount = mount.copy()
+    changed_mount[1, 3] += 1e-3
+    assert _calibration_id(k, mount, config) != _calibration_id(k, changed_mount, config)
+    changed_k = k.copy()
+    changed_k[0, 0] += 0.01
+    assert _calibration_id(k, mount, config) != _calibration_id(changed_k, mount, config)
+
+
 def test_wire_checksum_rejects_changed_payload_and_semantic_fields():
     packet = encode_packet(sample())
     packet['arrays_b64'] = base64.b64encode(b'broken').decode()
@@ -99,6 +117,26 @@ def test_independent_worker_process_protocol_and_shutdown(tmp_path):
         assert source.capture().key.sensor_id == 'primary'
         with pytest.raises(ValueError, match='duplicate|nonmonotonic'):
             source.capture()  # old sensor samples cannot be republished as fresh
+    finally:
+        source.close()
+
+
+def test_habitat_worker_does_not_inherit_native_override_library_path(tmp_path, monkeypatch):
+    observed = tmp_path / 'worker-library-path.txt'
+    monkeypatch.setenv('LD_LIBRARY_PATH', '/bundle/native/lib:/project/local-assets/native/lib')
+    worker = tmp_path / 'env_worker.py'
+    worker.write_text(
+        'import json,os,sys\n'
+        f'open({str(observed)!r}, "w").write(os.environ.get("LD_LIBRARY_PATH", "<unset>"))\n'
+        'print(json.dumps({"ready": True, "wire_version": 1}), flush=True)\n'
+        'for line in sys.stdin:\n'
+        ' r=json.loads(line)\n'
+        ' if r["op"] == "close": break\n'
+        ' print(json.dumps({"ok": False, "error": "unexpected request"}), flush=True)\n'
+    )
+    source = HabitatPoseSource(python=sys.executable, config={}, worker_script=worker, timeout_s=2)
+    try:
+        assert observed.read_text() == '<unset>'
     finally:
         source.close()
     assert source.process.poll() is not None
@@ -141,7 +179,7 @@ def test_timeout_closes_worker_and_drops_late_response(tmp_path):
                       'print(json.dumps({"ready":True,"wire_version":1}),flush=True)\n'
                       'for line in sys.stdin:\n'
                       ' time.sleep(10)\n')
-    source = HabitatPoseSource(python=sys.executable, config={}, worker_script=worker, timeout_s=.05)
+    source = HabitatPoseSource(python=sys.executable, config={}, worker_script=worker, timeout_s=1.0)
     with pytest.raises(TimeoutError):
         source.capture()
     assert source.process.poll() is not None
