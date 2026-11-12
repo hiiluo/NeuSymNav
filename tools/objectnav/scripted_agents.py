@@ -12,6 +12,9 @@ Agents (discrete Habitat actions: forward 0.25 m, turn 30 deg, <= 500 steps):
   oracle_greedy  habitat_sim GreedyGeodesicFollower with discrete actions,
                  re-targeting the nearest view point each step; STOP once inside
                  0.09 m of any view point. Expected: SR high, SPL < 1.
+Both oracles target the view points snapped onto the scorer's navmesh with the
+scorer's own rule (objectnav_metrics.snap_view_points, since 13/11/2026); the
+raw points sit 0.05-0.15 m below that navmesh, so a raw-DTG STOP test never fired.
   random         uniform forward/left/right for 500 steps, then STOP.
                  Expected: SR ~ 0.
 
@@ -26,6 +29,9 @@ import zlib
 from itertools import groupby
 from pathlib import Path
 
+import numpy as np
+
+from neusymnav.evaluation.objectnav_metrics import snap_view_points
 from neusymnav.objectnav import habitat_tools as ht
 from neusymnav.objectnav.episodes import DEFAULT_HABITAT_DATA, load_episode_set, select
 
@@ -33,9 +39,15 @@ ACTIONS = ('move_forward', 'turn_left', 'turn_right')
 STOP_RADIUS_M = 0.09   # a little inside the 0.1 m success radius
 
 
+def targets(sim, episode):
+    """Goal view points as the scorer measures them (snapped onto this navmesh)."""
+    return snap_view_points(episode.view_points,
+                            lambda v: sim.pathfinder.snap_point(np.asarray(v, np.float32)))[0]
+
+
 def run_oracle_path(sim, episode):
     start = ht.agent_position(sim)
-    points = ht.shortest_path(sim, start, episode.view_points)
+    points = ht.shortest_path(sim, start, targets(sim, episode))
     if not points:
         return [start], False, 0
     positions = [start] + [p for p in points if p != start]
@@ -51,12 +63,13 @@ def run_oracle_greedy(sim, episode, max_steps):
     follower = habitat_sim.nav.GreedyGeodesicFollower(
         sim.pathfinder, sim.get_agent(0), goal_radius=ht.FORWARD_STEP_M, stop_key='stop',
         forward_key='move_forward', left_key='turn_left', right_key='turn_right')
+    goals = targets(sim, episode)
     steps = 0
     while steps < max_steps:
         here = positions[-1]
-        if ht.distance_to_goal(sim, here, episode.view_points) < STOP_RADIUS_M:
+        if ht.distance_to_goal(sim, here, goals) < STOP_RADIUS_M:
             return positions, True, steps
-        points = ht.shortest_path(sim, here, episode.view_points)
+        points = ht.shortest_path(sim, here, goals)
         if not points:
             return positions, True, steps
         try:

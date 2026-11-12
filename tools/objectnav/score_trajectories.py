@@ -11,8 +11,9 @@ first), called_stop, steps, sim_time_s?, evidence?}. ``evidence`` may hold
 target_seen / target_detected / stop_near_false_detection / stuck for the
 failure classification. Writes <input>-outcomes.jsonl and <input>-summary.json
 next to the input unless --out-prefix is given. Geodesics use the scene's
-runtime (basis) dataset config and its navmesh; the episode's stored
-geodesic is kept for reference only.
+runtime (basis) dataset config and its navmesh; goal view points are snapped
+onto that navmesh first (objectnav_metrics.VIEW_POINT_SNAP_RULE). The
+episode's stored geodesic is kept for reference only.
 """
 import argparse
 import json
@@ -20,7 +21,9 @@ import sys
 from itertools import groupby
 from pathlib import Path
 
-from neusymnav.evaluation.objectnav_metrics import classify_failure, score_episode, summarize
+import numpy as np
+
+from neusymnav.evaluation.objectnav_metrics import classify_failure, score_episode, snap_view_points, summarize
 from neusymnav.objectnav import habitat_tools as ht
 from neusymnav.objectnav.episodes import DEFAULT_HABITAT_DATA, load_episode_set
 
@@ -44,6 +47,7 @@ def main(argv=None):
         raise SystemExit('duplicate trajectory uids')
     prefix = a.out_prefix or a.trajectories.with_suffix('')
     outcomes = []
+    snap_counts = []
     key = lambda r: episodes[r['uid']].scene_path
     for scene, group in groupby(sorted(records, key=lambda r: (key(r), r['uid'])), key=key):
         group = list(group)
@@ -51,10 +55,13 @@ def main(argv=None):
         try:
             for rec in group:
                 ep = episodes[rec['uid']]
+                targets, n_snapped = snap_view_points(
+                    ep.view_points, lambda v: sim.pathfinder.snap_point(np.asarray(v, np.float32)))
+                snap_counts.append((n_snapped, len(targets)))
                 outcome = score_episode(
                     uid=ep.uid, scene=ep.scene_short, category=ep.object_category,
                     positions=rec['positions'], called_stop=bool(rec['called_stop']),
-                    distance_to_goal=lambda p, vps=ep.view_points: ht.distance_to_goal(sim, p, vps),
+                    distance_to_goal=lambda p, vps=targets: ht.distance_to_goal(sim, p, vps),
                     steps=int(rec['steps']), sim_time_s=rec.get('sim_time_s'),
                     stored_geodesic_m=ep.stored_geodesic_m)
                 ev = rec.get('evidence') or {}
@@ -74,13 +81,20 @@ def main(argv=None):
     out_rows.write_text(''.join(json.dumps(o.to_json()) + '\n' for o in outcomes))
     summary = summarize(outcomes)
     summary.update(trajectories=str(a.trajectories), episode_set=a.episode_set, split=a.split,
-                   agents=sorted({r.get('agent', '?') for r in records}))
+                   agents=sorted({r.get('agent', '?') for r in records}),
+                   view_points_snapped=sum(s for s, _ in snap_counts),
+                   view_points_total=sum(n for _, n in snap_counts))
     out_sum.write_text(json.dumps(summary, indent=2) + '\n')
     o = summary['overall']
     print('%s  episodes=%d  SR=%.3f [%.3f, %.3f]  SPL=%.3f [%.3f, %.3f]  SoftSPL=%.3f  DTG=%.2f m  invalid=%d' % (
         ','.join(summary['agents']), o['episodes'], o['success_rate'], *o['success_rate_ci95'],
         o['spl'], *o['spl_ci95'], o['soft_spl'], o['dtg_m'], summary['invalid_episodes']))
+    print('oracle (diagnostic, not success): OSR=%.3f [%.3f, %.3f]  min-DTG=%.2f m  reached-without-success=%d' % (
+        o['oracle_success_rate'], *o['oracle_success_rate_ci95'], o['dtg_min_m'], o['oracle_not_success']))
+    print('min-DTG below radius:', '  '.join('<%s m %.3f' % kv for kv in o['oracle_within_m'].items()))
     print('failure modes:', summary['failure_modes'])
+    print('view points snapped (%s): %d/%d' % (summary['view_point_rule']['name'],
+                                               summary['view_points_snapped'], summary['view_points_total']))
     print('wrote', out_rows, 'and', out_sum, file=sys.stderr)
 
 
