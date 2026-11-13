@@ -8,11 +8,40 @@ from ..contracts import MotionCommand, age_ns, GridState
 from ..mapping.occupancy import capsule_cells
 
 
+ESCAPE_REASONS=frozenset({'escape_rotate','escape_step'})
+ESCAPE_STEP_M=.05
+ESCAPE_MAX_SPEED_MPS=.15
+ESCAPE_MIN_GAIN_M=.005
+ESCAPE_WINDOW_M=.75
+
+
+def blocked_cells(nav,height_m):
+    """Cells a body may not overlap: not FREE, no floor support, or too low clearance."""
+    clearance=np.asarray(nav.clearance)
+    dtype=np.result_type(clearance.dtype,type(height_m))
+    return ((np.asarray(nav.states)!=GridState.FREE)|~np.asarray(nav.floor_support,dtype=bool)
+            |(clearance.astype(dtype,copy=False)<height_m))
+
+
+def free_distance(nav,point,height_m,window_m=ESCAPE_WINDOW_M):
+    """Distance from a point to the nearest blocked cell centre (capped at window_m)."""
+    res=float(nav.resolution_m);ox,oy=nav.origin_xy
+    rows,cols=nav.states.shape
+    c0=max(0,int((point[0]-window_m-ox)/res));c1=min(cols,int((point[0]+window_m-ox)/res)+1)
+    r0=max(0,int((point[1]-window_m-oy)/res));r1=min(rows,int((point[1]+window_m-oy)/res)+1)
+    if c0>=c1 or r0>=r1:return 0.
+    blocked=blocked_cells(nav,height_m)[r0:r1,c0:c1]
+    rr,cc=np.nonzero(blocked)
+    if not len(rr):return window_m
+    d=np.hypot(ox+(cc+c0+.5)*res-point[0],oy+(rr+r0+.5)*res-point[1])
+    return float(min(window_m,d.min()))
+
+
 class MotionGuard:
     def __init__(self, mapper, *, clock_domain: str, max_depth_age_ns=300_000_000,
                  command_horizon_ns=100_000_000, now_ns=None,
                  offline_replay=False, rotation_horizon_ns=None, pace_to_wall_time=False,
-                 start_unknown_tolerance=0.):
+                 start_unknown_tolerance=0., escape=False, column_fallback_cells=0):
         if type(offline_replay) is not bool or (offline_replay and not clock_domain.startswith('replay:')):
             raise ValueError('offline guard mode requires an isolated replay clock')
         from .clock_domains import is_live, is_simulated
@@ -44,6 +73,28 @@ class MotionGuard:
         from .start_footprint import validate_tolerance
         self.start_unknown_tolerance=validate_tolerance(start_unknown_tolerance)
         self.start_unknown_tolerated=0
+        # Opt-in escape (approved 12/11/2026, ObjectNav lockstep runs): when the
+        # robot's centre is inside the safety margin of an obstacle, the normal
+        # checks refuse every command forever. Commands whose reason is
+        # 'escape_rotate' / 'escape_step' are then checked against the BODY
+        # radius (no margin): in-place rotation needs the body disc observed
+        # free; a step is at most ESCAPE_STEP_M long and must end farther from
+        # every non-free cell than it starts. All other commands are unchanged.
+        if type(escape) is not bool:raise ValueError('escape must be boolean')
+        self.escape=escape
+        self.escape_issued=0
+        # Opt-in body-column fallback (approved 12/11/2026, ObjectNav lockstep
+        # runs): in the fresh-frame bootstrap, up to this many footprint cells
+        # whose floor was measured, planar cell voted free and body column
+        # free of any return - but with some body height bins unreached by any
+        # ray (occluded from above the robot) - may use the ACCUMULATED map's
+        # FREE verdict for those bins. See NavMapper._column_fallback. 0 = off.
+        from ..mapping.occupancy import MAX_COLUMN_FALLBACK_CELLS
+        if type(column_fallback_cells) is not int or not 0<=column_fallback_cells<=MAX_COLUMN_FALLBACK_CELLS:
+            raise ValueError('column_fallback_cells must be an int in [0, %d]'%MAX_COLUMN_FALLBACK_CELLS)
+        self.column_fallback_cells=column_fallback_cells
+        self.column_fallback_used=0
+        self._raw_nav=None
         if now_ns is not None and not callable(now_ns):raise ValueError('issue clock must be callable')
         self._now_ns=now_ns
         self._bound=None;self._watermarks={}
@@ -57,6 +108,7 @@ class MotionGuard:
             raise ValueError('floor datum mismatch')
         if len(robot_xy)!=2 or not all(math.isfinite(v) for v in (*robot_xy,yaw_rad)):raise ValueError('invalid robot pose')
         if self._bound is not None and nav.episode_id!=self._bound[0].episode_id:self._watermarks.clear()
+        self._raw_nav=nav                       # never the tolerated copy (column fallback)
         if self.start_unknown_tolerance:
             # Same disc as the planner and local follower (shared helper).
             from .start_footprint import tolerate_robot_footprint
@@ -93,6 +145,9 @@ class MotionGuard:
             return stop('sensor_replay')
         self._watermarks[sensor]=(latest.key.frame_index,latest.capture_monotonic_ns)
         if decision.desired_linear_mps<0:return stop('reverse_motion_unsupported')
+        if decision.reason in ESCAPE_REASONS:
+            if not self.escape:return stop('escape_disabled')
+            return self._escape(decision,latest,now_ns,nav,robot_xy,yaw,age,nav_age)
         if decision.desired_linear_mps==0 and decision.desired_yaw_radps==0:return stop(decision.reason)
         if abs(decision.desired_linear_mps)>.2 or abs(decision.desired_yaw_radps)>math.radians(30.):return stop('motion_limits_exceeded')
         # Bound geometry checks by the longest pulse that can still be issued
@@ -117,8 +172,10 @@ class MotionGuard:
         swept_margin=.5*abs(decision.desired_linear_mps*decision.desired_yaw_radps)*duration**2
         result=self.mapper.bootstrap(latest,robot_xy=robot_xy,yaw_rad=yaw,
             corridor_m=distance if decision.desired_linear_mps else 0.,swept_margin_m=swept_margin,
-            **({'start_unknown_fraction':self.start_unknown_tolerance} if self.start_unknown_tolerance else {}))
+            **({'start_unknown_fraction':self.start_unknown_tolerance} if self.start_unknown_tolerance else {}),
+            **self._fallback_args())
         if self.start_unknown_tolerance and getattr(result,'start_tolerated',0):self.start_unknown_tolerated+=1
+        if getattr(result,'column_fallback',0):self.column_fallback_used+=1
         if not result.ready:return stop(result.reason)
         # Verify the actual swept forward pulse, independent of desired bearing.
         end=(robot_xy[0]+decision.desired_linear_mps*duration*math.cos(yaw),
@@ -147,8 +204,52 @@ class MotionGuard:
         return MotionCommand(latest.key,nav.revision,issued,deadline,self.clock_domain,
             decision.desired_linear_mps,decision.desired_yaw_radps,decision.reason,latest.capture_monotonic_ns)
 
-    def _clear(self,nav,start,end,*,swept_margin_m=0.):
-        radius=self.mapper.robot.radius_m+self.mapper.robot.margin_m+swept_margin_m
+    def _escape(self,decision,latest,now_ns,nav,robot_xy,yaw,age,nav_age):
+        stop=lambda reason:self._stop(decision,latest,now_ns,reason)
+        rotate=decision.reason=='escape_rotate'
+        if rotate and (decision.desired_linear_mps!=0 or decision.desired_yaw_radps==0):return stop('escape_invalid')
+        if not rotate and (not 0<decision.desired_linear_mps<=ESCAPE_MAX_SPEED_MPS or decision.desired_yaw_radps!=0):
+            return stop('escape_invalid')
+        if abs(decision.desired_yaw_radps)>math.radians(30.):return stop('motion_limits_exceeded')
+        body=self.mapper.robot.radius_m
+        if rotate:
+            horizon=self.rotation_horizon_ns or self.command_horizon_ns
+            duration_ns=min(horizon,self.max_depth_age_ns-age,self.max_depth_age_ns-nav_age) if self.rotation_horizon_ns is None else horizon
+            distance=0.
+        else:
+            duration_ns=min(self.command_horizon_ns,self.max_depth_age_ns-age,self.max_depth_age_ns-nav_age,
+                            int(ESCAPE_STEP_M/decision.desired_linear_mps*1e9))
+            distance=decision.desired_linear_mps*duration_ns/1e9
+        if duration_ns<=0:return stop('depth_stale')
+        result=self.mapper.bootstrap(latest,robot_xy=robot_xy,yaw_rad=yaw,corridor_m=distance,body_only=True,
+                                     **self._fallback_args())
+        if not result.ready:return stop('escape_'+result.reason)
+        if getattr(result,'column_fallback',0):self.column_fallback_used+=1
+        end=(robot_xy[0]+distance*math.cos(yaw),robot_xy[1]+distance*math.sin(yaw))
+        if not self._clear(nav,robot_xy,end,radius_m=body):return stop('escape_body_not_clear')
+        if not rotate and not free_distance(nav,end,self.mapper.robot.height_m)>free_distance(nav,robot_xy,self.mapper.robot.height_m)+ESCAPE_MIN_GAIN_M:
+            return stop('escape_not_away')
+        issued=now_ns if self._now_ns is None else self._now_ns()
+        if type(issued) is not int or issued<now_ns:raise ValueError('issue clock moved backwards')
+        if rotate and self.rotation_horizon_ns is not None:
+            if issued>=min(latest.capture_monotonic_ns,nav.capture_monotonic_ns)+self.max_depth_age_ns:
+                return self._stop(decision,latest,issued,'depth_stale')
+            deadline=issued+duration_ns
+        else:
+            deadline=min(latest.capture_monotonic_ns+self.max_depth_age_ns,
+                         nav.capture_monotonic_ns+self.max_depth_age_ns,issued+duration_ns)
+        if issued>=deadline:return self._stop(decision,latest,issued,'depth_stale')
+        self._last_issued_ns=issued
+        self.escape_issued+=1
+        return MotionCommand(latest.key,nav.revision,issued,deadline,self.clock_domain,
+            decision.desired_linear_mps,decision.desired_yaw_radps,decision.reason,latest.capture_monotonic_ns)
+
+    def _fallback_args(self):
+        if not self.column_fallback_cells or self._raw_nav is None:return {}
+        return dict(column_fallback_nav=self._raw_nav,column_fallback_max_cells=self.column_fallback_cells)
+
+    def _clear(self,nav,start,end,*,swept_margin_m=0.,radius_m=None):
+        radius=(self.mapper.robot.radius_m+self.mapper.robot.margin_m if radius_m is None else radius_m)+swept_margin_m
         key=(tuple(nav.origin_xy),nav.resolution_m,tuple(start),tuple(end),radius)
         # Optional reuse is initialized independently of map binding.
         cache=getattr(self,'_geometry_cache',None)

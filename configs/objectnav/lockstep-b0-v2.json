@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "description": "Phase-3 B0 lockstep runner config v2 (12/11/2026): lockstep-b0.json plus the two changes the user approved after the dev1 stuck diagnosis: planar_height_tolerance_m 0.10 (the planar adapter accepts navmesh steps up to 10 cm off the launch height; the body stays at the launch height) and escape=true (MotionGuard accepts explicit escape_rotate / escape_step commands checked against the body radius without the safety margin, steps <= 5 cm that end farther from every non-free cell). Everything else unchanged.",
+  "sensor": {
+    "gpu_device_id": -1,
+    "motion_adapter": "planar_fixed_y_v1",
+    "primary": {
+      "sensor_id": "primary-rgbd",
+      "rgb_uuid": "color_sensor",
+      "depth_uuid": "depth_sensor",
+      "resolution_hw": [
+        480,
+        640
+      ],
+      "position_xyz": [
+        0.0,
+        1.2,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 90.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    },
+    "navigation": {
+      "sensor_id": "downward-depth",
+      "depth_uuid": "navigation_depth_sensor",
+      "resolution_hw": [
+        180,
+        240
+      ],
+      "position_xyz": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        -1.5707963267948966,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 120.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    }
+  },
+  "robot": {
+    "geometry_id": "cylinder-v1",
+    "radius_m": 0.2,
+    "height_m": 1.5,
+    "margin_m": 0.05,
+    "near_ground_tolerance_m": 0.05
+  },
+  "mapper": {
+    "resolution_m": 0.05,
+    "sampling_stride": 1,
+    "raycast_workers": 4,
+    "snapshot_radius_m": 8.0
+  },
+  "navigator": {
+    "nominal_speed_mps": 0.15,
+    "discrete_heading_control": true,
+    "gain_aware": true,
+    "acceleration_mps2": 0.6,
+    "goal_selection_max_age_ns": 1500000000,
+    "max_pulse_s": 0.5
+  },
+  "pulse_ms": 300,
+  "rotation_pulse_ms": 500,
+  "start_unknown_tolerance": 0.2,
+  "max_sim_s": 300.0,
+  "max_cycles": 3000,
+  "planar_height_tolerance_m": 0.1,
+  "escape": true
+}

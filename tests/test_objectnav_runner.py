@@ -158,3 +158,71 @@ def test_start_is_snapped_to_robot_navmesh_or_recorded_as_not_navigable(tmp_path
     assert by['0']['positions'][0][1] == 0.25 and by['0']['diagnostics']['start_snap']['shift_y_m'] == 0.15
     assert by['1']['evidence'] == {'start_not_navigable': True} and by['1']['steps'] == 0
     assert json.loads((tmp_path / 's/start_snap.json').read_text()).keys() == {r['uid'] for r in rows}
+
+
+def test_measure_floor_falls_back_to_the_dominant_height_band():
+    import numpy as np
+    obs = down(0)
+    depth = np.array(obs.depth_m, copy=True)
+    h, w = depth.shape
+    depth[h // 2 - 12:h // 2 + 12, w // 2 - 12:w // 2] = 1.6        # half the centre patch is an object top
+    floor = measure_floor(replace(obs, depth_m=depth))
+    assert floor['method'] == 'measured-downward-depth-mode-v1' and floor['floor_z_m'] == pytest.approx(3.0)
+    ramp = np.repeat(np.linspace(1.0, 2.5, w)[None, :], h, axis=0).astype(depth.dtype)   # no flat floor at all
+    with pytest.raises(ValueError):
+        measure_floor(replace(obs, depth_m=ramp))
+
+
+def test_measure_floor_near_pose_and_pose_height_fallbacks():
+    import numpy as np
+    obs = down(0)
+    h, w = obs.depth_m.shape
+    clutter = np.repeat(np.linspace(1.0, 1.9, w)[None, :], h, axis=0).astype(obs.depth_m.dtype)
+    clutter[:, :6] = 2.0                                       # a thin strip of real floor (z = 3.0)
+    floor = measure_floor(replace(obs, depth_m=clutter), pose_z_m=3.02)
+    assert floor['method'] == 'measured-downward-depth-near-pose-v1' and floor['floor_z_m'] == pytest.approx(3.0)
+    floor = measure_floor(replace(obs, depth_m=clutter), pose_z_m=2.5)    # no band near the pose
+    assert floor['method'] == 'simulator-pose-height-v1' and floor['floor_z_m'] == 2.5
+
+
+class StuckBody(FakeSensor):
+    """The worker accepts every pulse but the body never moves (planar adapter rejecting the step)."""
+
+    def execute(self, command):
+        result = super().execute(command)
+        self.x = 0.0
+        return result
+
+
+def test_accepted_but_motionless_pulses_are_reported_as_no_progress(tmp_path, monkeypatch):
+    seen = []
+    from neusymnav.navigation.controller import Navigator
+    original = Navigator.observe_navigation_result
+
+    def spy(self, nav, xy, now, reason, stopped):
+        seen.append((reason, stopped))
+        return original(self, nav, xy, now, reason, stopped)
+
+    monkeypatch.setattr(Navigator, 'observe_navigation_result', spy)
+    runner = LockstepRunner(config(), habitat_python=tmp_path / 'py', out_dir=tmp_path / 's', run_id='s',
+                            policy_factory=ForwardPolicy, sensor_factory=StuckBody, start_snapper=identity_snap,
+                            log=lambda *_: None)
+    rec = json.loads(runner.run([episode()]).read_text())
+    assert rec['diagnostics']['blocked_moves'] > 0
+    assert ('actuation_no_progress', True) in seen
+    assert any(row[-1] == 'no_progress' for row in rec['diagnostics']['reason_tail'])
+
+
+def test_runner_config_rejects_out_of_range_tolerance_and_non_bool_escape():
+    with pytest.raises(ValueError):
+        config(planar_height_tolerance_m=.3)
+    with pytest.raises(ValueError):
+        config(escape=1)
+    assert config(planar_height_tolerance_m=.1, escape=True).escape is True
+    for bad in (-1, 13, 2.0, True):
+        with pytest.raises(ValueError):
+            config(column_fallback_cells=bad)
+    assert config(column_fallback_cells=6).column_fallback_cells == 6
+    for name in ('lockstep-b0-v3.json', 'lockstep-b0-v3h.json'):
+        data = json.loads(open('configs/objectnav/' + name).read())
+        assert data['column_fallback_cells'] == 6 and data['escape'] is True
