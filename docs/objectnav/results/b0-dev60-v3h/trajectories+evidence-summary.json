@@ -1,0 +1,420 @@
+{
+  "schema_version": 3,
+  "success_distance_m": 0.1,
+  "view_point_rule": {
+    "name": "snap-to-scorer-navmesh-v1",
+    "max_horizontal_m": 0.05,
+    "max_vertical_m": 0.3
+  },
+  "overall": {
+    "episodes": 60,
+    "success_rate": 0.2833333333333333,
+    "success_rate_ci95": [
+      0.18333333333333332,
+      0.4
+    ],
+    "spl": 0.06449922522674768,
+    "spl_ci95": [
+      0.035628342344001036,
+      0.09936232545153108
+    ],
+    "soft_spl": 0.1136796219447934,
+    "dtg_m": 3.4757744607826075,
+    "path_length_m": 20.48755553739203,
+    "stop_rate": 0.6166666666666667,
+    "oracle_success_rate": 0.4166666666666667,
+    "oracle_success_rate_ci95": [
+      0.3,
+      0.5333333333333333
+    ],
+    "dtg_min_m": 2.3083193406947733,
+    "oracle_not_success": 8,
+    "oracle_within_m": {
+      "0.1": 0.4166666666666667,
+      "0.25": 0.43333333333333335,
+      "0.5": 0.4666666666666667,
+      "1": 0.48333333333333334
+    }
+  },
+  "invalid_episodes": 0,
+  "by_category": {
+    "bed": {
+      "episodes": 8,
+      "success_rate": 0.5,
+      "success_rate_ci95": [
+        0.125,
+        0.875
+      ],
+      "spl": 0.11465767571034777,
+      "spl_ci95": [
+        0.038844541782587026,
+        0.20221488816858382
+      ],
+      "soft_spl": 0.1620797791022967,
+      "dtg_m": 0.6071410339791328,
+      "path_length_m": 22.819637631559697,
+      "stop_rate": 0.625,
+      "oracle_success_rate": 0.875,
+      "oracle_success_rate_ci95": [
+        0.625,
+        1.0
+      ],
+      "dtg_min_m": 0.4587996691989247,
+      "oracle_not_success": 3,
+      "oracle_within_m": {
+        "0.1": 0.875,
+        "0.25": 0.875,
+        "0.5": 0.875,
+        "1": 0.875
+      }
+    },
+    "chair": {
+      "episodes": 9,
+      "success_rate": 0.5555555555555556,
+      "success_rate_ci95": [
+        0.2222222222222222,
+        0.8888888888888888
+      ],
+      "spl": 0.1365171187498543,
+      "spl_ci95": [
+        0.05002633594804325,
+        0.23094519209573697
+      ],
+      "soft_spl": 0.14193845092926916,
+      "dtg_m": 1.1816961649391386,
+      "path_length_m": 16.167815306284542,
+      "stop_rate": 0.7777777777777778,
+      "oracle_success_rate": 0.6666666666666666,
+      "oracle_success_rate_ci95": [
+        0.3333333333333333,
+        1.0
+      ],
+      "dtg_min_m": 0.855247546828145,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.6666666666666666,
+        "0.25": 0.6666666666666666,
+        "0.5": 0.6666666666666666,
+        "1": 0.6666666666666666
+      }
+    },
+    "plant": {
+      "episodes": 9,
+      "success_rate": 0.1111111111111111,
+      "success_rate_ci95": [
+        0.0,
+        0.3333333333333333
+      ],
+      "spl": 0.01671925451612539,
+      "spl_ci95": [
+        0.0,
+        0.050157763548376165
+      ],
+      "soft_spl": 0.09006291627195784,
+      "dtg_m": 3.148289009514782,
+      "path_length_m": 16.027672264492118,
+      "stop_rate": 0.4444444444444444,
+      "oracle_success_rate": 0.4444444444444444,
+      "oracle_success_rate_ci95": [
+        0.1111111111111111,
+        0.7777777777777778
+      ],
+      "dtg_min_m": 2.3179149488763264,
+      "oracle_not_success": 3,
+      "oracle_within_m": {
+        "0.1": 0.4444444444444444,
+        "0.25": 0.4444444444444444,
+        "0.5": 0.4444444444444444,
+        "1": 0.4444444444444444
+      }
+    },
+    "sofa": {
+      "episodes": 16,
+      "success_rate": 0.125,
+      "success_rate_ci95": [
+        0.0,
+        0.3125
+      ],
+      "spl": 0.026307013164124496,
+      "spl_ci95": [
+        0.0,
+        0.06675346971689339
+      ],
+      "soft_spl": 0.1232375361049533,
+      "dtg_m": 5.567130341893062,
+      "path_length_m": 16.838855698793274,
+      "stop_rate": 0.6875,
+      "oracle_success_rate": 0.1875,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.375
+      ],
+      "dtg_min_m": 3.8152690251590684,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.1875,
+        "0.25": 0.25,
+        "0.5": 0.3125,
+        "1": 0.375
+      }
+    },
+    "toilet": {
+      "episodes": 12,
+      "success_rate": 0.25,
+      "success_rate_ci95": [
+        0.0,
+        0.5
+      ],
+      "spl": 0.031533169422636655,
+      "spl_ci95": [
+        0.0,
+        0.06797371404770071
+      ],
+      "soft_spl": 0.05625113274399431,
+      "dtg_m": 3.887511599653711,
+      "path_length_m": 27.604357123106,
+      "stop_rate": 0.5,
+      "oracle_success_rate": 0.25,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.5
+      ],
+      "dtg_min_m": 2.0555139222803214,
+      "oracle_not_success": 0,
+      "oracle_within_m": {
+        "0.1": 0.25,
+        "0.25": 0.25,
+        "0.5": 0.3333333333333333,
+        "1": 0.3333333333333333
+      }
+    },
+    "tv_monitor": {
+      "episodes": 6,
+      "success_rate": 0.3333333333333333,
+      "success_rate_ci95": [
+        0.0,
+        0.6666666666666666
+      ],
+      "spl": 0.12904241747177156,
+      "spl_ci95": [
+        0.0,
+        0.3673271796568454
+      ],
+      "soft_spl": 0.1315521014085007,
+      "dtg_m": 4.8325413564840956,
+      "path_length_m": 26.04381106601494,
+      "stop_rate": 0.6666666666666666,
+      "oracle_success_rate": 0.3333333333333333,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.6666666666666666
+      ],
+      "dtg_min_m": 3.426638192807635,
+      "oracle_not_success": 0,
+      "oracle_within_m": {
+        "0.1": 0.3333333333333333,
+        "0.25": 0.3333333333333333,
+        "0.5": 0.3333333333333333,
+        "1": 0.3333333333333333
+      }
+    }
+  },
+  "by_scene": {
+    "LT9Jq6dN3Ea": {
+      "episodes": 10,
+      "success_rate": 0.2,
+      "success_rate_ci95": [
+        0.0,
+        0.5
+      ],
+      "spl": 0.05935143466180309,
+      "spl_ci95": [
+        0.0,
+        0.13819169532701786
+      ],
+      "soft_spl": 0.08345572326184728,
+      "dtg_m": 5.089991542324424,
+      "path_length_m": 32.109414937766985,
+      "stop_rate": 0.3,
+      "oracle_success_rate": 0.4,
+      "oracle_success_rate_ci95": [
+        0.1,
+        0.7
+      ],
+      "dtg_min_m": 2.53641816470772,
+      "oracle_not_success": 2,
+      "oracle_within_m": {
+        "0.1": 0.4,
+        "0.25": 0.4,
+        "0.5": 0.4,
+        "1": 0.4
+      }
+    },
+    "TEEsavR23oF": {
+      "episodes": 10,
+      "success_rate": 0.2,
+      "success_rate_ci95": [
+        0.0,
+        0.5
+      ],
+      "spl": 0.03218556940990186,
+      "spl_ci95": [
+        0.0,
+        0.07999976329385534
+      ],
+      "soft_spl": 0.0627471238319505,
+      "dtg_m": 4.064777737297118,
+      "path_length_m": 26.168265948872936,
+      "stop_rate": 0.6,
+      "oracle_success_rate": 0.3,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.6
+      ],
+      "dtg_min_m": 3.002619612729177,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.3,
+        "0.25": 0.4,
+        "0.5": 0.5,
+        "1": 0.5
+      }
+    },
+    "bCPU9suPUw9": {
+      "episodes": 10,
+      "success_rate": 0.2,
+      "success_rate_ci95": [
+        0.0,
+        0.5
+      ],
+      "spl": 0.0525743885057254,
+      "spl_ci95": [
+        0.0,
+        0.13622441043752043
+      ],
+      "soft_spl": 0.08518146072782506,
+      "dtg_m": 2.5195565966889264,
+      "path_length_m": 16.266491917346986,
+      "stop_rate": 0.7,
+      "oracle_success_rate": 0.4,
+      "oracle_success_rate_ci95": [
+        0.1,
+        0.7
+      ],
+      "dtg_min_m": 2.012883274164051,
+      "oracle_not_success": 2,
+      "oracle_within_m": {
+        "0.1": 0.4,
+        "0.25": 0.4,
+        "0.5": 0.4,
+        "1": 0.4
+      }
+    },
+    "k1cupFYWXJ6": {
+      "episodes": 10,
+      "success_rate": 0.3,
+      "success_rate_ci95": [
+        0.1,
+        0.6
+      ],
+      "spl": 0.062004356341728385,
+      "spl_ci95": [
+        0.011909812481538452,
+        0.13591852516499525
+      ],
+      "soft_spl": 0.07080329421831792,
+      "dtg_m": 4.657484307698906,
+      "path_length_m": 12.113533441862074,
+      "stop_rate": 0.9,
+      "oracle_success_rate": 0.4,
+      "oracle_success_rate_ci95": [
+        0.1,
+        0.7
+      ],
+      "dtg_min_m": 3.4352046247338874,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.4,
+        "0.25": 0.4,
+        "0.5": 0.4,
+        "1": 0.4
+      }
+    },
+    "qyAac8rV8Zk": {
+      "episodes": 10,
+      "success_rate": 0.6,
+      "success_rate_ci95": [
+        0.3,
+        0.9
+      ],
+      "spl": 0.10086527310005396,
+      "spl_ci95": [
+        0.041190946276494333,
+        0.15743577372717862
+      ],
+      "soft_spl": 0.22454566366091228,
+      "dtg_m": 0.682917989231646,
+      "path_length_m": 17.486421295144012,
+      "stop_rate": 0.9,
+      "oracle_success_rate": 0.7,
+      "oracle_success_rate_ci95": [
+        0.4,
+        1.0
+      ],
+      "dtg_min_m": 0.27442410002695394,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.7,
+        "0.25": 0.7,
+        "0.5": 0.8,
+        "1": 0.9
+      }
+    },
+    "wcojb4TFT35": {
+      "episodes": 10,
+      "success_rate": 0.2,
+      "success_rate_ci95": [
+        0.0,
+        0.5
+      ],
+      "spl": 0.08001432934127337,
+      "spl_ci95": [
+        0.0,
+        0.23151408733806886
+      ],
+      "soft_spl": 0.15534446596790755,
+      "dtg_m": 3.839918591454625,
+      "path_length_m": 18.781205683359154,
+      "stop_rate": 0.3,
+      "oracle_success_rate": 0.3,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.6
+      ],
+      "dtg_min_m": 2.58836626780685,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.3,
+        "0.25": 0.3,
+        "0.5": 0.3,
+        "1": 0.3
+      }
+    }
+  },
+  "failure_modes": {
+    "budget_exhausted": 6,
+    "never_seen": 26,
+    "seen_not_detected": 2,
+    "stopped_elsewhere": 1,
+    "stopped_too_far": 3,
+    "wrong_object_stop": 5
+  },
+  "trajectories": "runs/objectnav/b0/dev60-v3h/trajectories+evidence.jsonl",
+  "episode_set": "hm3d_v2",
+  "split": "val",
+  "agents": [
+    "b0"
+  ],
+  "view_points_snapped": 91721,
+  "view_points_total": 93191
+}

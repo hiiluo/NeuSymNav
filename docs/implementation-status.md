@@ -1,5 +1,13 @@
 # Trạng thái NeuSymNav
 
+### ObjectNav B0 mốc chính thức (60 DEV) + bàn giao — 2026-11-13 — runtime-validated
+
+Bàn giao `docs/objectnav/b0-baseline-handoff.md`; artifacts `runs/objectnav/b0/dev60-v3h/` (gồm `provenance/`).
+- **Runtime-validated:** `bash runs/_phase3/step9_dev60_official.sh` exit 0, 60/60 episode, 01:09–06:58. 78 test ObjectNav pass trước khi chạy. B0 v3h (lockstep-b0-v3h + b0-policy-v3, bộ chấm schema 3): SR 0,283 [0,183, 0,400], SPL 0,064, OSR 0,417. Mốc v1 (dev1) chấm lại: SR 0,167. So cặp: thắng 8, thua 1, McNemar p 0,039.
+- **Bằng chứng lỗi:** 26/60 chưa bao giờ thấy mục tiêu ≤ 3 m; 8 tới đích nhưng không STOP; 5 dừng sai vật (armchair→sofa).
+- **Nguồn gốc:** lúc chạy code B0 chưa được commit; bản chụp (HEAD 85cb146 + diff + 20 file chưa track) đã kiểm tra trùng, sau đó commit nguyên trạng thành `2dcb0ea` (tag `objectnav-b0-v3h-dev60`). Bản sao kết quả ở `docs/objectnav/results/`. Script chạy: `tools/objectnav/b0/run_dev60.sh`. Toàn bộ test CPU 3074 passed.
+- **Chưa chứng minh:** TEST (180 episode) chưa chạy. 9 episode tinh chỉnh nằm trong DEV nên DEV hơi lạc quan. Policy chuyển sang teammate; phía này dừng chỉnh policy/guard.
+
 ### ObjectNav bộ chấm: DTG snap view point — 2026-11-13 — implemented, correctness-verified, runtime-validated
 
 Report `docs/objectnav/footprint-vs-viewpoint-results.md` (mục Quyết định).

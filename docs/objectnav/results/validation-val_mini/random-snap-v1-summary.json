@@ -1,0 +1,296 @@
+{
+  "schema_version": 3,
+  "success_distance_m": 0.1,
+  "view_point_rule": {
+    "name": "snap-to-scorer-navmesh-v1",
+    "max_horizontal_m": 0.05,
+    "max_vertical_m": 0.3
+  },
+  "overall": {
+    "episodes": 30,
+    "success_rate": 0.06666666666666667,
+    "success_rate_ci95": [
+      0.0,
+      0.16666666666666666
+    ],
+    "spl": 0.006140290329134412,
+    "spl_ci95": [
+      0.0,
+      0.016487529255284343
+    ],
+    "soft_spl": 0.04037431847960249,
+    "dtg_m": 4.42637234677871,
+    "path_length_m": 27.035738560609595,
+    "stop_rate": 1.0,
+    "oracle_success_rate": 0.3,
+    "oracle_success_rate_ci95": [
+      0.13333333333333333,
+      0.4666666666666667
+    ],
+    "dtg_min_m": 2.261846326609763,
+    "oracle_not_success": 7,
+    "oracle_within_m": {
+      "0.1": 0.3,
+      "0.25": 0.3,
+      "0.5": 0.3,
+      "1": 0.3
+    }
+  },
+  "invalid_episodes": 0,
+  "by_category": {
+    "bed": {
+      "episodes": 5,
+      "success_rate": 0.2,
+      "success_rate_ci95": [
+        0.0,
+        0.6
+      ],
+      "spl": 0.011600050392713354,
+      "spl_ci95": [
+        0.0,
+        0.03480015117814006
+      ],
+      "soft_spl": 0.07373044354348071,
+      "dtg_m": 2.07114550024271,
+      "path_length_m": 28.402289827204232,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.6,
+      "oracle_success_rate_ci95": [
+        0.2,
+        1.0
+      ],
+      "dtg_min_m": 0.6121223573107273,
+      "oracle_not_success": 2,
+      "oracle_within_m": {
+        "0.1": 0.6,
+        "0.25": 0.6,
+        "0.5": 0.6,
+        "1": 0.6
+      }
+    },
+    "chair": {
+      "episodes": 7,
+      "success_rate": 0.14285714285714285,
+      "success_rate_ci95": [
+        0.0,
+        0.42857142857142855
+      ],
+      "spl": 0.018029779701495083,
+      "spl_ci95": [
+        0.0,
+        0.054089339104485254
+      ],
+      "soft_spl": 0.02240625098907419,
+      "dtg_m": 3.141128519816058,
+      "path_length_m": 27.20436674032783,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.5714285714285714,
+      "oracle_success_rate_ci95": [
+        0.14285714285714285,
+        0.8571428571428571
+      ],
+      "dtg_min_m": 1.3004310318002743,
+      "oracle_not_success": 3,
+      "oracle_within_m": {
+        "0.1": 0.5714285714285714,
+        "0.25": 0.5714285714285714,
+        "0.5": 0.5714285714285714,
+        "1": 0.5714285714285714
+      }
+    },
+    "plant": {
+      "episodes": 5,
+      "success_rate": 0.0,
+      "success_rate_ci95": [
+        0.0,
+        0.0
+      ],
+      "spl": 0.0,
+      "spl_ci95": [
+        0.0,
+        0.0
+      ],
+      "soft_spl": 0.023556026839587813,
+      "dtg_m": 4.839362621307373,
+      "path_length_m": 25.571576831964638,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.2,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.6
+      ],
+      "dtg_min_m": 1.7407581403851509,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.2,
+        "0.25": 0.2,
+        "0.5": 0.2,
+        "1": 0.2
+      }
+    },
+    "sofa": {
+      "episodes": 5,
+      "success_rate": 0.0,
+      "success_rate_ci95": [
+        0.0,
+        0.0
+      ],
+      "spl": 0.0,
+      "spl_ci95": [
+        0.0,
+        0.0
+      ],
+      "soft_spl": 0.03344906942977219,
+      "dtg_m": 6.096243286132813,
+      "path_length_m": 31.42246997385079,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.2,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.6
+      ],
+      "dtg_min_m": 2.817326421197504,
+      "oracle_not_success": 1,
+      "oracle_within_m": {
+        "0.1": 0.2,
+        "0.25": 0.2,
+        "0.5": 0.2,
+        "1": 0.2
+      }
+    },
+    "toilet": {
+      "episodes": 1,
+      "success_rate": 0.0,
+      "success_rate_ci95": [
+        0.0,
+        0.0
+      ],
+      "spl": 0.0,
+      "spl_ci95": [
+        0.0,
+        0.0
+      ],
+      "soft_spl": 0.05290018331296199,
+      "dtg_m": 5.447448253631592,
+      "path_length_m": 32.094680173879105,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.0,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.0
+      ],
+      "dtg_min_m": 4.246346473693848,
+      "oracle_not_success": 0,
+      "oracle_within_m": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "1": 0.0
+      }
+    },
+    "tv_monitor": {
+      "episodes": 7,
+      "success_rate": 0.0,
+      "success_rate_ci95": [
+        0.0,
+        0.0
+      ],
+      "spl": 0.0,
+      "spl_ci95": [
+        0.0,
+        0.0
+      ],
+      "soft_spl": 0.04968684501248423,
+      "dtg_m": 5.760295067514692,
+      "path_length_m": 23.080746613859393,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.0,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.0
+      ],
+      "dtg_min_m": 4.093570215361459,
+      "oracle_not_success": 0,
+      "oracle_within_m": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "1": 0.0
+      }
+    }
+  },
+  "by_scene": {
+    "TEEsavR23oF": {
+      "episodes": 15,
+      "success_rate": 0.06666666666666667,
+      "success_rate_ci95": [
+        0.0,
+        0.2
+      ],
+      "spl": 0.00841389719403104,
+      "spl_ci95": [
+        0.0,
+        0.025241691582093117
+      ],
+      "soft_spl": 0.04635887656626405,
+      "dtg_m": 5.192538303633531,
+      "path_length_m": 26.019044310270512,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.2,
+      "oracle_success_rate_ci95": [
+        0.0,
+        0.4
+      ],
+      "dtg_min_m": 3.059625800016026,
+      "oracle_not_success": 2,
+      "oracle_within_m": {
+        "0.1": 0.2,
+        "0.25": 0.2,
+        "0.5": 0.2,
+        "1": 0.2
+      }
+    },
+    "wcojb4TFT35": {
+      "episodes": 15,
+      "success_rate": 0.06666666666666667,
+      "success_rate_ci95": [
+        0.0,
+        0.2
+      ],
+      "spl": 0.0038666834642377846,
+      "spl_ci95": [
+        0.0,
+        0.011600050392713354
+      ],
+      "soft_spl": 0.03438976039294093,
+      "dtg_m": 3.6602063899238906,
+      "path_length_m": 28.052432810948684,
+      "stop_rate": 1.0,
+      "oracle_success_rate": 0.4,
+      "oracle_success_rate_ci95": [
+        0.13333333333333333,
+        0.6666666666666666
+      ],
+      "dtg_min_m": 1.4640668532035004,
+      "oracle_not_success": 5,
+      "oracle_within_m": {
+        "0.1": 0.4,
+        "0.25": 0.4,
+        "0.5": 0.4,
+        "1": 0.4
+      }
+    }
+  },
+  "failure_modes": {
+    "stopped_elsewhere": 27,
+    "stopped_too_far": 1
+  },
+  "trajectories": "runs/objectnav/validation/random.jsonl",
+  "episode_set": "hm3d_v2",
+  "split": "val_mini",
+  "agents": [
+    "random"
+  ],
+  "view_points_snapped": 35737,
+  "view_points_total": 35795
+}
