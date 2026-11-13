@@ -1,5 +1,38 @@
 # Trạng thái NeuSymNav
 
+### ObjectNav B0 mốc chính thức (60 DEV) + bàn giao — 2026-11-13 — runtime-validated
+
+Bàn giao `docs/objectnav/b0-baseline-handoff.md`; artifacts `runs/objectnav/b0/dev60-v3h/` (gồm `provenance/`).
+- **Runtime-validated:** `bash runs/_phase3/step9_dev60_official.sh` exit 0, 60/60 episode, 01:09–06:58. 78 test ObjectNav pass trước khi chạy. B0 v3h (lockstep-b0-v3h + b0-policy-v3, bộ chấm schema 3): SR 0,283 [0,183, 0,400], SPL 0,064, OSR 0,417. Mốc v1 (dev1) chấm lại: SR 0,167. So cặp: thắng 8, thua 1, McNemar p 0,039.
+- **Bằng chứng lỗi:** 26/60 chưa bao giờ thấy mục tiêu ≤ 3 m; 8 tới đích nhưng không STOP; 5 dừng sai vật (armchair→sofa).
+- **Nguồn gốc:** lúc chạy code B0 chưa được commit; bản chụp (HEAD 85cb146 + diff + 20 file chưa track) đã kiểm tra trùng, sau đó commit nguyên trạng thành `2dcb0ea` (tag `objectnav-b0-v3h-dev60`). Bản sao kết quả ở `docs/objectnav/results/`. Script chạy: `tools/objectnav/b0/run_dev60.sh`. Toàn bộ test CPU 3074 passed.
+- **Chưa chứng minh:** TEST (180 episode) chưa chạy. 9 episode tinh chỉnh nằm trong DEV nên DEV hơi lạc quan. Policy chuyển sang teammate; phía này dừng chỉnh policy/guard.
+
+### ObjectNav bộ chấm: DTG snap view point — 2026-11-13 — implemented, correctness-verified, runtime-validated
+
+Report `docs/objectnav/footprint-vs-viewpoint-results.md` (mục Quyết định).
+- **Implemented:** người dùng chọn snap. `objectnav_metrics.snap_view_points` (quy tắc `snap-to-scorer-navmesh-v1`: ≤ 0,05 m ngang, ≤ 0,3 m đứng, nếu không giữ thô), dùng trong `tools/objectnav/score_trajectories.py`; summary schema 3 ghi quy tắc và số view point đã snap. Ngưỡng success 0,1 m giữ nguyên.
+- **Correctness-verified:** `PYTHONPATH=src:.:tests .venv/bin/python -m pytest -q tests/test_objectnav_metrics.py tests/test_objectnav_runner.py tests/test_objectnav_b0.py tests/test_objectnav_episodes.py` 49 passed, exit 0.
+- **Runtime-validated:** validation val_mini: oracle_path SR 1,000, SPL 0,996; random SR 0,067. B0 9 episode: dev4h SR 2/9, OSR 4/9; dev3 2/9; dev2 1/9; dev1 1/9. Artifacts `*-snap-v1-*` / `score-snap-v1-*`.
+- **Validation agent đã sửa:** `tools/objectnav/scripted_agents.py` nhắm view point đã snap (cùng quy tắc). Chạy lại val_mini: oracle_path-v2 SR 1,000 / SPL 1,000; oracle_greedy-v2 SR 0,233→1,000 / SPL 0,944. Log `runs/objectnav/validation/log-snap-v1.txt`.
+- **Lưu ý:** kết quả SR từ trước 13/11 không so sánh được với kết quả mới.
+
+### ObjectNav bộ chấm: footprint vs view point — 2026-11-13 — đo xong; phát hiện lỗi độ cao trong DTG, đã sửa bằng snap (mục trên)
+
+Report `docs/objectnav/footprint-vs-viewpoint-results.md`; artifacts `runs/objectnav/b0/footprint-20261113/`.
+- **Implemented:** `tools/objectnav/b0/footprint_ceiling.py` (evaluator-only) và các script chẩn đoán trong artifacts.
+- **Runtime-validated:** probe exit 0 trên 9 episode DEV. Footprint planner r 0,25 h 1,5 vẫn còn view point đứng được ở 9/9 episode, giả thuyết footprint bị bác bỏ.
+- **Phát hiện:** navmesh basis của bộ chấm cao hơn view point 0,05–0,15 m (7/9 episode lệch 0,15 m). DTG cộng phần lệch này, nên success < 0,1 m không thể xảy ra ở đó. Chấm chẩn đoán với view point snap: SR dev4h 0→2/9, dev3 1→2/9, dev2 0→1/9. Người dùng chọn sửa bằng snap cùng ngày (mục "DTG snap view point").
+- **Chưa chứng minh:** nguồn gốc độ lệch; ảnh hưởng trên DEV lớn; validation phase 1.
+
+### ObjectNav bộ chấm: chỉ số oracle — 2026-11-13 — implemented, correctness-verified, runtime-validated trên run có sẵn
+
+Report `docs/objectnav/oracle-metrics-results.md`; artifacts `runs/objectnav/b0/dev{1,2,3,4h}-diag/oracle-v2-*`.
+- **Implemented:** min-DTG, oracle success (min-DTG < 0,1 m), oracle_not_success, oracle_within_m (0,1/0,25/0,5/1 m) trong `evaluation/objectnav_metrics.py` (summary schema 2) và `tools/objectnav/score_trajectories.py`. SR/SPL/SoftSPL/DTG không đổi; policy/guard/runner không đổi.
+- **Correctness-verified:** `PYTHONPATH=src:.:tests .venv/bin/python -m pytest -q tests/test_objectnav_metrics.py tests/test_objectnav_runner.py tests/test_objectnav_b0.py` 41 passed, exit 0.
+- **Runtime-validated:** chấm lại 4 run B0 (9 episode DEV) bằng Habitat interpreter, exit 0. OSR 1/9 ở mọi run; min-DTG < 0,25 m 1–4/9. SR/SPL trùng scorer v1.
+- **Chưa chứng minh:** giả thuyết footprint robot không vào được view point (nhiều lần dừng ở 0,10 m); OSR trên tập DEV lớn. Quyết định 13/11: dừng chỉnh policy/guard trên nhánh này, policy thuộc teammate.
+
 ### Bàn giao đường dẫn local-assets — 2026-11-12
 
 - **Implemented:** hai `.gitkeep` rỗng tạo `local-assets/models/` và `local-assets/datasets/` sau clone. Git bỏ qua asset và checker CI chỉ cho phép đúng hai placeholder rỗng dưới root này. [Hướng dẫn local-assets](local-assets.md) ghi nguồn tải, vị trí, SHA-256 và cấu hình Habitat cho 00770/00806.

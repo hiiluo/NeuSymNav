@@ -16,7 +16,8 @@ class Navigator:
                  goal_selection_max_age_ns=None,tour=None,max_pulse_s=None,start_unknown_tolerance=0.):
         if type(offline_replay) is not bool or (offline_replay and not clock_domain.startswith('replay:')):
             raise ValueError('offline navigation mode requires an isolated replay clock')
-        if not (clock_domain.startswith('replay:') if offline_replay else clock_domain.startswith('host_monotonic:')):
+        from .clock_domains import is_live
+        if not (clock_domain.startswith('replay:') if offline_replay else is_live(clock_domain)):
             raise ValueError('navigation requires pinned live host clock domain')
         if not 0<max_nav_age_ns<=300_000_000:raise ValueError('navigation TTL cannot exceed 300 ms')
         # Goal SELECTION only (world frontier choice and its failure watch). It
@@ -149,6 +150,74 @@ class Navigator:
             robot_xy,yaw_rad,now_ns,latch_goal=self.policy.config.commit_goal_until_reached,
             blocked_edges=self.policy.blocked_edges(nav.revision))
 
+    def step_toward(self, nav, robot_xy, yaw_rad, now_ns, select_goals, goal_id) -> NavigationDecision:
+        """Follow a path to caller-chosen goal cells (ObjectNav B0 approach).
+
+        ``select_goals(grid, traversable) -> (cells, extra_cost, tag)``. Same
+        clock checks, start-footprint rule, planner and controller as
+        ``step``; the frontier policy is not consulted and keeps its state.
+        Every command still goes through the caller's MotionGuard.
+        """
+        self.last_frontiers=None
+        self.last_committed_goal=None
+        def stop(reason):
+            self.controller.reset()
+            self.last_control_diagnostics=dict(goal_id=goal_id,goal_xy=None,path_point_count=0,
+                path_sample_xy=[],path_sample_truncated=False,lookahead_xy=None,
+                heading_error_rad=None,decision_reason=reason)
+            return NavigationDecision(None,(),0.,0.,nav.revision,reason)
+        try: age=age_ns(nav.capture_monotonic_ns,nav.clock_domain,now_ns,self.clock_domain)
+        except ValueError:
+            return stop('clock_domain_mismatch' if nav.clock_domain!=self.clock_domain else 'nav_future')
+        if age>self._selection_age_limit_ns:return stop('nav_stale')
+        if self._episode_id!=nav.episode_id:
+            self._new_policy();self._episode_id=nav.episode_id;self._last_ns=None
+        geometry=(nav.origin_xy,nav.resolution_m,nav.states.shape)
+        if geometry!=self._grid_geometry:
+            self.policy._failed_edges_until_revision.clear()
+            if self._grid_geometry is None or geometry[1:]!=self._grid_geometry[1:]:
+                self.controller.reset()
+            self._grid_geometry=geometry
+        if self.start_unknown_tolerance:
+            from .start_footprint import tolerate_robot_footprint
+            nav,cleared=tolerate_robot_footprint(nav,robot_xy,self.robot,self.start_unknown_tolerance)
+            self.start_unknown_cleared+=cleared>0
+        grid=adapt(nav,self.robot.height_m,self.robot.geometry_id)
+        cells,extra,tag=select_goals(grid,self.planner.core.traversable(grid))
+        self.last_approach=dict(tag=tag,goal_cells=len(cells))
+        if not cells:return stop('approach_no_goal_cells')
+        results=self.planner.core.plan_many(grid,robot_xy,cells)
+        best=None
+        for cell,result in results.items():
+            if result.success and (best is None or result.cost_m+extra.get(cell,0.)<best[0]):
+                best=(result.cost_m+extra.get(cell,0.),cell,result)
+        if best is None:return stop('approach_no_path')
+        _,cell,path_result=best
+        self.last_approach.update(cost_m=round(path_result.cost_m,3),goal_xy=list(grid.cell_to_world(*cell)))
+        return self._emit(nav,grid,age,goal_id,path_result,tuple(grid.cell_to_world(*cell)),
+            robot_xy,yaw_rad,now_ns,latch_goal=False)
+
+    def start_traversable(self, nav, robot_xy) -> bool:
+        """True when the planner's footprint-safe mask holds the robot's own cell.
+
+        Same start-footprint rule and mask as ``step``/``step_toward``; read-only
+        (no policy, controller or failure-watch state changes). B0 uses it to
+        end a clearance escape once normal planning can start from here again.
+        """
+        if self.start_unknown_tolerance:
+            from .start_footprint import tolerate_robot_footprint
+            nav,_cleared=tolerate_robot_footprint(nav,robot_xy,self.robot,self.start_unknown_tolerance)
+        grid=adapt(nav,self.robot.height_m,self.robot.geometry_id)
+        cell=grid.world_to_cell(*robot_xy)
+        return cell is not None and bool(self.planner.core.traversable(grid)[cell])
+
+    def release_goal(self):
+        """Drop the committed frontier goal and controller state (mode switch)."""
+        self.policy._clear_goal()
+        self.controller.reset()
+        self._goal_failure_watch=None
+        self.last_committed_goal=None
+
     def _emit(self,nav,grid,age,goal_id,path_result,goal_world_xy,robot_xy,yaw_rad,now_ns,*,
               latch_goal,blocked_edges=frozenset()):
         path=tuple(grid.cell_to_world(*cell) for cell in path_result.cells)
@@ -214,6 +283,7 @@ class Navigator:
         goal=self.policy._goal
         eligible=(reason in {'bootstrap_blocked','footprint_not_observed',
                     'path_segment_blocked','collision_blocked','committed_goal_waiting_after_collision',
+                    'actuation_no_progress',
                     'committed_goal_outside_map'} or reason.startswith('committed_goal_blocked:'))
         try:fresh=age_ns(nav.capture_monotonic_ns,nav.clock_domain,now_ns,self.clock_domain)<=self._selection_age_limit_ns
         except ValueError:fresh=False

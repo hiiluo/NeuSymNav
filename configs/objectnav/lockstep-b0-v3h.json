@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "description": "Phase-3 B0 lockstep runner config v3h (12/11/2026): lockstep-b0-v2.json plus the body-column fallback the user approved after the dev3-diag guard-block probes: column_fallback_cells 6 - in the guard's fresh-frame bootstrap, up to 6 footprint cells whose floor was measured in the current frame, planar cell voted free and body column without any return, but with some body height bins reached by no ray (occluded by geometry above the 1.5 m body; the downward camera is at 2.0 m), may use the accumulated map's FREE verdict. PENDING USER APPROVAL: planar_height_tolerance_m 0.15 (dev3-diag no-motion spots: the robot stands where the navmesh is 8.5-9.6 cm off the launch height and the next step is 10.1-11.9 cm off, so the 10 cm planar adapter rejects it). Escape on.",
+  "sensor": {
+    "gpu_device_id": -1,
+    "motion_adapter": "planar_fixed_y_v1",
+    "primary": {
+      "sensor_id": "primary-rgbd",
+      "rgb_uuid": "color_sensor",
+      "depth_uuid": "depth_sensor",
+      "resolution_hw": [
+        480,
+        640
+      ],
+      "position_xyz": [
+        0.0,
+        1.2,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 90.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    },
+    "navigation": {
+      "sensor_id": "downward-depth",
+      "depth_uuid": "navigation_depth_sensor",
+      "resolution_hw": [
+        180,
+        240
+      ],
+      "position_xyz": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "orientation_xyz_rad": [
+        -1.5707963267948966,
+        0.0,
+        0.0
+      ],
+      "hfov_deg": 120.0,
+      "depth_min_m": 0.1,
+      "depth_max_m": 10.0
+    }
+  },
+  "robot": {
+    "geometry_id": "cylinder-v1",
+    "radius_m": 0.2,
+    "height_m": 1.5,
+    "margin_m": 0.05,
+    "near_ground_tolerance_m": 0.05
+  },
+  "mapper": {
+    "resolution_m": 0.05,
+    "sampling_stride": 1,
+    "raycast_workers": 4,
+    "snapshot_radius_m": 8.0
+  },
+  "navigator": {
+    "nominal_speed_mps": 0.15,
+    "discrete_heading_control": true,
+    "gain_aware": true,
+    "acceleration_mps2": 0.6,
+    "goal_selection_max_age_ns": 1500000000,
+    "max_pulse_s": 0.5
+  },
+  "pulse_ms": 300,
+  "rotation_pulse_ms": 500,
+  "start_unknown_tolerance": 0.2,
+  "max_sim_s": 300.0,
+  "max_cycles": 3000,
+  "planar_height_tolerance_m": 0.15,
+  "escape": true,
+  "column_fallback_cells": 6
+}
