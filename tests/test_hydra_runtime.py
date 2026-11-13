@@ -27,6 +27,9 @@ def _hydra_profile(tmp_path, *, workers=None):
     entry = Path(__file__).resolve().parents[1] / 'src' / 'neusymnav' / 'backends' / 'hydra' / 'entry.py'
     child = entry.with_name('child.sh')
     setup = Path(__file__).resolve().parents[1] / '.runtime' / 'hydra_ws' / 'install' / 'setup.bash'
+    if not setup.is_file():                      # native workspace not built (CI): only the pin matters here
+        setup = tmp_path / 'setup.bash'
+        setup.write_text('# test stand-in for .runtime/hydra_ws/install/setup.bash\n')
     calibration = dict(calibration_id='hydra-cal-v1', version='calibration-v1', sensor_id='rgbd',
         camera_name='primary_rgbd', K=[[1.,0.,1.],[0.,1.,1.],[0.,0.,1.]],
         body_T_camera=np.eye(4).tolist(), pose_version=0, coordinate_convention='canonical_z_up_v1',

@@ -60,6 +60,12 @@ def test_collection_failure_cannot_leave_gc_disabled():
         with CaptureGCWindow(True,collector=gc,now_ns=lambda:1):pass
     assert gc.isenabled()
 
+HYDRA_LOCAL_PROFILE='configs/demo-00805.hydra-rolling.local.json'
+needs_local_profile=pytest.mark.skipif(not __import__('pathlib').Path(HYDRA_LOCAL_PROFILE).is_file(),
+                                       reason='machine-local Hydra profile (gitignored) not present')
+
+
+@needs_local_profile
 @pytest.mark.parametrize('value',[True,False])
 def test_hydra_profile_accepts_explicit_gc_window(tmp_path,value):
     import json
@@ -70,6 +76,7 @@ def test_hydra_profile_accepts_explicit_gc_window(tmp_path,value):
     p=tmp_path/'gc.json';p.write_text(json.dumps(data))
     assert load_config(p).data['runtime']['defer_capture_gc'] is value
 
+@needs_local_profile
 @pytest.mark.parametrize('value',[1,None,'true'])
 def test_gc_window_configuration_rejects_non_boolean(tmp_path,value):
     import json

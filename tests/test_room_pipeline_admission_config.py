@@ -8,7 +8,11 @@ def profile(tmp_path, room_options=None):
     data=json.loads((project/'configs/p10/demo-yoloe26m-640x480-00861.json').read_text())
     source_root=next((ancestor/'Rebuild_3DScene_OccuSG' for ancestor in project.parents
                       if (ancestor/'Rebuild_3DScene_OccuSG').is_dir()),
-                     project.parent/'Rebuild_3DScene_OccuSG')
+                     None)
+    if source_root is None:                      # Rebuild checkout absent (CI): only its package marker is checked
+        source_root=tmp_path/'Rebuild_3DScene_OccuSG'
+        (source_root/'src'/'standalone_sg').mkdir(parents=True)
+        (source_root/'src'/'standalone_sg'/'__init__.py').write_text('')
     data['workers']['room_pipeline']={
         'source_root':str(source_root),
         'm23_binary':{'path':'/tmp/m23','sha256':'a'*64},

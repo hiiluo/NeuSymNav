@@ -76,19 +76,33 @@ def test_giant_builtin_integer_rejected_before_float_conversion():
     with pytest.raises(ValueError):validate_actuation_proof(p,c,obs)
 
 
-@pytest.mark.parametrize('linear,yaw,turn_amount',[(.1,0.,0.),(0.,.2,.04),(.2,.2,.02)])
-def test_nominal_duration_sum_cannot_exceed_100ms(linear,yaw,turn_amount):
+def _pulse_proof(linear,yaw,step,turn_amount):
     import math
-    obs,c,p=evidence();c=replace(c,linear_mps=linear,yaw_radps=yaw,deadline_monotonic_ns=1_250_000_000)
+    obs,c,p=evidence();c=replace(c,linear_mps=linear,yaw_radps=yaw,deadline_monotonic_ns=1_700_000_000)
     a=p['actions'][0]
     if not linear:
         a.update(action='turn_left',amount=math.degrees(turn_amount),body_after_xy=[0.,0.],yaw_after_rad=turn_amount)
     else:
-        a.update(amount=.02,body_after_xy=[.02,0.])
+        a.update(amount=step,body_after_xy=[step,0.])
         if yaw:
-            p['actions'].append(dict(a,index=1,action='turn_left',amount=math.degrees(turn_amount),pre_step_monotonic_ns=1_001_000_001,post_step_monotonic_ns=1_002_000_000,pose_version_before=a['pose_version_after'],pose_version_after=a['pose_version_after']+1,body_before_xy=[.02,0.],body_after_xy=[.02,0.],yaw_before_rad=0.,yaw_after_rad=turn_amount))
+            p['actions'].append(dict(a,index=1,action='turn_left',amount=math.degrees(turn_amount),pre_step_monotonic_ns=1_001_000_001,post_step_monotonic_ns=1_002_000_000,pose_version_before=a['pose_version_after'],pose_version_after=a['pose_version_after']+1,body_before_xy=[step,0.],body_after_xy=[step,0.],yaw_before_rad=0.,yaw_after_rad=turn_amount))
     p['command_sha256']=command_sha256(c)
+    return p,c,obs
+
+
+# Worker contract (actuation_measurements.validate_actuation_proof): a translation pulse lasts
+# <= 300 ms, a pure in-place yaw pulse <= 500 ms, both also bounded by the command deadline.
+@pytest.mark.parametrize('linear,yaw,step,turn_amount',[(.1,0.,.04,0.),(0.,.2,0.,.12),(.2,.2,.04,.04)])
+def test_nominal_duration_sum_cannot_exceed_pulse_budget(linear,yaw,step,turn_amount):
+    p,c,obs=_pulse_proof(linear,yaw,step,turn_amount)          # 400 / 600 / 400 ms nominal
+    # rejected by the per-step bound or by the summed-duration check, whichever fires first
     with pytest.raises(ValueError):validate_actuation_proof(p,c,obs)
+
+
+@pytest.mark.parametrize('linear,yaw,step,turn_amount',[(.1,0.,.02,0.),(0.,.2,0.,.08),(.2,.2,.02,.02)])
+def test_nominal_duration_within_pulse_budget_is_accepted(linear,yaw,step,turn_amount):
+    p,c,obs=_pulse_proof(linear,yaw,step,turn_amount)          # 200 / 400 / 200 ms nominal
+    validate_actuation_proof(p,c,obs)
 
 
 @pytest.mark.parametrize('change',[dict(linear_mps=.3),dict(linear_mps=-.1),dict(yaw_radps=1.)])

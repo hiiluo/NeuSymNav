@@ -41,6 +41,10 @@ class BootstrapResult:
     source: object
 
 
+# Upper bound for MotionGuard(column_fallback_cells=...) (approved 12/11/2026).
+MAX_COLUMN_FALLBACK_CELLS=12
+
+
 def capsule_cells(origin_xy, resolution_m, start, end, radius):
     """Closed squares intersecting a world-space swept circular footprint.
 
@@ -352,7 +356,7 @@ class NavMapper:
         """Exact immutable measured history; dense room assembly is off this lane."""
         return self._overview_tiles
 
-    def _coverage_from_votes(self,obs,votes):
+    def _coverage_from_votes(self,obs,votes,*,column_unseen_out=None):
         """Fresh-frame classification, equivalent to a new one-frame mapper.
 
         Uses unaccumulated measured votes, never historical tile log odds.
@@ -376,6 +380,15 @@ class NavMapper:
             free=votes.planar_free[src]&body_free&supported&~occupied
             floor[dst]=supported;clear[dst]=np.where(body_free,self.robot.height_m,0.)
             local=states[dst];local[free]=GridState.FREE;local[occupied]=GridState.OCCUPIED
+            if column_unseen_out is not None:
+                # Fresh frame: floor return, planar cell free, no return anywhere in
+                # the body column, but some body height bin got no free vote at all
+                # (rays to it blocked, e.g. by geometry above the robot height).
+                unseen=np.zeros(shape,bool)
+                unseen[dst]=votes.planar_free[src]&supported&~occupied&~body_free
+                column_unseen_out.append(unseen)
+        elif column_unseen_out is not None:
+            column_unseen_out.append(np.zeros(shape,bool))
         return NavSnapshot(obs.key.episode_id,0,obs.key,obs.capture_monotonic_ns,obs.clock_domain,
             res,(grid.origin_x_m+min_c*res,grid.origin_z_m+min_r*res),states,floor,clear,
             self.robot.geometry_id,self.floor_z_m,self.floor_datum_source,self.calibration_hash)
@@ -465,15 +478,26 @@ class NavMapper:
     def world_to_snapshot(nav, xy):
         return math.floor((xy[1]-nav.origin_xy[1])/nav.resolution_m),math.floor((xy[0]-nav.origin_xy[0])/nav.resolution_m)
 
-    def measured_coverage(self, observation, *, required_bounds_xy=None):
-        """Current measured returns only; no historical/no-return floor substitution."""
+    def measured_coverage(self, observation, *, required_bounds_xy=None, column_unseen=False):
+        """Current measured returns only; no historical/no-return floor substitution.
+
+        ``column_unseen`` (local proof only): return ``(nav, mask)`` where mask
+        marks cells whose body column got no free vote in this frame although
+        the floor was measured there and nothing was hit (see bootstrap).
+        """
+        if column_unseen and required_bounds_xy is None:
+            raise ValueError('column_unseen needs required_bounds_xy')
         cached=self._current_coverage
-        if cached is not None and observation.geometry_hash==cached[0]:return cached[1]
+        if not column_unseen and cached is not None and observation.geometry_hash==cached[0]:return cached[1]
         if required_bounds_xy is not None:
             from .local_coverage import collect_local_measured_votes
             votes,_,_=collect_local_measured_votes(observation,self._core,required_bounds_xy)
             # A fresh, read-only local proof. Never integrate these votes into
             # history or substitute their source for the map's source.
+            if column_unseen:
+                out=[]
+                nav=self._coverage_from_votes(observation,votes,column_unseen_out=out)
+                return nav,out[0]
             return self._coverage_from_votes(observation,votes)
         from dataclasses import replace
         core=self._core
@@ -488,19 +512,30 @@ class NavMapper:
         return current._snapshot(measured,single_frame=True)
 
     def bootstrap(self, observation, *, robot_xy, yaw_rad, corridor_m, swept_margin_m=0.,
-                  start_unknown_fraction=0.):
+                  start_unknown_fraction=0., body_only=False, column_fallback_nav=None,
+                  column_fallback_max_cells=0):
         if not math.isfinite(corridor_m) or corridor_m<0:raise ValueError('invalid bootstrap corridor')
         if not math.isfinite(swept_margin_m) or swept_margin_m<0:raise ValueError('invalid swept margin')
         if observation.modality!='depth_only' or not np.allclose(observation.T_world_camera[:3,2],(0.,0.,-1.),atol=1e-5,rtol=0):
             return BootstrapResult(False,'bootstrap_blocked',0,0,observation.key)
         if not all(math.isfinite(v) for v in (*robot_xy,yaw_rad)):raise ValueError('invalid bootstrap robot pose')
         end=(robot_xy[0]+corridor_m*math.cos(yaw_rad),robot_xy[1]+corridor_m*math.sin(yaw_rad))
-        radius=self.robot.radius_m+self.robot.margin_m+swept_margin_m
+        # body_only: the guard's escape check (MotionGuard(escape=True)) uses the
+        # body radius without the safety margin; every other caller keeps the margin.
+        radius=self.robot.radius_m+(0. if body_only else self.robot.margin_m)+swept_margin_m
         # Bound work before enumerating capsule cells, including invalid robot
         # positions or extremely long requested corridors.
         lo=np.minimum(robot_xy,end)-radius
         hi=np.maximum(robot_xy,end)+radius
-        nav=self.measured_coverage(observation,required_bounds_xy=(lo,hi))
+        if type(column_fallback_max_cells) is not int or not 0<=column_fallback_max_cells<=MAX_COLUMN_FALLBACK_CELLS:
+            raise ValueError('column fallback cells must be an int in [0, %d]'%MAX_COLUMN_FALLBACK_CELLS)
+        if column_fallback_max_cells and column_fallback_nav is None:
+            raise ValueError('column fallback needs the accumulated navigation snapshot')
+        unseen=None
+        if column_fallback_max_cells:
+            nav,unseen=self.measured_coverage(observation,required_bounds_xy=(lo,hi),column_unseen=True)
+        else:
+            nav=self.measured_coverage(observation,required_bounds_xy=(lo,hi))
         map_hi=np.asarray(nav.origin_xy)+np.asarray(nav.states.shape[::-1])*nav.resolution_m
         if np.any(lo<=np.asarray(nav.origin_xy)) or np.any(hi>=map_hi):
             return BootstrapResult(False,'bootstrap_blocked',0,0,observation.key)
@@ -512,9 +547,42 @@ class NavMapper:
             nav,tolerated=tolerate_robot_footprint(nav,robot_xy,self.robot,validate_tolerance(start_unknown_fraction))
         cells=tuple(capsule_cells(nav.origin_xy,nav.resolution_m,robot_xy,end,radius))
         count=sum(0<=r<nav.states.shape[0] and 0<=c<nav.states.shape[1] and nav.states[r,c]==GridState.FREE for r,c in cells)
+        fallback=0
+        if unseen is not None and cells and count<len(cells):
+            fallback=self._column_fallback(nav,unseen,cells,column_fallback_nav,column_fallback_max_cells)
+            if fallback:count=len(cells)
         ready=count==len(cells) and bool(cells)
         result=BootstrapResult(ready,'bootstrap_ready' if ready else 'bootstrap_blocked',len(cells),count,observation.key)
-        if tolerated:
-            try:object.__setattr__(result,'start_tolerated',tolerated)
-            except (AttributeError,TypeError):pass
+        for name,value in (('start_tolerated',tolerated),('column_fallback',fallback)):
+            if value:
+                try:object.__setattr__(result,name,value)
+                except (AttributeError,TypeError):pass
         return result
+
+    def _column_fallback(self,nav,unseen,cells,acc,max_cells):
+        """Approved 12/11/2026 (ObjectNav lockstep): bounded body-column fallback.
+
+        Every capsule cell that is not FREE in the fresh frame may count as
+        FREE only if, in that same fresh frame, the floor was measured there,
+        the planar cell was voted free and NO return lies anywhere in its body
+        column - only some body height bins got no ray at all - and the
+        accumulated map (``acc``, never a tolerated copy) calls the cell FREE.
+        At most ``max_cells`` such cells; otherwise nothing is accepted.
+        Returns the number of cells accepted this way (0 = refused).
+        """
+        if acc.episode_id!=nav.episode_id or acc.robot_geometry_id!=nav.robot_geometry_id:return 0
+        if not math.isclose(float(acc.resolution_m),float(nav.resolution_m)):return 0
+        if acc.floor_z_m!=self.floor_z_m or acc.calibration_hash!=self.calibration_hash:return 0
+        res=float(nav.resolution_m);ox,oy=(float(v) for v in nav.origin_xy);ax,ay=(float(v) for v in acc.origin_xy)
+        height=self.robot.height_m;accepted=0
+        for r,c in cells:
+            if not (0<=r<nav.states.shape[0] and 0<=c<nav.states.shape[1]):return 0
+            if nav.states[r,c]==GridState.FREE:continue
+            if not unseen[r,c]:return 0
+            ar=math.floor((oy+(r+.5)*res-ay)/res);ac=math.floor((ox+(c+.5)*res-ax)/res)
+            if not (0<=ar<acc.states.shape[0] and 0<=ac<acc.states.shape[1]):return 0
+            if (acc.states[ar,ac]!=GridState.FREE or not acc.floor_support[ar,ac]
+                    or not float(acc.clearance[ar,ac])>=height):return 0
+            accepted+=1
+            if accepted>max_cells:return 0
+        return accepted

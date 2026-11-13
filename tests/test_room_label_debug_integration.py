@@ -28,6 +28,8 @@ def test_debug_factory_bad_hash_is_local_unavailable_service(tmp_path):
     assert svc.close(1)['clean_shutdown']
 
 
+@pytest.mark.skipif(not Path('configs/demo-00807.hydra-world2hz-room-stability.experimental.local.json').is_file(),
+                    reason='machine-local 00807 profile (gitignored) not present')
 def test_optin_runtime_ui_schema_accepts_only_explicit_pinned_debug_assets(tmp_path):
     from neusymnav.runtime.configuration import load_config
     p=Path('configs/demo-00807.hydra-world2hz-room-stability.experimental.local.json');c=json.loads(p.read_text())
@@ -40,6 +42,8 @@ def test_optin_runtime_ui_schema_accepts_only_explicit_pinned_debug_assets(tmp_p
     with pytest.raises(ValueError,match='hash'):load_config(out)
 
 
+@pytest.mark.skipif(not Path('configs/room-label-slm.async-debug.local.json').is_file(),
+                    reason='machine-local SLM config (gitignored) not present')
 def test_optin_ui_child_starts_and_closes_without_model_work_when_no_graph(tmp_path,monkeypatch):
     import sys,time
     from neusymnav.runtime.room_label_ui_entry import RoomLabelUiProcess

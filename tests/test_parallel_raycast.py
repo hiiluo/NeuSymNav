@@ -33,7 +33,7 @@ def test_reduced_free_ray_set_preserves_all_hits_and_never_adds_free_votes():
 
 
 def test_raycast_warmup_compiles_exact_dispatcher_signature_without_running_kernel(monkeypatch):
-    from numba import types
+    types=pytest.importorskip('numba').types
     calls=[]
     class Dispatcher:
         signatures=[]
