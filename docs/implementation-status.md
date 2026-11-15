@@ -1,5 +1,13 @@
 # Trạng thái NeuSymNav
 
+### ObjectNav công cụ phát triển policy `nsnav` — 2026-11-15 — implemented, runtime-validated trên 1 episode
+
+Sổ tay `docs/objectnav/policy-dev-cheatsheet.md`; công cụ `tools/objectnav/nsnav.sh`; bộ smoke `configs/objectnav/splits/hm3d_v2-val-dev-smoke.json`.
+- **Implemented:** `nsnav` bọc runner lockstep, bộ chấm schema 3 và các tool chẩn đoán B0: `list/pick/show` (chọn episode theo kết quả B0), `new` (`--set smoke|dev`, `--from <run>`, uid rút gọn), `run` (tự chấm, bảng từng episode, so cặp với B0; ghi `nsnav.env` và `code.json`, từ chối chạy tiếp khi policy/config/code đổi hoặc khi đang có sim chạy), `why [--stuck]`, `score/eps/compare/runs`, `dev60`, `test`, `ps`. Bộ smoke: 12 episode DEV cố định, 2 mỗi scene, B0 6/12. Không đổi runner, policy, guard hay bộ chấm.
+- **Correctness-verified:** `bash tools/objectnav/nsnav.sh test` 59 passed, exit 0; `tools/check_github_payload.py --candidates` ready.
+- **Runtime-validated:** trên nhánh `Kiet_branch_policy_objnav`, `nsnav run` với B0 trên `wcojb4TFT35/0#3` và `bCPU9suPUw9/2#5` cho SR/SPL/DTG trùng mốc dev60 (SPL 0,715 và 0,215). Đã thử resume, từ chối khi đổi config và khi code đổi, `why`, `why --stuck`, `compare` giữa hai run.
+- **Chưa chứng minh:** `nsnav dev60` và bộ smoke đủ 12 episode chưa chạy qua `nsnav`; `nsnav why` chỉ dùng được với policy ghi `evidence/` dạng B0; chưa có policy mới nào ngoài `b0`/`explore`.
+
 ### ObjectNav B0 mốc chính thức (60 DEV) + bàn giao — 2026-11-13 — runtime-validated
 
 Bàn giao `docs/objectnav/b0-baseline-handoff.md`; artifacts `runs/objectnav/b0/dev60-v3h/` (gồm `provenance/`).
