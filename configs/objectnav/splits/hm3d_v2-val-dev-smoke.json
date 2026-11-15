@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "name": "hm3d_v2-val-dev-smoke",
+ "description": "Fixed 12-episode subset of the DEV split for quick policy checks (13/11/2026 B0 v3h results): 2 per DEV scene, one B0 success and one B0 failure. Debug only; judge a policy on the 60 DEV episodes.",
+ "uids": [
+  "hm3d_v2/val/TEEsavR23oF/4#5",
+  "hm3d_v2/val/TEEsavR23oF/2#6",
+  "hm3d_v2/val/wcojb4TFT35/0#3",
+  "hm3d_v2/val/wcojb4TFT35/1#4",
+  "hm3d_v2/val/k1cupFYWXJ6/3#3",
+  "hm3d_v2/val/k1cupFYWXJ6/4",
+  "hm3d_v2/val/qyAac8rV8Zk/3#5",
+  "hm3d_v2/val/qyAac8rV8Zk/3#4",
+  "hm3d_v2/val/bCPU9suPUw9/2#5",
+  "hm3d_v2/val/bCPU9suPUw9/2#2",
+  "hm3d_v2/val/LT9Jq6dN3Ea/1",
+  "hm3d_v2/val/LT9Jq6dN3Ea/1#6"
+ ]
+}
