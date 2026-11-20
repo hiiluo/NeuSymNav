@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "protocol_id": "paper-objectnav-hm3d-v1",
+  "description": "Habitat ObjectNav challenge setup as used by VLFM/ApexNav (docs/objectnav/paper-protocol-plan.md section 3).",
+  "sources": [
+    "habitat-lab main: habitat-lab/habitat/config/benchmark/nav/objectnav/objectnav_hm3d.yaml",
+    "habitat-lab main: habitat-lab/habitat/config/habitat/task/objectnav.yaml",
+    "rai-opensource/vlfm main: config/experiments/vlfm_objectnav_hm3d.yaml (no override of these values)"
+  ],
+  "agent": {"height_m": 0.88, "radius_m": 0.18},
+  "camera": {
+    "resolution_hw": [480, 640],
+    "hfov_deg": 79.0,
+    "position_xyz": [0.0, 0.88, 0.0],
+    "depth_min_m": 0.5,
+    "depth_max_m": 5.0
+  },
+  "actions": {"forward_step_m": 0.25, "turn_deg": 30.0, "tilt_deg": 30.0},
+  "allow_sliding": false,
+  "max_steps": 500,
+  "success_distance_m": 0.1,
+  "gpu_device_id": -1
+}

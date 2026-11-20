@@ -1,5 +1,34 @@
 # Trạng thái NeuSymNav
 
+### ObjectNav chế độ "paper protocol" (VLFM/ApexNav) — 2026-11-19 — implemented, correctness-verified; runtime-validated một phần
+
+Kế hoạch `docs/objectnav/paper-protocol-plan.md`; nhật ký `docs/objectnav/journal/paper-protocol.md`.
+- **Implemented:**
+  - Protocol `configs/objectnav/paper-hm3d-v1.json`, đã đối chiếu habitat-lab/VLFM: thân 0,18/0,88 m, RGB-D
+    640×480 HFOV 79° ở 0,88 m, depth [0,5; 5] m, forward 0,25 m / turn 30° / look ±30°, `allow_sliding: False`,
+    500 bước.
+  - Worker Habitat rời rạc và client.
+  - `PaperRunner`: trajectory cùng schema, chấm bằng bộ chấm cũ không sửa.
+  - Bản đồ vật cản từ camera trước, frontier, Dijkstra, adapter hành động.
+  - Policy explore, B0-paper, B1R-paper (`configs/objectnav/paper-b{0,1r}-v1.json`).
+  - Tool: `oracle_check`, `failure_evidence`/`stop_calibration` (wrapper camera paper), `summary`, `run_dev60.sh`.
+  - Ngoại lệ D1 ghi trong `AGENTS.md`. Lockstep, guard, mapper, bộ chấm, `habitat_worker` không đổi.
+- **Correctness-verified:** `tests/test_objectnav_paper.py` + `tests/test_objectnav_paper_b0.py` 33 passed (trước cách 1: 26); toàn bộ suite 3148 passed, 40 skipped.
+- **Runtime-validated:**
+  - Oracle greedy qua cấu hình PaperSim trên DEV60: SR 0,950, SPL 0,875, OSR 0,983 (`runs/objectnav/paper-oracle-dev60`).
+  - Smoke B0-paper 2 episode val_mini chạy hết run, chấm điểm, evidence (pose check 139/144) và summary.
+  - Stop calibration camera 0,88 m: giữ stop 0,4 m / far 0,9 m (`runs/objectnav/paper-stop-calibration.md`).
+  - Explore DEV60: OSR 32/60 → 50/60 sau "cách 1" (chi phí sát tường + chấm điểm hành động); nhật ký
+    `docs/objectnav/journal/paper-protocol.md`.
+  - B0-paper DEV60 (`runs/objectnav/paper-b0-dev60`, exit 0): SR 0,600 [0,483; 0,717], SPL 0,231, OSR 0,733.
+- **Mốc so sánh (người dùng chốt 19/11/2026):** B0-paper (`configs/objectnav/paper-b0-v1.json`, DEV60
+  `paper-b0-dev60`) là baseline B0 chính cho các policy sau, thay cho B0 lockstep v3h (SR 0,283). Code và config
+  B0 lockstep giữ nguyên; B0-paper dùng lại `objectnav/b0/approach`, `memory`, `detection`.
+- **Chưa chứng minh:**
+  - B1R-paper trên DEV60 (config có sẵn, chưa chạy; người dùng chọn chốt B0-paper trước);
+  - so sánh với số của paper (cần toàn bộ val).
+  - Tất cả file mới chưa commit (tách nhánh `kiet/paper-protocol` khi commit).
+
 ### ObjectNav công cụ phát triển policy `nsnav` — 2026-11-15 — implemented, runtime-validated trên 1 episode
 
 Sổ tay `docs/objectnav/policy-dev-cheatsheet.md`; công cụ `tools/objectnav/nsnav.sh`; bộ smoke `configs/objectnav/splits/hm3d_v2-val-dev-smoke.json`.
