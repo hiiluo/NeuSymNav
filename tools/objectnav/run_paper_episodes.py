@@ -40,6 +40,11 @@ def policy_factory(a):
     if a.policy in ('b0', 'b1'):
         from neusymnav.objectnav.paper.b0 import make_policy_factory
         return make_policy_factory(a.policy, a.policy_config, evidence_dir=a.out_dir / 'evidence')
+    if a.policy == 'b3':
+        from neusymnav.objectnav.paper.b3.policy import make_policy_factory as b3_factory
+        if a.policy_config is None:
+            raise SystemExit('policy b3 needs --policy-config')
+        return b3_factory(a.policy_config, evidence_dir=a.out_dir / 'evidence')
     raise SystemExit('unknown policy ' + a.policy)
 
 
@@ -50,8 +55,8 @@ def main(argv=None):
     ap.add_argument('--run-id', required=True)
     ap.add_argument('--out-dir', required=True, type=Path)
     ap.add_argument('--protocol', type=Path, default=ROOT / 'configs/objectnav/paper-hm3d-v1.json')
-    ap.add_argument('--policy', choices=('explore', 'b0', 'b1'), default='explore')
-    ap.add_argument('--policy-config', type=Path, help='policy JSON (b0 / b1)')
+    ap.add_argument('--policy', choices=('explore', 'b0', 'b1', 'b3'), default='explore')
+    ap.add_argument('--policy-config', type=Path, help='policy JSON (b0 / b1 / b3)')
     ap.add_argument('--manifest', type=Path)
     ap.add_argument('--limit', type=int)
     ap.add_argument('--habitat-data', type=Path, default=DEFAULT_HABITAT_DATA)

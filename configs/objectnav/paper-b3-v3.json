@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "name": "paper-b3-v3",
+  "description": "B3-semsearch v3 = v2 + endgame: never end undecided while the memory holds objects seen as the target. At frontiers exhaustion, or from step 200 when the steps left <= ceil(path_m / 0.25 * 1.3) + 25 to the best one, approach the object with the highest detector score for the target (clip/motion-rejected included, each once) and stop without the confirmation rule or the SigLIP veto. Offline on B3 v1 DEV167: 19/47 undecided failures held an object within 1 m of a true goal; the score ranking picks one in 14/24.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {},
+  "context_prior": {
+    "min_score": 0.4,
+    "bonus_m": 4.0,
+    "sigma_m": 1.5,
+    "radius_m": 4.0,
+    "level_m": 0.5,
+    "weights": {
+      "toilet": {
+        "sink": 1.0,
+        "bathtub": 1.0,
+        "towel": 0.8,
+        "mirror": 0.4,
+        "washing machine": 0.3
+      },
+      "bed": {
+        "nightstand": 1.0,
+        "wardrobe": 0.8,
+        "dresser": 0.8,
+        "pillow": 0.6,
+        "lamp": 0.3
+      },
+      "sofa": {
+        "coffee table": 1.0,
+        "television": 0.7,
+        "fireplace": 0.6,
+        "armchair": 0.6,
+        "pillow": 0.4,
+        "rug": 0.4,
+        "floor lamp": 0.3
+      },
+      "tv_monitor": {
+        "sofa": 0.9,
+        "coffee table": 0.7,
+        "armchair": 0.5,
+        "fireplace": 0.4,
+        "desk": 0.3
+      },
+      "chair": {
+        "dining table": 1.0,
+        "table": 0.8,
+        "desk": 0.8,
+        "kitchen island": 0.5,
+        "counter": 0.3
+      },
+      "plant": {
+        "window": 0.4,
+        "vase": 0.6,
+        "sofa": 0.3,
+        "coffee table": 0.3
+      }
+    }
+  },
+  "semantic": {
+    "model_dir": "local-assets/models/b3/siglip2-base-patch16-224",
+    "device": "GPU",
+    "prompts": {
+      "sofa": "a sofa",
+      "toilet": "a toilet",
+      "bed": "a bed",
+      "chair": "a chair",
+      "tv_monitor": "a television",
+      "plant": "a potted plant"
+    },
+    "value_weight_m": 4.0,
+    "min_spread": 0.01,
+    "window_cells": 5
+  },
+  "clip_verify": {
+    "margin": 0.15,
+    "targets": {
+      "sofa": [
+        "a sofa",
+        "an armchair",
+        "a chair",
+        "a bed",
+        "a bench"
+      ],
+      "toilet": [
+        "a toilet",
+        "a chair",
+        "a sink",
+        "a bathtub",
+        "a bed"
+      ],
+      "bed": [
+        "a bed",
+        "a sofa",
+        "a table",
+        "a chair"
+      ],
+      "plant": {
+        "pos": [
+          "a potted plant",
+          "a houseplant",
+          "flowers in a vase"
+        ],
+        "neg": [
+          "a vase",
+          "a lamp",
+          "a painting",
+          "a curtain",
+          "a chair",
+          "a pillow",
+          "a towel"
+        ]
+      }
+    },
+    "reject_margin": 0.005
+  },
+  "target_labels": {
+    "vase": {
+      "goal": "plant",
+      "min_score": 0.5
+    }
+  },
+  "low_conf": {
+    "detector_confidence": 0.1,
+    "targets": {
+      "plant": 0.1
+    }
+  },
+  "endgame": {
+    "max_steps": 500,
+    "min_step": 200,
+    "check_every": 5,
+    "step_m": 0.25,
+    "overhead": 1.3,
+    "margin_steps": 25
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "name": "paper-b1pv-v1",
+  "description": "Bundle on B0-paper: P1 target_labels (vase -> plant in plant episodes, score >= 0.5; paper-b1p-v2) + P3 vlm_verify (open-question VLM check before STOP on sofa / toilet; paper-b1v-v1). nav unchanged (no step rule). Branch kiet/B1-lastmile-plant.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {},
+  "target_labels": {
+    "vase": {
+      "goal": "plant",
+      "min_score": 0.5
+    }
+  },
+  "vlm_verify": {
+    "targets": {
+      "sofa": [
+        "sofa",
+        "couch",
+        "sectional",
+        "loveseat",
+        "settee"
+      ],
+      "toilet": [
+        "toilet"
+      ]
+    },
+    "prompt": "What is the main piece of furniture in this image? Answer with one or two words.",
+    "server_bin": ".runtime/room-slm/llama.cpp/build/bin/llama-server",
+    "model": "local-assets/models/qwen3-vl/gguf-52d6c8f/Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+    "mmproj": "local-assets/models/qwen3-vl/gguf-52d6c8f/mmproj-Qwen3VL-2B-Instruct-F16.gguf",
+    "port": 8712,
+    "threads": 8,
+    "margin": 0.15
+  }
+}

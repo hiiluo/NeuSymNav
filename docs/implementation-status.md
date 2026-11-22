@@ -4243,3 +4243,21 @@ Runtime-validated: pending, with no tracker or benchmark run.
 - **Runtime-validated (30 s smoke only):** `NEUSYMNAV_DEMO_CONFIG=/tmp/neusymnav-live-00861-803fe26/configs/p10/demo-yoloe11s-conceptgraphs-visual-gpu-00861-run.json bash tools/run_gpu_demo.sh 30 /home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/live-demo-00861-803fe26-20261112` — exit 0, `outcome=completed`, `error=null`. Recording manifest has 595 samples (133 primary RGB-D, 462 navigation depth); 6/6 selected keyframes persisted; 10 object IDs and 6 live detector/appearance commits. UI reported ready, 58 coalesced publications, 0 dropped, clean shutdown. Seed acknowledged; body geometry radius 0.125 m / height 1 m and navmesh recomputed to match.
 - **Limits:** `native_runtime_validated=false`; strict native body-actuation proof is unavailable, so no verified translation distance or motion-success claim. This does not establish P10 acceptance, real-time targets, or scene-level quality. Resource sampler found no cap breach/read errors (RSS peak 5,403,860,992 B; process-attributed GPU peak 513,802,240 B), but `boundedness_certified=false` because peaks are sampled. No model/data download or install.
 - **Artifacts:** `runs/live-demo-00861-803fe26-20261112/`; run-scoped source snapshot `/tmp/neusymnav-live-00861-803fe26/`.
+
+### ObjectNav paper mode — B3-semsearch v5 — 2026-11-22
+
+- **Implemented:** B3-semsearch policy on top of B0-paper.
+  - Components: SigLIP2 value map, context prior, SigLIP STOP veto for sofa/bed, low-confidence plant detector,
+    vase → plant label, one-step-early stop.
+  - Each component is a config block; with none of them set, B0 behaviour is unchanged.
+  - Config `configs/objectnav/paper-b3-v5.json`. Handoff: [B3 v5 handoff](objectnav/b3-v5-handoff.md); journal:
+    [B3-semsearch](objectnav/journal/B3-semsearch.md).
+- **Correctness-verified:** `PYTHONPATH=src:tests .venv/bin/python -m pytest -q tests/test_objectnav_paper.py tests/test_objectnav_paper_b0.py tests/test_objectnav_b3.py tests/test_objectnav_b1_ctx.py tests/test_objectnav_b1_plant.py tests/test_objectnav_b1_vlm.py` (result in the PR description).
+- **Runtime-validated (DEV only):** paper runs `paper-b3-v5-dev60` + `paper-b3-v5-devx107` (DEV167), both exit 0.
+  - SR 113/167 (0.677), SPL 0.273.
+  - Paired vs B0-paper: wins 27, losses 7, net +20, exact McNemar p = 0.001.
+  - Runs are not tracked.
+- **Not yet proven:**
+  - Every v1–v5 choice was tuned on DEV167.
+  - Held-out (`hm3d_v2-val-holdout`) and TEST180 confirmation are pending.
+  - The value map's own contribution is unmeasured: ablation `paper-b3-v5-novmap.json` is running on held-out.

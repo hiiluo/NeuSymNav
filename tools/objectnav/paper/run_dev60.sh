@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Paper-protocol DEV60 run (docs/objectnav/paper-protocol-plan.md P6): provenance, tests, run, score,
 # offline evidence, summary (paired with REF when given). Resumable: rerun the same command.
-#   bash tools/objectnav/paper/run_dev60.sh <name> <explore|b0|b1> [policy-config.json] [REF run name]
+#   bash tools/objectnav/paper/run_dev60.sh <name> <explore|b0|b1|b3> [policy-config.json] [REF run name]
 # Writes runs/objectnav/<name>/REPORT.txt.
 set -u
 cd "$(dirname "$0")/../../.." || exit 1
-NAME=${1:?run name}; POLICY=${2:?explore|b0|b1}; PCFG=${3:-}; REF=${4:-}
+NAME=${1:?run name}; POLICY=${2:?explore|b0|b1|b3}; PCFG=${3:-}; REF=${4:-}
 OUT=runs/objectnav/$NAME; HAB="$HOME/miniconda3/envs/habitat/bin/python"
 FILTER='^\[[0-9:]+\]|^(I|W)[0-9]{4} |GL_|mesa-|no-layout|^Using |^Renderer|^OpenGL'
-if pgrep -f "python.*(run_episodes|run_paper_episodes).py" >/dev/null; then echo "another ObjectNav run is active; stop"; exit 1; fi
+# NSNAV_PARALLEL=1: the user allows a second concurrent run (workers use pipes; never two VLM configs at once)
+if [ "${NSNAV_PARALLEL:-0}" != 1 ] && pgrep -f "python.*(run_episodes|run_paper_episodes).py" >/dev/null; then echo "another ObjectNav run is active; stop"; exit 1; fi
 mkdir -p "$OUT/provenance"
 {
   echo "== $(date -Is) paper run $NAME: policy $POLICY ${PCFG:+config $PCFG} branch $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"

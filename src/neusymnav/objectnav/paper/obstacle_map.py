@@ -59,6 +59,7 @@ class ObstacleMap:
         self.levels: List[_Level] = []
         self.level: Optional[_Level] = None
         self.collision_marks = 0
+        self.last_frame = None      # (row0, col0, mask) of the cells seen by the latest update (read by B3)
         self.repeat_bumps = 0
 
     # -- geometry helpers
@@ -116,6 +117,7 @@ class ObstacleMap:
 
     def update(self, observation, *, robot_xy, base_z_m: float) -> None:
         level = self._select_level(float(base_z_m))
+        self.last_frame = None
         # explored: samples along each (coarser) ray, inside the body band, before the end point
         origin, world, is_obstacle = self._points(observation, self.ray_stride, base_z_m)
         samples = max(2, int(math.ceil(self.max_range / self.res)))
@@ -134,6 +136,7 @@ class ObstacleMap:
             frame[r - r0, c - c0] = True
             frame = ndimage.binary_closing(np.pad(frame, 2), structure=np.ones((3, 3), bool), iterations=2)[2:-2, 2:-2]
             level.explored[r0:r1, c0:c1] |= frame
+            self.last_frame = (int(r0), int(c0), frame)
         # obstacles: denser points
         _, world, is_obstacle = self._points(observation, self.stride, base_z_m)
         r, c, _ = self._cells(world[is_obstacle, 0], world[is_obstacle, 1])

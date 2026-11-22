@@ -53,6 +53,9 @@ class PaperB0Config:
     fallback_best_unconfirmed: bool = True
     nav: dict = field(default_factory=dict)
     revisit: Optional[dict] = None          # B1-revisit: cooldown_steps, min_moved_m, max_revisits, opportunistic_arrival
+    target_labels: Optional[dict] = None    # B1-plant: {raw label: {goal, min_score}} counted only when goal == target
+    vlm_verify: Optional[dict] = None       # B1-vlm: ask a local VLM before STOP (paper/vlm_verify.py)
+    context_prior: Optional[dict] = None    # B1-ctx: rank frontiers by related objects seen (paper/context_prior.py)
     description: str = ''
 
     @classmethod
@@ -75,6 +78,15 @@ class PaperB0Config:
         if self.revisit is not None and set(self.revisit) - {'cooldown_steps', 'min_moved_m', 'max_revisits',
                                                               'opportunistic_arrival'}:
             raise ValueError('unknown revisit keys')
+        if self.vlm_verify is not None:
+            from .vlm_verify import VlmVerifier
+            VlmVerifier.validate(self.vlm_verify)
+        if self.context_prior is not None:
+            from .context_prior import ContextPrior
+            ContextPrior.validate(self.context_prior)
+        for label, spec in (self.target_labels or {}).items():
+            if set(spec) != {'goal', 'min_score'} or not 0 < float(spec['min_score']) <= 1:
+                raise ValueError('target_labels[%r] needs goal and min_score in (0, 1]' % label)
 
     def resolve(self, name: str) -> Path:
         p = Path(getattr(self, name))
@@ -98,6 +110,10 @@ class PaperB0Policy:
             projector = Projector()
         self.projector = projector
         self._client = None
+        self.vlm = None
+        if config.vlm_verify is not None:
+            from .vlm_verify import VlmVerifier
+            self.vlm = VlmVerifier(config.vlm_verify)
 
     # ------------------------------------------------------------ lifecycle
     def reset(self, episode) -> None:
@@ -115,6 +131,11 @@ class PaperB0Policy:
         self.detector_wall_s = []
         self.stop_record = None
         self._gave_up, self.revisit_events = {}, []
+        self._crops, self.vlm_events = {}, []             # B1-vlm: cid -> (frame, score, rgb crop)
+        self.ctx = None
+        if self.cfg.context_prior is not None:
+            from .context_prior import ContextPrior
+            self.ctx = ContextPrior(self.cfg.context_prior, self.target)
         if self._client is None:
             self._client = self.detector_factory()
 
@@ -122,6 +143,8 @@ class PaperB0Policy:
         if self._client is not None and hasattr(self._client, 'close'):
             self._client.close()
         self._client = None
+        if self.vlm is not None:
+            self.vlm.close()
 
     # ------------------------------------------------------------ perception (synchronous)
     def _perceive(self, obs) -> None:
@@ -136,13 +159,30 @@ class PaperB0Policy:
         self.detector_wall_s.append(time.perf_counter() - t0)
         projected = {o.detection_id: o for o in self.projector.project(observation, batch)}
         rows = []
+        extra = self.cfg.target_labels or {}
         for det in batch.detections:
+            if self.ctx is not None:
+                o = projected.get(det.detection_id)
+                self.ctx.add(det.raw_label, float(det.score), None if o is None else o.points_world, obs.z_m)
             goal = self.categories.goal_category(det.raw_label)
+            as_label = det.raw_label
+            spec = extra.get(det.raw_label)
+            if goal is None and spec is not None and spec['goal'] == self.target \
+                    and float(det.score) >= float(spec['min_score']):
+                # e.g. "vase" for a plant episode (HM3D plant goals include flower vases); other episodes
+                # never see these detections, so their decisions stay those of B0.
+                goal = spec['goal']
+                as_label = self.categories.labels[goal][0]      # a label the memory maps to that goal
             if goal is None:
                 continue
             o = projected.get(det.detection_id)
-            cid = self.memory.add(observation.key.frame_index, det.raw_label, float(det.score),
+            cid = self.memory.add(observation.key.frame_index, as_label, float(det.score),
                                   o.points_world) if o is not None else None
+            if cid is not None and goal == self.target and self._wants_crop(goal):
+                old = self._crops.get(cid)
+                if old is None or old[0] != observation.key.frame_index or old[1] < float(det.score):
+                    self._crops[cid] = (observation.key.frame_index, float(det.score),
+                                        self._make_crop(np.asarray(observation.rgb), bbox_xyxy(det.mask), det.mask.shape))
             rows.append(dict(label=det.raw_label, goal=goal, score=round(float(det.score), 4),
                              bbox=bbox_xyxy(det.mask), rle=rle_encode(det.mask), cid=cid,
                              points=0 if o is None else int(len(o.points_world))))
@@ -272,8 +312,10 @@ class PaperB0Policy:
                             self._target_cid, self._fallback = cand.cid, True
                             self._to('APPROACH', 'fallback_best_unconfirmed')
                             return None
+                    if self._exhausted_hook():
+                        return None
                     return self._stop('frontiers_exhausted')
-                self._frontier = min(frontiers, key=lambda f: self.nav.path_length_m(f.cell))
+                self._frontier = self._choose_frontier(frontiers)
                 if self._goal_xy is None or math.dist(self._goal_xy, self._frontier.xy) > self.nav.cfg.frontier_blacklist_m:
                     self.nav.reset_progress()          # same goal re-chosen: keep counting toward 'stuck'
                     self._goal_xy = self._frontier.xy
@@ -347,6 +389,11 @@ class PaperB0Policy:
             return None
         return turn
 
+    def _stop_limit_m(self) -> float:
+        """How far from the object VERIFY may stop (B3 early_stop widens it by one forward step)."""
+        return (self.cfg.far_stop_distance_m if any(e['note'] == 'arrived_far' for e in self.events[-2:])
+                else self.cfg.stop_distance_m)
+
     def _act_verify(self):
         # The current frame was taken after arriving and facing (perception ran before this call).
         cand = self._target()
@@ -356,12 +403,60 @@ class PaperB0Policy:
         if not self._fallback and not self.memory.confirmed(cand, self.target):
             self._reject('verify_failed')
             return None
-        limit = (self.cfg.far_stop_distance_m if any(e['note'] == 'arrived_far' for e in self.events[-2:])
-                 else self.cfg.stop_distance_m)
+        limit = self._stop_limit_m()
         if footprint_distance(cand.points[:, :2], self.nav.robot_xy) > limit + 0.05:
             self._to('APPROACH', 'object_grew_away')
             return None
+        veto = self._stop_veto(cand)
+        if veto is not None:
+            self._reject(veto)
+            return None
         return self._stop('confirmed_target' if not self._fallback else 'fallback_target')
+
+    # ------------------------------------------------------------ hooks (B1 flags here, B3 overrides)
+    def _exhausted_hook(self) -> bool:
+        """Frontiers exhausted and no unconfirmed fallback: True when a subclass started something else."""
+        return False
+
+    def _choose_frontier(self, frontiers):
+        if self.ctx is not None:
+            return self.ctx.choose(frontiers, self.nav.path_length_m, self.nav.map.level.z_m)
+        return min(frontiers, key=lambda f: self.nav.path_length_m(f.cell))
+
+    def _wants_crop(self, goal: str) -> bool:
+        return self.vlm is not None and goal in self.vlm.targets
+
+    def _make_crop(self, rgb, bbox, mask_shape):
+        return self.vlm.crop(rgb, bbox, mask_shape)
+
+    def _best_crop(self, cand):
+        crop = self._crops.get(cand.cid)
+        if crop is None:
+            for old in cand.merged_from:                       # crops kept under a merged-away id
+                crop = crop or self._crops.get(old)
+        return crop
+
+    def _stop_veto(self, cand) -> Optional[str]:
+        """A reject reason that cancels this STOP, or None."""
+        if self.vlm is not None and self.target in self.vlm.targets and not self._vlm_ok(cand):
+            return 'vlm_rejected'
+        return None
+
+    def _vlm_ok(self, cand) -> bool:
+        """One VLM question per candidate, on its latest (best-scored) crop; no crop = no veto."""
+        for e in self.vlm_events:
+            if e['cid'] == cand.cid:
+                return e['accepted']
+        crop = self._best_crop(cand)
+        if crop is None:
+            self.vlm_events.append(dict(step=self.step, cid=cand.cid, answer=None, accepted=True))
+            return True
+        t0 = time.perf_counter()
+        answer = self.vlm.ask(crop[2])
+        ok = self.vlm.accepts(self.target, answer)
+        self.vlm_events.append(dict(step=self.step, cid=cand.cid, frame=crop[0], answer=answer, accepted=ok,
+                                    wall_s=round(time.perf_counter() - t0, 2)))
+        return ok
 
     def _act_stopped(self):
         return ('stop', 'after_stop')
@@ -386,6 +481,10 @@ class PaperB0Policy:
                                                    collision_marks=m.collision_marks, levels=len(m.levels),
                                                    relaxed_plan_steps=self.nav.relaxed_steps),
                    evidence_file=None if evidence_file is None else str(evidence_file))
+        if self.vlm is not None:
+            rec['vlm'] = self.vlm_events
+        if self.ctx is not None:
+            rec['context_prior'] = self.ctx.summary()
         if self.cfg.revisit is not None:
             rec['revisit'] = dict(events=self.revisit_events,
                                   gave_up={str(k): dict(n=v['n'], reason=v['reason']) for k, v in self._gave_up.items()})
