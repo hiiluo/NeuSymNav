@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "name": "paper-b1p-v2",
+  "description": "B0-paper (paper-b0-v1) + target_labels: detector label \"vase\" counts as plant, only in plant episodes and only at score >= 0.5 (the threshold of the other goal categories). Mapping v1 unchanged, so non-plant episodes run exactly as B0. Branch kiet/B1-lastmile-plant.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {},
+  "target_labels": {
+    "vase": {
+      "goal": "plant",
+      "min_score": 0.5
+    }
+  }
+}

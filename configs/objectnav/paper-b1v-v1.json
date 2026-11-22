@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "name": "paper-b1v-v1",
+  "description": "B0-paper (paper-b0-v1) + vlm_verify: before STOP on a sofa or toilet, ask local Qwen3-VL-2B (llama.cpp, CPU) the open question below on the RGB crop of the candidate; the answer must name the target, else the candidate is rejected. Targets limited to sofa/toilet: the only categories with wrong-object stops in B0-paper DEV60 where the open answer named the true stops correctly offline (sofa 8/8 couch, toilet 9/9 toilet). Branch kiet/B1-lastmile-plant.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {},
+  "vlm_verify": {
+    "targets": {
+      "sofa": [
+        "sofa",
+        "couch",
+        "sectional",
+        "loveseat",
+        "settee"
+      ],
+      "toilet": [
+        "toilet"
+      ]
+    },
+    "prompt": "What is the main piece of furniture in this image? Answer with one or two words.",
+    "server_bin": ".runtime/room-slm/llama.cpp/build/bin/llama-server",
+    "model": "local-assets/models/qwen3-vl/gguf-52d6c8f/Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+    "mmproj": "local-assets/models/qwen3-vl/gguf-52d6c8f/mmproj-Qwen3VL-2B-Instruct-F16.gguf",
+    "port": 8712,
+    "threads": 8,
+    "margin": 0.15
+  }
+}

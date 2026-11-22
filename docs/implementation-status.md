@@ -1,5 +1,34 @@
 # Trạng thái NeuSymNav
 
+### ObjectNav chế độ "paper protocol" (VLFM/ApexNav) — 2026-11-19 — implemented, correctness-verified; runtime-validated một phần
+
+Kế hoạch `docs/objectnav/paper-protocol-plan.md`; nhật ký `docs/objectnav/journal/paper-protocol.md`.
+- **Implemented:**
+  - Protocol `configs/objectnav/paper-hm3d-v1.json`, đã đối chiếu habitat-lab/VLFM: thân 0,18/0,88 m, RGB-D
+    640×480 HFOV 79° ở 0,88 m, depth [0,5; 5] m, forward 0,25 m / turn 30° / look ±30°, `allow_sliding: False`,
+    500 bước.
+  - Worker Habitat rời rạc và client.
+  - `PaperRunner`: trajectory cùng schema, chấm bằng bộ chấm cũ không sửa.
+  - Bản đồ vật cản từ camera trước, frontier, Dijkstra, adapter hành động.
+  - Policy explore, B0-paper, B1R-paper (`configs/objectnav/paper-b{0,1r}-v1.json`).
+  - Tool: `oracle_check`, `failure_evidence`/`stop_calibration` (wrapper camera paper), `summary`, `run_dev60.sh`.
+  - Ngoại lệ D1 ghi trong `AGENTS.md`. Lockstep, guard, mapper, bộ chấm, `habitat_worker` không đổi.
+- **Correctness-verified:** `tests/test_objectnav_paper.py` + `tests/test_objectnav_paper_b0.py` 33 passed (trước cách 1: 26); toàn bộ suite 3148 passed, 40 skipped.
+- **Runtime-validated:**
+  - Oracle greedy qua cấu hình PaperSim trên DEV60: SR 0,950, SPL 0,875, OSR 0,983 (`runs/objectnav/paper-oracle-dev60`).
+  - Smoke B0-paper 2 episode val_mini chạy hết run, chấm điểm, evidence (pose check 139/144) và summary.
+  - Stop calibration camera 0,88 m: giữ stop 0,4 m / far 0,9 m (`runs/objectnav/paper-stop-calibration.md`).
+  - Explore DEV60: OSR 32/60 → 50/60 sau "cách 1" (chi phí sát tường + chấm điểm hành động); nhật ký
+    `docs/objectnav/journal/paper-protocol.md`.
+  - B0-paper DEV60 (`runs/objectnav/paper-b0-dev60`, exit 0): SR 0,600 [0,483; 0,717], SPL 0,231, OSR 0,733.
+- **Mốc so sánh (người dùng chốt 19/11/2026):** B0-paper (`configs/objectnav/paper-b0-v1.json`, DEV60
+  `paper-b0-dev60`) là baseline B0 chính cho các policy sau, thay cho B0 lockstep v3h (SR 0,283). Code và config
+  B0 lockstep giữ nguyên; B0-paper dùng lại `objectnav/b0/approach`, `memory`, `detection`.
+- **Chưa chứng minh:**
+  - B1R-paper trên DEV60 (config có sẵn, chưa chạy; người dùng chọn chốt B0-paper trước);
+  - so sánh với số của paper (cần toàn bộ val).
+  - Tất cả file mới chưa commit (tách nhánh `kiet/paper-protocol` khi commit).
+
 ### ObjectNav công cụ phát triển policy `nsnav` — 2026-11-15 — implemented, runtime-validated trên 1 episode
 
 Sổ tay `docs/objectnav/policy-dev-cheatsheet.md`; công cụ `tools/objectnav/nsnav.sh`; bộ smoke `configs/objectnav/splits/hm3d_v2-val-dev-smoke.json`.
@@ -4214,3 +4243,21 @@ Runtime-validated: pending, with no tracker or benchmark run.
 - **Runtime-validated (30 s smoke only):** `NEUSYMNAV_DEMO_CONFIG=/tmp/neusymnav-live-00861-803fe26/configs/p10/demo-yoloe11s-conceptgraphs-visual-gpu-00861-run.json bash tools/run_gpu_demo.sh 30 /home/hiiluo08/Works/NeuSym-Nav/NeuSymNav/runs/live-demo-00861-803fe26-20261112` — exit 0, `outcome=completed`, `error=null`. Recording manifest has 595 samples (133 primary RGB-D, 462 navigation depth); 6/6 selected keyframes persisted; 10 object IDs and 6 live detector/appearance commits. UI reported ready, 58 coalesced publications, 0 dropped, clean shutdown. Seed acknowledged; body geometry radius 0.125 m / height 1 m and navmesh recomputed to match.
 - **Limits:** `native_runtime_validated=false`; strict native body-actuation proof is unavailable, so no verified translation distance or motion-success claim. This does not establish P10 acceptance, real-time targets, or scene-level quality. Resource sampler found no cap breach/read errors (RSS peak 5,403,860,992 B; process-attributed GPU peak 513,802,240 B), but `boundedness_certified=false` because peaks are sampled. No model/data download or install.
 - **Artifacts:** `runs/live-demo-00861-803fe26-20261112/`; run-scoped source snapshot `/tmp/neusymnav-live-00861-803fe26/`.
+
+### ObjectNav paper mode — B3-semsearch v5 — 2026-11-22
+
+- **Implemented:** B3-semsearch policy on top of B0-paper.
+  - Components: SigLIP2 value map, context prior, SigLIP STOP veto for sofa/bed, low-confidence plant detector,
+    vase → plant label, one-step-early stop.
+  - Each component is a config block; with none of them set, B0 behaviour is unchanged.
+  - Config `configs/objectnav/paper-b3-v5.json`. Handoff: [B3 v5 handoff](objectnav/b3-v5-handoff.md); journal:
+    [B3-semsearch](objectnav/journal/B3-semsearch.md).
+- **Correctness-verified:** `PYTHONPATH=src:tests .venv/bin/python -m pytest -q tests/test_objectnav_paper.py tests/test_objectnav_paper_b0.py tests/test_objectnav_b3.py tests/test_objectnav_b1_ctx.py tests/test_objectnav_b1_plant.py tests/test_objectnav_b1_vlm.py` (result in the PR description).
+- **Runtime-validated (DEV only):** paper runs `paper-b3-v5-dev60` + `paper-b3-v5-devx107` (DEV167), both exit 0.
+  - SR 113/167 (0.677), SPL 0.273.
+  - Paired vs B0-paper: wins 27, losses 7, net +20, exact McNemar p = 0.001.
+  - Runs are not tracked.
+- **Not yet proven:**
+  - Every v1–v5 choice was tuned on DEV167.
+  - Held-out (`hm3d_v2-val-holdout`) and TEST180 confirmation are pending.
+  - The value map's own contribution is unmeasured: ablation `paper-b3-v5-novmap.json` is running on held-out.

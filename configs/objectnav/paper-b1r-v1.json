@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "name": "paper-b1r-v1",
+  "description": "B1-revisit in paper-protocol mode: paper-b0-v1 plus revisit (a candidate given up for a motion reason - approach_no_path, approach_timeout, approach_goal_reached_far, approach_stuck - is eligible again after cooldown_steps and once the robot is min_moved_m away, at most max_revisits times; in EXPLORE a confirmed candidate within the stop distance goes straight to FACE/VERIFY/STOP). cooldown 30 steps replaces the lockstep 30 s.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {},
+  "revisit": {
+    "cooldown_steps": 30,
+    "min_moved_m": 1.0,
+    "max_revisits": 3,
+    "opportunistic_arrival": true
+  }
+}

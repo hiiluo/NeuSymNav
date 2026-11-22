@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "paper-b0-v1",
+  "description": "B0 in paper-protocol mode (docs/objectnav/paper-protocol-plan.md P5): same detector (YOLOE-26m, v11 profile), goal categories, b0-detection-v1 confirmation, candidate memory and approach goals as b0-policy-v3; discrete actions on PaperNav (forward-camera obstacle map, frontiers, A*); detector synchronous on every new view; step-counted timeouts; no ESCAPE / guard (simulator collisions). Stop distances kept from the lockstep calibration until stop_calibration is rerun for the 0.88 m camera.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/goal-categories-v1.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {}
+}
