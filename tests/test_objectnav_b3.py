@@ -50,7 +50,7 @@ def _run(tmp_path, cfg, clip):
     calls = []
 
     def factory():
-        pol = PaperB3Policy(cfg, categories=GoalCategories.load(), detector_factory=base._detector(sim, calls),
+        pol = PaperB3Policy(base.small_map(cfg), categories=GoalCategories.load(), detector_factory=base._detector(sim, calls),
                             evidence_dir=tmp_path / 'evidence', projector=base.FakeProjector(), clip=clip)
         return pol
     runner = PaperRunner(base.PROTOCOL, out_dir=tmp_path, run_id='b3', sim_factory=lambda: sim,

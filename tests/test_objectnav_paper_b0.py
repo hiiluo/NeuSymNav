@@ -1,4 +1,5 @@
 """Paper-mode B0 / B1-revisit on a synthetic room (no Habitat): map, detection, approach, STOP."""
+import dataclasses
 import gzip
 import json
 import math
@@ -127,6 +128,14 @@ def _detector(sim, calls):
     return Client
 
 
+SMALL_MAP_M = 16.0               # the fake room is 6 x 6 m: a 16 m map instead of the default 60 m keeps tests fast
+
+
+def small_map(cfg):
+    """The same policy config with a test-sized navigation map (production configs are unchanged)."""
+    return dataclasses.replace(cfg, nav=dict(cfg.nav, size_m=SMALL_MAP_M))
+
+
 def _config(**kw):
     data = json.loads((ROOT / 'configs/objectnav/paper-b0-v1.json').read_text())
     data.pop('schema_version')
@@ -136,7 +145,7 @@ def _config(**kw):
 
 def _run(tmp_path, cfg, sim):
     calls = []
-    factory = lambda: PaperB0Policy(cfg, categories=GoalCategories.load(), detector_factory=_detector(sim, calls),  # noqa: E731
+    factory = lambda: PaperB0Policy(small_map(cfg), categories=GoalCategories.load(), detector_factory=_detector(sim, calls),  # noqa: E731
                                     evidence_dir=tmp_path / 'evidence', projector=FakeProjector())
     runner = PaperRunner(PROTOCOL, out_dir=tmp_path, run_id='b0t', sim_factory=lambda: sim,
                          policy_factory=factory, log=lambda *_: None)

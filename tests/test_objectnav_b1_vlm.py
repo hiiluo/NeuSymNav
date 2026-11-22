@@ -27,7 +27,7 @@ def _run(tmp_path, cfg, answer, asked):
     calls = []
 
     def factory():
-        pol = PaperB0Policy(cfg, categories=GoalCategories.load(), detector_factory=base._detector(sim, calls),
+        pol = PaperB0Policy(base.small_map(cfg), categories=GoalCategories.load(), detector_factory=base._detector(sim, calls),
                             evidence_dir=tmp_path / 'evidence', projector=base.FakeProjector())
         pol.vlm.ask = lambda crop: asked.append(crop.shape) or answer
         return pol

@@ -31,7 +31,7 @@ def _detector(sim, label, score):
 
 def _run(tmp_path, cfg, target, label, score):
     sim = base.RoomSim()
-    factory = lambda: PaperB0Policy(cfg, categories=GoalCategories.load(), detector_factory=_detector(sim, label, score),  # noqa: E731
+    factory = lambda: PaperB0Policy(base.small_map(cfg), categories=GoalCategories.load(), detector_factory=_detector(sim, label, score),  # noqa: E731
                                     evidence_dir=tmp_path / 'evidence', projector=base.FakeProjector())
     runner = PaperRunner(base.PROTOCOL, out_dir=tmp_path, run_id='b1p', sim_factory=lambda: sim,
                          policy_factory=factory, log=lambda *_: None)
