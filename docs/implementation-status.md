@@ -1,5 +1,10 @@
 # Trạng thái NeuSymNav
 
+### CPU checks trong checkout chỉ có mã nguồn — 2026-11-27
+
+- **Implemented.** Hai kiểm thử Paper B0 cho plant taxonomy tạo profile detector và asset giả lập có checksum trong `tmp_path`. Chúng tiếp tục gọi bộ kiểm tra pin và factory thật.
+- **Correctness-verified.** `git archive HEAD` tái hiện hai `FileNotFoundError` trong checkout sạch trước bản sửa. Sau bản sửa, `python -m pytest tests/test_objectnav_paper*.py tests/test_objectnav_b0.py -q --tb=short` trong cây chỉ có file Git trả 70 passed, exit 0. [Log CI ban đầu](https://github.com/hiiluo/NeuSymNav/actions/runs/45959725189)
+
 ### Paper B0 mặc định dùng v2 — 2026-11-27
 
 - **Implemented.** Runner Paper dùng `paper-b0-v2.json` mặc định. `--policy-config` vẫn chọn được v1 để tái lập lượt cũ. [Hướng dẫn](objectnav/paper-pr7-setup.md#chạy-trên-máy-này)

@@ -1,4 +1,6 @@
 from dataclasses import replace
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -11,11 +13,32 @@ from test_objectnav_paper_b0 import _config, RoomSim
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_plant_override_pins_distinct_lexicon_but_keeps_checkpoint():
-    import hashlib
+@pytest.fixture
+def detector_profile(tmp_path):
+    """Source-only profile for testing pin validation without loading any model."""
+    def pin(path):
+        return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+
+    checkpoint = tmp_path / 'checkpoint.bin'
+    checkpoint.write_bytes(b'checkpoint fixture')
+    encoder = tmp_path / 'mobileclip2_b.ts'
+    encoder.write_bytes(b'encoder fixture')
+    worker = tmp_path / 'detector_worker.py'
+    worker.write_bytes(b'# Detector launch fixture\n')
+    profile = tmp_path / 'detector.json'
+    profile.write_text(json.dumps(dict(
+        detector=dict(checkpoint=pin(checkpoint), encoder=pin(encoder),
+                      taxonomy=pin(ROOT / 'configs/taxonomy-v1.json'), checkpoint_license='fixture',
+                      imgsz=640, max_detections=30, confidence_threshold=0.25, device='cpu'),
+        workers=dict(detector=dict(python=pin(worker), script=pin(worker))),
+    )))
+    return profile
+
+
+def test_plant_override_pins_distinct_lexicon_but_keeps_checkpoint(detector_profile):
     from neusymnav.objectnav.b0.detection import with_taxonomy
 
-    base = recipe_from_profile(_config().resolve('detector_profile'))
+    base = recipe_from_profile(detector_profile)
     path = ROOT/'configs/objectnav/paper-plant-taxonomy-v1.json'
     plant = with_taxonomy(base, path)
     assert plant['recipe']['taxonomy_sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
@@ -32,7 +55,7 @@ def test_shared_plant_mapping_distinguishes_empty_vase():
     assert cats.goal_category('chair') == 'chair'
 
 
-def test_shared_factory_chooses_plant_worker_only_for_plant_episode(monkeypatch):
+def test_shared_factory_chooses_plant_worker_only_for_plant_episode(monkeypatch, detector_profile):
     from unittest.mock import Mock
     from neusymnav.objectnav.b0 import detection
     from neusymnav.objectnav.paper.runner import PaperEpisode
@@ -46,7 +69,8 @@ def test_shared_factory_chooses_plant_worker_only_for_plant_episode(monkeypatch)
         return factory
 
     monkeypatch.setattr(detection, 'client_from_launch', client_for, raising=False)
-    cfg = replace(_config(), plant_taxonomy='configs/objectnav/paper-plant-taxonomy-v1.json')
+    cfg = replace(_config(), detector_profile=str(detector_profile),
+                  plant_taxonomy='configs/objectnav/paper-plant-taxonomy-v1.json')
     policy = make_policy_factory(cfg)()
     try:
         policy.reset(PaperEpisode('plant', 'plant'))
