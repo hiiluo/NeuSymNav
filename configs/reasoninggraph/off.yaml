@@ -1,0 +1,6 @@
+schema_version: 1
+enabled: false
+link_policy_version: rgbd_aabb_frame_unique_v1
+generation_policy: revision_only
+max_links: 256
+max_bytes: 1048576
