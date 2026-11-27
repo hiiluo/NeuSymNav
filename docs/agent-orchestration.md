@@ -4,12 +4,12 @@
 
 | Vai trò | Model ID | Effort | Phạm vi |
 | --- | --- | --- | --- |
-| Main | `gpt-6.1-sol` | `medium` | Giữ mục tiêu, contracts, tích hợp, kiểm chứng và trả lời |
+| Main | `gpt-6.2-sol` | `medium` | Giữ mục tiêu, contracts, tích hợp, kiểm chứng và trả lời |
 | Worker thông thường, dễ thực hiện | `gpt-6-luna` | `xhigh` | Mặc định cho task có phạm vi và tiêu chí rõ |
 | Worker cho task khó hơn | `gpt-6.1-terra` | Tùy tình huống | Bất định hoặc rủi ro vượt khả năng phù hợp của Luna |
-| Worker/reviewer cho task thật sự khó | `gpt-6.1-sol` | Tùy tình huống | Cân nhắc khi độ khó hoặc evidence đòi hỏi |
+| Worker/reviewer cho task thật sự khó | `gpt-6.2-sol` | Tùy tình huống | Cân nhắc khi độ khó hoặc evidence đòi hỏi |
 
-**Tuyệt đối không sử dụng GPT-6 Astra hoặc bất kỳ model/alias nào chứa `astra`, không phân biệt hoa thường. Áp dụng cho main, subagent, reviewer và fallback.** Chỉ dispatch model khi công cụ thực tế hỗ trợ; chọn effort theo tình huống, không mặc định `max`/`ultra`.
+**Tuyệt đối không sử dụng GPT-6.2 Astra hoặc bất kỳ model/alias nào chứa `astra`, không phân biệt hoa thường. Áp dụng cho main, subagent, reviewer và fallback.** Chỉ dispatch model khi công cụ thực tế hỗ trợ; chọn effort theo tình huống, không mặc định `max`/`ultra`.
 
 Luna Extra High là lựa chọn mặc định cho task bình thường, dễ thực hiện. Dùng Terra khi task khó hơn; cân nhắc Sol cho task thật sự khó. Không tạo agent cho mỗi thao tác nhỏ hoặc chạy trùng việc.
 
@@ -81,10 +81,10 @@ Triển khai pipeline NeuSymNav theo NeuSymNav/docs/architecture.md và
 NeuSymNav/docs/implementation-plan.md. Đọc NeuSymNav/AGENTS.md,
 docs/agent-orchestration.md và docs/implementation-status.md trước.
 
-Main dùng GPT-6.1 Sol Medium. Tôi cho phép chủ động phân công Luna xhigh
-cho việc bình thường, GPT-6.1 Terra cho việc khó hơn và GPT-6.1 Sol
+Main dùng GPT-6.2 Sol Medium. Tôi cho phép chủ động phân công Luna xhigh
+cho việc bình thường, GPT-6.1 Terra cho việc khó hơn và GPT-6.2 Sol
 cho việc thật sự khó, với effort theo hướng dẫn.
-Tuyệt đối không dùng GPT-6 Astra hoặc alias chứa astra. Không tự tạo agent con
+Tuyệt đối không dùng GPT-6.2 Astra hoặc alias chứa astra. Không tự tạo agent con
 ngoài điều phối của main. Chỉ sửa NeuSymNav; hai folder nguồn giữ nguyên.
 
 Bắt đầu P00, làm theo dependency/gate tới P10 trong phạm vi core. Khóa các

@@ -1,5 +1,7 @@
 # Bàn giao baseline-3dsg-v11 (Hydra + SLM + chuyển động realtime)
 
+**Trạng thái v11: legacy.** Pipeline chuẩn hiện hành là [Hydra + Qwen3-VL](../../docs/running.md#pipeline-chuẩn-hydra--qwen3-vl). Các công thức SLM ở đây phục vụ tái lập baseline v11.
+
 Nhánh này là tag `baseline-3dsg-v11` (11/11/2026) cộng thêm một commit bàn giao. Đây là trạng thái **trước** kế hoạch ObjectNav; code ObjectNav nằm trên nhánh `objectnav` và không có ở đây.
 
 ## Có gì trong PR

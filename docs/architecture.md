@@ -1,5 +1,9 @@
 # Thiết kế NeuSymNav đề xuất
 
+Pipeline chuẩn hiện hành là **Hydra + Qwen3-VL**. Tài liệu này lưu thiết kế ban đầu và các contract nền. Xem [cấu hình đang dùng](running.md#pipeline-chuẩn-hydra--qwen3-vl).
+
+Ablation ObjectNav dùng [baseline B0](objectnav/paper-pr7-setup.md) theo giao thức paper với hành động Habitat rời rạc.
+
 Ngày: 2026-10-27. Cơ sở: người dùng đồng ý phân tích tuyển chọn của hai folder và yêu cầu kế hoạch gộp. Các lựa chọn cụ thể trong tài liệu này do agent đề xuất để review; chưa có implementation hoặc benchmark mới.
 
 ## 1. Mục tiêu và lựa chọn kiến trúc

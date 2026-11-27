@@ -1,14 +1,15 @@
-# Bàn giao ObjectNav: mốc B0 và bộ chấm (13/11/2026)
+# Bàn giao lịch sử ObjectNav lockstep (13/11/2026)
 
-Trang này dành cho người làm policy chuyển động. Nó cho biết cách chạy và chấm một
-policy, mốc B0 chính thức cần vượt qua, và chỗ B0 đang mất điểm. Nhánh `objectnav`.
+Trang này lưu cách chạy và chấm policy lockstep trên nhánh `objectnav` cùng mốc
+DEV60 v3h của ngày 13/11. Tên B0 ở các mục dưới đây là tên dùng trong thí nghiệm
+đó. Các ablation hiện hành dùng [baseline B0](paper-pr7-setup.md).
 
 Đọc theo thứ tự: mục 1–2 (mốc và chỗ mất điểm), mục 3 (cắm policy), mục 4 (quy tắc của
 bộ chấm), mục 6 (so với B0). Số liệu và dữ liệu từng episode đã khoá nằm ở
 [`results/`](results/README.md). Code của bộ chấm: tag `objectnav-scorer-v3` (`85cb146`).
 Code của B0: tag `objectnav-b0-v3h-dev60` (`2dcb0ea`).
 
-## 1. Mốc chính thức
+## 1. Mốc lockstep DEV60 v3h
 
 B0: quay tại chỗ → khám phá frontier → xác nhận vật thể bằng detector YOLOE-26m →
 tiếp cận → quay mặt → xác minh → STOP. Không dùng 3DSG, tour hay nhãn phòng.

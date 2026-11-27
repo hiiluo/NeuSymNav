@@ -1,23 +1,19 @@
 # NeuSymNav
 
-Kế hoạch hợp nhất online hierarchical 3D scene graph từ `NewOH3DSG` và bộ `3DSG`. Ngày soạn: **2026-10-27**.
-
-**Trạng thái:** có demo native RGB-D/simulator với YOLOE-26m, observation640×480, UI và full raw replay. P10 vẫn chưa nghiệm thu toàn bộ; xem [trạng thái và evidence](docs/implementation-status.md) để phân biệt correctness, runtime và chất lượng.
-
-Demo dài có profile riêng:
+**Pipeline chuẩn duy nhất của NeuSymNav là Hydra + Qwen3-VL** (chốt ngày 15/11/2026). YOLOE-26m-seg và MobileCLIP2-B xử lý vật thể, Hydra dựng scene graph và phân vùng phòng, Qwen3-VL-2B-Instruct gán nhãn phòng từ ngữ cảnh và ảnh RGB. Profile CPU và GPU là hai cách chạy cùng pipeline chuẩn.
 
 ```sh
-bash tools/run_long_demo.sh --preflight
-bash tools/run_long_demo.sh 600
+bash tools/run_local_demo.sh --preflight
+bash tools/run_local_demo.sh 60
 ```
 
-Lệnh dùng môi trường/model/dataset đã khai báo trên máy hiện tại. Nhịp control thực đo và giới hạn hiển thị được ghi trong [checkpoint long demo](docs/results/long-demo-2026-10-29.md); xem [hướng dẫn chạy](docs/running.md) cho ngân sách và cấu hình.
+Mặc định dùng profile CPU của scene 00806. Xem cách chọn GPU, đổi scene và chuẩn bị môi trường trong [hướng dẫn chạy pipeline chuẩn](docs/running.md#pipeline-chuẩn-hydra--qwen3-vl). Các profile demo cũ được giữ để đối chứng và tái lập các lượt trước.
+
+**B0 là baseline duy nhất cho ablation ObjectNav.** B0 chạy theo giao thức paper với hành động Habitat rời rạc. Dùng [hướng dẫn chạy và chấm B0 trên DEV60](docs/objectnav/paper-pr7-setup.md#chạy-trên-máy-này) cho thí nghiệm mới. Các lần chạy ObjectNav lockstep thuộc lịch sử benchmark.
 
 ## Clone mới: chạy kiểm chứng CPU
 
-Nếu cần chạy demo với dữ liệu thật, tải model và dataset theo
-[hướng dẫn chuẩn bị `local-assets`](docs/local-assets.md). Cả profile CPU và GPU
-dùng chung cấu trúc thư mục này.
+Chuẩn bị model và dataset cho pipeline chuẩn theo [hướng dẫn `local-assets`](docs/local-assets.md). Profile CPU và GPU dùng chung cấu trúc này.
 
 ```sh
 git clone https://github.com/hiiluo/NeuSymNav.git
@@ -29,10 +25,8 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests -q -m 'not native'
 ```
 
 CI kiểm chứng CPU/Qt offscreen, không tải model/dataset hoặc chạy GPU. Xem
-[hướng dẫn GitHub và các asset ngoài repo](docs/github-setup.md). Demo native cần
-môi trường sensor/detector/host, scene/calibration và backend DuDe riêng; một bản
-clone source chưa tự có những thành phần này. `configs/live.example.json` là
-mẫu cần điền thông tin thật, không phải cấu hình được phép chạy ngay.
+[hướng dẫn GitHub và các asset ngoài repo](docs/github-setup.md). Pipeline chuẩn cần
+môi trường sensor/detector/host, scene/calibration, Hydra và runtime `llama.cpp`.
 
 [Checkpoint demo600s](docs/results/long-demo-2026-10-29.md) giữ số đo và source pins;
 raw recording và môi trường local không upload. Repository chưa gán giấy phép
@@ -48,7 +42,7 @@ có thành phần hạn chế tái phân phối được giữ local.
 
 Agent bắt đầu tại [AGENTS.md](AGENTS.md). Người dùng chọn **GPT-6.1 Sol / Medium** cho main trong công cụ đang dùng; tài liệu không tự đổi model của phiên.
 
-## Phạm vi bàn giao đầu tiên
+## Phạm vi bàn giao đầu tiên (lịch sử)
 
 Một pipeline single-floor, pose simulator, frontier exploration, object graph có ID/bằng chứng bền vững, appearance tùy cấu hình, phân vùng DuDe, object–room membership bảo thủ và UI quan sát độ trễ. Có replay, provenance, tests và đánh giá đối chứng. Room semantics nâng cao, OctoMap bổ sung, ObjectNav chủ động, SLAM và multi-floor được tách khỏi gate lõi.
 

@@ -4,6 +4,8 @@ Bản sao nhỏ của các file trong `runs/` (thư mục bị git ignore), đ�
 và dữ liệu theo episode mà không cần chạy lại. Đọc kèm
 [trang bàn giao](../b0-baseline-handoff.md).
 
+Các kết quả B0 trong kho này thuộc benchmark lockstep lịch sử. Xem [hướng dẫn B0 hiện hành](../paper-pr7-setup.md) để đo baseline cho ablation mới.
+
 | | Commit |
 |---|---|
 | Bộ chấm + agent kiểm tra | `85cb146`, tag `objectnav-scorer-v3` |

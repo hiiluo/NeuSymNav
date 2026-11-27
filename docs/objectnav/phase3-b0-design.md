@@ -1,6 +1,8 @@
-# ObjectNav phase 3 — B0 baseline design (11/11/2026)
+# ObjectNav phase 3 — Historical lockstep baseline design (11/11/2026)
 
-B0 is the non-privileged ObjectNav baseline that every later variant (B1a object–object, B1b with Hydra + SLM rooms) is compared against on the same episodes and seeds. It uses no 3DSG, no navmesh tour and no room labels. Decided by the user 11/11: B0 runs with the current detector (YOLOE-26m, taxonomy-v1); vocabulary fixes wait for phase 5.
+This document records the phase 3 lockstep baseline, called B0 in that campaign. The current ablation baseline is documented in the [B0 guide](paper-pr7-setup.md).
+
+The phase 3 baseline used the same episodes and seeds as planned variants B1a and B1b, with no 3DSG, navmesh tour or room labels. The 11/11 decision selected YOLOE-26m with taxonomy-v1 and left vocabulary fixes for phase 5.
 
 ## Inputs (non-privileged)
 

@@ -1,6 +1,36 @@
 # Running NeuSymNav
 
-## Movement and exploration revision (2026-11-04)
+## Pipeline chuẩn Hydra + Qwen3-VL
+
+Hydra + Qwen3-VL là pipeline chuẩn duy nhất của NeuSymNav từ ngày 15/11/2026. Cả hai profile dùng YOLOE-26m-seg và MobileCLIP2-B cho vật thể, Hydra cho scene graph và phân vùng phòng, Qwen3-VL-2B-Instruct Q4_K_M với projector F16 cho gán nhãn phòng. GPU dùng CUDA cho YOLOE và Vulkan cho Qwen3-VL. Các profile local đã chuẩn bị cho 00770 và 00806. [Chuẩn bị model và cảnh](local-assets.md) · [Báo cáo Qwen3-VL](results/room-vlm-kss-20261112.md).
+
+Dùng lệnh dưới đây để chạy CPU với scene 00806 mặc định.
+
+```bash
+bash tools/run_local_demo.sh --preflight
+bash tools/run_local_demo.sh 60
+```
+
+Chọn profile GPU của scene 00806 qua biến môi trường.
+
+```bash
+export NEUSYMNAV_DEMO_CONFIG="$PWD/configs/demo-00806.hydra-vlm.gpu.local.json"
+bash tools/run_local_demo.sh --preflight
+bash tools/run_local_demo.sh 60
+unset NEUSYMNAV_DEMO_CONFIG
+```
+
+Đổi `00806` thành `00770` trong đường dẫn profile để chọn scene khác. Profile CPU tương ứng dùng hậu tố `.hydra-vlm.cpu.local.json`. Các file local chứa đường dẫn và checksum của asset trên máy chạy. Trên các nhánh được launcher Hydra hỗ trợ, `bash tools/run_hydra_map_demo.sh 00770 --preflight` cũng chọn profile CPU chuẩn của scene.
+
+Các profile demo cũ được đánh dấu **legacy**, gồm Hydra + Qwen3-1.7B SLM v11, Hydra không VLM, Rebuild, DuDe, ConceptGraphs và các demo YOLOE cũ.
+
+## Baseline B0 cho ObjectNav
+
+B0 là baseline duy nhất cho ablation ObjectNav. B0 chạy qua `tools/objectnav/run_paper_episodes.py --policy b0` trên HM3D v2, theo giao thức paper với ngân sách 500 hành động. Xem [cấu hình, manifest DEV60 và lệnh chấm điểm](objectnav/paper-pr7-setup.md).
+
+Runner lockstep còn hỗ trợ `explore` và B0 để đối chiếu kết quả cũ. Chính sách thử nghiệm C, A và S đã được gỡ khỏi cả hai runner. Các báo cáo cũ vẫn ghi phiên bản đã sinh kết quả. [Bàn giao B0 lockstep](objectnav/b0-baseline-handoff.md)
+
+## Legacy Rebuild movement and exploration revision (2026-11-04)
 
 Use the full Rebuild runner to keep accepted M5 as the room source:
 
@@ -50,7 +80,7 @@ records; built-in provider diagnostics retain per-attempt phase, PID and error
 class. Inspect these recorded fields before extending a simulator run. They are
 diagnostics only and do not change motion or freshness policy.
 
-## Current CUDA checkout: choose a map
+## Legacy CUDA demo: choose a map
 
 The current CUDA checkout has checked local assets/profiles for **00770, 00802,
 00861**. List prepared profiles and check the chosen one before launch:
@@ -89,17 +119,19 @@ changing motion or completion gates. A completed artifact with these fields has
 not yet been runtime-validated until a follow-up smoke records and inspects them.
 
 
-## Local Intel/CPU demo on this machine (2026-10-30)
+## Legacy Intel/CPU demo (2026-10-30)
 
 ```sh
+export NEUSYMNAV_DEMO_CONFIG="$PWD/configs/demo.local.json"
 bash tools/run_local_demo.sh --preflight
 bash tools/run_local_demo.sh 600
+unset NEUSYMNAV_DEMO_CONFIG
 ```
 
 The default duration is **600 seconds (10 minutes)**. Run `bash tools/run_local_demo.sh`
 without arguments for this duration; Stop can end the demo earlier.
 
-The local wrapper reads the ignored `configs/demo.local.json`, with checksums
+This explicit override selects the ignored `configs/demo.local.json`, with checksums
 for this checkout, scene 00802, measured floor calibration, Intel/Mesa EGL
 (`gpu_device_id=-1`), CPU raycasting and YOLOE-26m on Torch CPU. It opens the
 Qt viewer; run from a desktop terminal with `DISPLAY` available. Startup and
@@ -123,7 +155,7 @@ inherited per-screen scale multipliers. To choose another zoom explicitly:
 `NEUSYMNAV_UI_SCALE=1.1 bash tools/run_local_demo.sh 600`. Restart the demo
 after changing scale; desktop-wide settings remain unchanged.
 
-## Experimental Intel UHD detector backend (00805)
+## Legacy experimental Intel UHD detector backend (00805)
 
 An optional OpenVINO UHD profile is available on the `Kiet_branch2` worktree.
 It requires the local OpenVINO detector environment, the Intel OpenCL runtime,
@@ -160,7 +192,7 @@ are connected; unassigned objects remain disconnected. **Graph layout** and
 **Hierarchy** retain the structural views. See [spatial scene controls and data
 limits](spatial-scene-ui.md). Restart the demo after updating UI code.
 
-## Opt-in Rebuild M1–M5 RGB-D room map (profile v1)
+## Legacy Rebuild M1–M5 RGB-D room map (profile v1)
 
 This profile sends the primary RGB-D observations to the pinned Rebuild M1–M5
 lane and keeps the existing navigation/control map independent. It is opt-in;
@@ -198,7 +230,7 @@ A successful preflight does not establish live M1–M5 correctness. The checked-
 code does not include per-map local profiles or private scene/calibration assets;
 sharing only NeuSymNav source is insufficient to provision a teammate's map.
 
-## Choose a local HM3D map
+## Legacy local HM3D map selector
 
 ```sh
 bash tools/run_map_demo.sh --list
@@ -210,7 +242,7 @@ bash tools/run_map_demo.sh 00803 --preflight
 Choose one of `00800`, `00801`, `00802`, `00803`, `00804`, `00805`, `00806`,
 `00807`, `00808`, `00809`. Each command opens one demo; default duration is
 600 seconds, and the optional duration argument is in seconds. Stop ends early.
-The original `bash tools/run_local_demo.sh` still uses its original 00802 start.
+The historical 00802 profile can be selected via `NEUSYMNAV_DEMO_CONFIG`.
 Map-specific configs use independently prepared, explicit starting poses.
 
 Each ignored `configs/demo-MAP.local.json` pins the available local scene,
@@ -231,7 +263,7 @@ articulated objects each. The current live sensor has physics disabled and omits
 these objects. Their trial renders/configs are quarantined as incomplete; the
 map launcher rejects them. They are not advertised as ready-to-run maps.
 
-## Current demo: YOLOE-26m and 640×480 RGB-D
+## Legacy demo: YOLOE-26m and 640×480 RGB-D
 
 ```sh
 bash tools/run_realtime_demo.sh --preflight
@@ -449,7 +481,7 @@ bash tools/run_realtime_demo.sh 20
 See [design/source binding](ui-reference-refresh.md) and the
 [historical real-evidence preview](../runs/ui-new-reference-20261029/preview-2160x1350.png).
 
-## Opt-in 10-minute demo (fixed640 / YOLOE-26m)
+## Legacy 10-minute demo (fixed640 / YOLOE-26m)
 
 ```sh
 bash tools/run_long_demo.sh --preflight
@@ -491,19 +523,16 @@ missing/truncated sample still counted as unsupported. See the retained first
 600s attempt as well as the final profile's evidence; earlier incomplete runs
 are not erased or relabelled complete.
 
-Optional CUDA raycasting demo (existing local GPU environment required):
+Legacy ConceptGraphs GPU demo (existing local GPU environment required):
 
 ```sh
 bash tools/run_gpu_demo.sh --preflight
 bash tools/run_gpu_demo.sh 60
 ```
 
-This explicit profile keeps YOLOE-26m/640×480 and navigation depth240×180, uses
-an isolated Triton/CUDA raycasting worker, and requests primary5/navigation30Hz.
-The CPU demo remains available with run_long_demo.sh. Request rates are ceilings;
-actual source-ready control/motion and p95/p99 must come from each run's artifacts.
-GPU failures stop the dependent lane; no implicit CPU fallback. See
-[gpu mapping design](gpu-mapping-design.md) for bounds and current validation.
+The legacy GPU launcher selects YOLOE-11s and uses OpenAI CLIP ViT-B/32
+appearance features for ConceptGraphs. The older YOLOE-26m GPU raycasting setup
+is documented in the [GPU mapping design](gpu-mapping-design.md).
 
 ### Giữ cố định goal khám phá
 

@@ -3,7 +3,8 @@
 Chạy các lệnh từ thư mục gốc của NeuSymNav sau khi clone. Git tạo sẵn
 `local-assets/models/` và `local-assets/datasets/` bằng hai file `.gitkeep` rỗng.
 Mỗi thành viên tự tải asset vào các đường dẫn dưới đây. Profile CPU và GPU
-dùng cùng file.
+của [pipeline chuẩn Hydra + Qwen3-VL](running.md#pipeline-chuẩn-hydra--qwen3-vl)
+dùng chung model và dữ liệu cảnh.
 
 ## Detector dùng chung
 
@@ -57,7 +58,9 @@ profile demo sau khi sửa file cấu hình VLM. Bản GGUF tự convert đã d�
 [benchmark KSS](results/room-vlm-kss-20261112.md) nằm trong
 `local-assets/models/qwen3-vl/gguf-8964489/` và có bộ SHA-256 riêng.
 
-Nếu chạy handoff SLM cũ, chuẩn bị Qwen3-1.7B theo
+### Legacy Qwen3-1.7B SLM
+
+Để tái lập handoff SLM cũ, chuẩn bị Qwen3-1.7B theo
 [checkpoint SLM](results/room-slm-pilot-2026-11-08.md), với
 `Qwen3-1.7B-Q4_K_M.gguf` đặt tại
 `local-assets/models/qwen3-1.7b/Qwen3-1.7B-Q4_K_M.gguf`. Handoff SLM đọc
@@ -144,9 +147,16 @@ PY
 
 ## Kiểm tra trước khi chạy
 
-Xem [hướng dẫn Hydra](../handoff/3dsg-v11/README.md) để chuẩn bị các môi trường,
-build Hydra và chạy preflight với profile local của scene. Với installer SLM
-00806, dùng `--habitat-data "$PWD/local-assets/datasets/hm3d-minival"`.
+Để chạy ObjectNav DEV60 và TEST180, dùng `--habitat-data "$PWD/local-assets/datasets/hm3d-val"`.
+Data root này chứa episode metadata trong `datasets/objectnav/hm3d/v2/val/` và scene assets
+trong `versioned_data/hm3d-0.2/hm3d/val/`. Thư mục scene `val/` chứa cả
+`hm3d_val_basis.scene_dataset_config.json` cho runtime và
+`hm3d_annotated_val_basis.scene_dataset_config.json` cho semantic evaluation offline.
+Đặt `OBJECTNAV_HM3D_ROOT` nếu dùng data root khác trong lệnh của kế hoạch ObjectNav.
+
+Xem [hướng dẫn chạy pipeline chuẩn](running.md#pipeline-chuẩn-hydra--qwen3-vl)
+để chọn profile VLM và chạy preflight. [Handoff v11](../handoff/3dsg-v11/README.md)
+lưu cách build môi trường Hydra và cách tái lập profile SLM legacy.
 
 Kiểm tra Git bằng `git ls-files local-assets`. Kết quả phải gồm đúng
 `local-assets/datasets/.gitkeep` và `local-assets/models/.gitkeep`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local Intel/Mesa + CPU setup; generated configs/demo.local.json is checksum-pinned.
+# Standard Hydra + Qwen3-VL demo, using the local CPU profile by default.
 set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$project_root"
@@ -18,7 +18,7 @@ export MPLCONFIGDIR="$project_root/.runtime/cache/matplotlib" TORCH_HOME="$proje
 if [[ "${HABITAT_FORCE_SOFTWARE:-0}" == 1 ]]; then
     export LIBGL_ALWAYS_SOFTWARE=1 MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 fi
-demo_config="${NEUSYMNAV_DEMO_CONFIG:-configs/demo.local.json}"
+demo_config="${NEUSYMNAV_DEMO_CONFIG:-configs/demo-00806.hydra-vlm.cpu.local.json}"
 if [[ "${1:-}" == --preflight && $# == 1 ]]; then
     exec .venv/bin/python -m neusymnav.cli preflight --config "$demo_config"
 fi

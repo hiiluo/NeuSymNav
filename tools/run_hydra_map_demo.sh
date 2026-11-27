@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Branch2-only Hydra profile launcher. Provisioning and profile authoring are explicit.
+# Hydra launcher. The default is the standard per-scene Hydra + Qwen3-VL CPU profile.
 set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
 usage() {
     echo 'Usage: bash tools/run_hydra_map_demo.sh MAP [duration_seconds|--preflight] [new_output_directory]' >&2
-    echo 'Set NEUSYMNAV_HYDRA_DEMO_CONFIG to an explicitly calibrated branch2 profile.' >&2
+    echo 'Defaults to configs/demo-MAP.hydra-vlm.cpu.local.json. Set NEUSYMNAV_HYDRA_DEMO_CONFIG to select another profile.' >&2
     exit 2
 }
 
@@ -24,7 +24,7 @@ worktree="$(git rev-parse --show-toplevel)"
 [[ "$(realpath "$worktree")" == "$(realpath "$project_root")" ]] || {
     echo 'Git top-level does not match this NeuSymNav worktree.' >&2; exit 1;
 }
-config="${NEUSYMNAV_HYDRA_DEMO_CONFIG:-$project_root/configs/demo-${map}.hydra.local.json}"
+config="${NEUSYMNAV_HYDRA_DEMO_CONFIG:-$project_root/configs/demo-${map}.hydra-vlm.cpu.local.json}"
 config="$(realpath -m -- "$config")"
 [[ -f "$config" ]] || {
     echo "Hydra profile is missing: $config" >&2
