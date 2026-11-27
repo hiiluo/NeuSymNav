@@ -224,3 +224,108 @@ def validate_hydra_frame_order(previous: HydraFrame, current: HydraFrame) -> Non
         raise ValueError('Hydra frame sequence must be strictly increasing')
     if current.capture_monotonic_ns <= previous.capture_monotonic_ns:
         raise ValueError('Hydra capture timestamps must be strictly increasing')
+
+
+@dataclass(frozen=True)
+class HydraReadToken:
+    """Address one native graph publication within a worker generation."""
+
+    episode_id: str
+    run_id: str
+    graph_revision: int
+    input_prefix_sha256: str
+    world_epoch: str | None = None
+    source_sha256: str | None = None
+    build_sha256: str | None = None
+    config_sha256: str | None = None
+    schema_version: int = 1
+
+    def __post_init__(self):
+        text(self.episode_id, 'episode_id')
+        text(self.run_id, 'run_id')
+        object.__setattr__(self, 'graph_revision', integer(self.graph_revision, 'graph_revision'))
+        digest(self.input_prefix_sha256, 'input_prefix_sha256')
+        if self.world_epoch is not None:
+            text(self.world_epoch, 'world_epoch')
+        revision = self.source_sha256
+        if revision is not None and (not isinstance(revision, str) or len(revision) not in (40, 64)
+                                     or any(c not in '0123456789abcdef' for c in revision)):
+            raise ValueError('source_sha256 must be a lowercase Git object ID or SHA-256')
+        for name in ('build_sha256', 'config_sha256'):
+            value = getattr(self, name)
+            if value is not None:
+                digest(value, name)
+        if type(self.schema_version) is not int or self.schema_version != 1:
+            raise ValueError('unsupported Hydra read token version')
+
+
+@dataclass(frozen=True)
+class NativeNodeRef:
+    token: HydraReadToken
+    native_id: str
+    layer_id: int
+
+    def __post_init__(self):
+        if not isinstance(self.token, HydraReadToken):
+            raise TypeError('expected a Hydra read token')
+        text(self.native_id, 'native_id')
+        layer = integer(self.layer_id, 'layer_id')
+        if len(self.native_id) > 256 or layer > 7:
+            raise ValueError('invalid native node identity')
+        object.__setattr__(self, 'layer_id', layer)
+
+
+@dataclass(frozen=True)
+class HydraReadResult:
+    status: str
+    value: object = None
+    reason: str | None = None
+
+    def __post_init__(self):
+        choice(self.status, {'available', 'missing', 'not_recorded', 'ambiguous',
+                             'stale', 'evicted', 'corrupt', 'unavailable', 'pending'}, 'status')
+        if (self.status == 'available') != (self.value is not None):
+            raise ValueError('only available reads carry a value')
+
+
+@dataclass(frozen=True)
+class HydraPage:
+    items: tuple
+    next_cursor: str | None = None
+
+
+@dataclass(frozen=True)
+class NativeDetailRequest:
+    node: NativeNodeRef
+    kind: str
+    offset: int = 0
+    limit: int = 64
+    target: NativeNodeRef | None = None
+
+    def __post_init__(self):
+        choice(self.kind, {'attributes', 'bbox', 'mesh', 'feature', 'edge'}, 'kind')
+        if not isinstance(self.node, NativeNodeRef):
+            raise TypeError('expected a native node reference')
+        offset, limit = integer(self.offset, 'offset'), integer(self.limit, 'limit')
+        if offset > 10_000_000 or not 1 <= limit <= 64:
+            raise ValueError('detail range exceeds the page cap')
+        object.__setattr__(self, 'offset', offset)
+        object.__setattr__(self, 'limit', limit)
+        if self.kind == 'edge':
+            if not isinstance(self.target, NativeNodeRef) or self.target.token != self.node.token:
+                raise ValueError('edge endpoints must bind the same graph token')
+        elif self.target is not None:
+            raise ValueError('only edge reads take a target')
+
+    def to_wire(self) -> dict:
+        from dataclasses import asdict
+
+        return asdict(self)
+
+    @classmethod
+    def from_wire(cls, value):
+        def ref(raw):
+            return NativeNodeRef(HydraReadToken(**raw['token']), raw['native_id'], raw['layer_id'])
+
+        return cls(ref(value['node']), value['kind'], value['offset'], value['limit'],
+                   None if value['target'] is None else ref(value['target']))

@@ -11,8 +11,8 @@ MAX_SOURCE_EDGES=30000
 MAX_SNAPSHOT_NODES=256
 
 
-def build_debug_jobs(graph,taxonomy,offered_ns):
-    if graph.status!='available' or graph.stale or graph.replay_required:return ()
+def debug_graph_query(graph, taxonomy, **options):
+    if graph.status!='available' or graph.stale or graph.replay_required:return None
     if len(graph.nodes)>MAX_SOURCE_NODES or len(graph.edges)>MAX_SOURCE_EDGES:raise ValueError('debug source graph exceeds cap')
     if sum(n.layer_id==4 for n in graph.nodes)>MAX_DEBUG_ROOMS:raise ValueError('debug room cap exceeded')
     s=graph.native_metadata.get('room_label_input')
@@ -21,8 +21,16 @@ def build_debug_jobs(graph,taxonomy,offered_ns):
     digest=s.get('snapshot_sha256')
     if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):raise ValueError('native snapshot digest missing')
     transform=graph.native_metadata.get('last_transform') or {}
-    q=HydraSceneGraphQuery(graph,taxonomy,labelspace_id=(graph.last_source or {}).get('labelspace_id'),
-        labelspace_hash=(graph.last_source or {}).get('labelspace_hash'),semantic_labels=s.get('semantic_labels',{}),calibration_id=transform.get('calibration_id'))
+    return HydraSceneGraphQuery(graph,taxonomy,labelspace_id=(graph.last_source or {}).get('labelspace_id'),
+        labelspace_hash=(graph.last_source or {}).get('labelspace_hash'),semantic_labels=s.get('semantic_labels',{}),calibration_id=transform.get('calibration_id'), **options)
+
+
+def build_debug_jobs(graph,taxonomy,offered_ns):
+    q = debug_graph_query(graph, taxonomy)
+    if q is None:
+        return ()
+    s = graph.native_metadata['room_label_input']
+    digest = s['snapshot_sha256']
     support={'episode_id':graph.episode_id,'run_id':graph.run_id,'geometry_revision':graph.graph_revision,
         'input_prefix_sha256':graph.input_prefix_sha256,'geometry_hash':digest,'status':'available',
         'source_hashes':{'native_display_snapshot_sha256':digest}}

@@ -138,6 +138,17 @@ class RoomStabilityBridge:
             "worker_source_sha256": self._worker_source_sha256,
         }
 
+    def supports_object_event_journal(self, binding_sha256: str) -> bool:
+        """Check the companion binding pin exported by a combined native build."""
+        import ctypes
+
+        marker = getattr(self._native_library, 'nsn_object_journal_binding_sha256', None)
+        if marker is None or not _valid_sha256(binding_sha256):
+            return False
+        marker.argtypes = []
+        marker.restype = ctypes.c_char_p
+        return marker() == binding_sha256.encode('ascii')
+
     def validate_loaded_library(self) -> None:
         """Require one and only one mapped Hydra library, at the pinned path."""
         if self._library_path.name != "libhydra.so":

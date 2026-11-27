@@ -174,3 +174,84 @@ def test_snapshot_retains_last_accepted_native_graph_summary(tmp_path):
         assert session.wait_for_revision(1,2.)
         assert session.snapshot().graph_summary['nodes'][0]['native_id']=='R(1)'
     finally:session.close(2.)
+
+
+def test_hna_live_request_polls_without_blocking_frames_and_expires_on_revision(tmp_path):
+    from neusymnav.contracts.hydra_graph import HydraReadToken, NativeDetailRequest, NativeNodeRef
+
+    body = '''
+import os,threading
+source_fd,target_fd=map(int,os.environ["NEUSYMNAV_HYDRA_DETAIL_FDS"].split(":"))
+def detail():
+ with os.fdopen(source_fd,"rb") as stream,os.fdopen(target_fd,"wb",buffering=0) as output:
+  for line in stream:
+   msg=json.loads(line)
+   answer=dict(type="detail_result",request_id=msg["request_id"],
+    detail=dict(status="available",value={"native_is_active":True},reason=None))
+   output.write((json.dumps(answer)+"\\n").encode())
+threading.Thread(target=detail,daemon=True).start()
+for line in sys.stdin:
+ msg=json.loads(line)
+ if msg["type"] == "close": break
+ print(json.dumps({"type":"result","request_id":msg["request_id"],"accepted":True}),flush=True)
+'''
+    session = HydraSession('ep', command=worker(tmp_path, body), journal_path=tmp_path/'journal.jsonl',
+                           detail_queries=True)
+    try:
+        assert session.offer(frame(0)).status == 'queued'
+        assert wait_until(lambda: session.stats['accepted'] == 1)
+        snap = session.snapshot()
+        token = HydraReadToken('ep', session.run_id, snap.graph_revision, snap.input_prefix_sha256)
+        request = NativeDetailRequest(NativeNodeRef(token, 'O(0)', 2), 'attributes')
+        assert session.read(request).status == 'pending'
+        assert wait_until(lambda: session.read(request).status == 'available')
+        assert session.read(request).value['native_is_active']
+        assert session.offer(frame(1)).status == 'queued'
+        assert wait_until(lambda: session.stats['accepted'] == 2)
+        assert session.read(request).status == 'stale'
+    finally:
+        assert session.close(2)['complete']
+
+
+def test_hna_slow_or_timed_out_detail_never_holds_frame_channel(tmp_path):
+    from neusymnav.contracts.hydra_graph import HydraReadToken, NativeDetailRequest, NativeNodeRef
+
+    body = '''
+import os,threading
+def reply(reader,send):
+ for line in reader:
+  msg=json.loads(line)
+  if msg["type"] == "close": return
+  if msg["type"] == "detail":
+   time.sleep(.6)
+   send(dict(type="detail_result",request_id=msg["request_id"],
+             detail=dict(status="missing",value=None,reason="fixture")))
+  else:
+   send(dict(type="result",request_id=msg["request_id"],accepted=True))
+fds=os.environ.get("NEUSYMNAV_HYDRA_DETAIL_FDS")
+if fds:
+ source_fd,target_fd=map(int,fds.split(":"))
+ def serve_detail():
+  with os.fdopen(source_fd,"rb") as stream,os.fdopen(target_fd,"wb",buffering=0) as output:
+   try: reply(stream, lambda value:output.write((json.dumps(value)+"\\n").encode()))
+   except OSError: pass
+ threading.Thread(target=serve_detail,daemon=True).start()
+reply(sys.stdin,lambda value:print(json.dumps(value),flush=True))
+'''
+    session = HydraSession('ep', command=worker(tmp_path, body), journal_path=tmp_path/'journal.jsonl',
+                           detail_queries=True, worker_timeout_s=.3)
+    try:
+        assert session.offer(frame(0)).status == 'queued'
+        assert session.wait_for_revision(1, 2)
+        snap = session.snapshot()
+        token = HydraReadToken('ep', session.run_id, snap.graph_revision, snap.input_prefix_sha256)
+        assert session.read(NativeDetailRequest(NativeNodeRef(token, 'O(0)', 2), 'attributes')).status == 'pending'
+        assert wait_until(lambda: session._detail_active is not None)
+        assert session.offer(frame(1)).status == 'queued'
+        assert session.wait_for_revision(2, .25)
+        assert wait_until(lambda: session._detail_active is None)
+        assert session.offer(frame(2)).status == 'queued'
+        assert session.wait_for_revision(3, 2)
+        assert not session.snapshot().replay_required
+    finally:
+        session.close(2)

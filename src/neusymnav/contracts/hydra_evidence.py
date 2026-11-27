@@ -142,6 +142,14 @@ class HydraEvidenceIndex:
             (old_key, _), _ = self._entries.popitem(last=False)
             self._evicted[old_key] = self._evicted.get(old_key, 0) + 1
 
+    def last_confirmed_capture(self, key: HydraObjectKey, clock_domain: str, cutoff_ns: int) -> int | None:
+        """Latest retained native-confirmed evidence in the requested clock domain."""
+        if (key.run_id, key.episode_id) != (self.run_id, self.episode_id):
+            return None
+        return max((ref.capture_monotonic_ns for (owner, _), ref in self._entries.items()
+                    if owner == key and ref.link_status == 'native_confirmed'
+                    and ref.clock_domain == clock_domain and ref.capture_monotonic_ns <= cutoff_ns), default=None)
+
     def resolve(self, key: HydraObjectKey, *, limit: int = 64,
                 cursor: int | None = None) -> EvidencePage:
         if not isinstance(key, HydraObjectKey):

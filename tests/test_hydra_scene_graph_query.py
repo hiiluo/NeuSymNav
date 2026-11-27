@@ -243,3 +243,82 @@ def test_query_rejects_projection_source_with_different_pinned_vocabulary_or_lab
     with pytest.raises(ValueError, match="labelspace"):
         _query(projection=bad_labelspace)
 
+
+
+def test_hna_room_membership_and_reused_id_are_bound_to_snapshot():
+    query = _query()
+    room, = query.rooms().value.items
+    assert room.layer_id == 4
+    detail = query.room_detail(room).value
+    assert detail.place_count == 1
+    assert detail.object_count == 1
+    place, = query.places(room).value.items
+    assert place.native_id == 'p(0)'
+    assert query.place_detail(place).value.native.status == 'not_recorded'
+
+    newer = _query(projection=_projection(revision=8))
+    assert newer.room_detail(room).status == 'stale'
+    assert newer.rooms().value.items[0].token != room.token
+
+
+def test_hna_scope_cursor_staleness_and_missing_semantic_producer():
+    from dataclasses import replace
+
+    projection = _projection()
+    object_room = projection.nodes[-2]
+    extra = replace(object_room, native_id='R(1)', node_id='hydra:run-1:4:R(1)')
+    query = _query(projection=replace(projection, nodes=(*projection.nodes, extra)))
+    first = query.rooms(limit=1).value
+    assert query.rooms(limit=1, cursor=first.next_cursor).value.items[0].native_id == 'R(1)'
+    with pytest.raises(ValueError, match='cursor'):
+        query.places(cursor=first.next_cursor, limit=1)
+    ref = query.node_ref('O(0)')
+    assert query.features(ref).status == 'not_recorded'
+    assert query.geometry(ref, 'mesh').status == 'not_recorded'
+    assert query.relationships(ref, query.node_ref('O(1)'), kind='visual').status == 'not_recorded'
+    assert _query(projection=_projection(stale=True)).geometry(ref, 'mesh').status == 'stale'
+
+
+def test_hna_subgraph_budgets_and_edge_provenance():
+    from dataclasses import replace
+    from neusymnav.backends.hydra.graph_adapter import HydraDisplayEdge
+
+    projection = _projection()
+    obj, place, room = (projection.nodes[i] for i in (0, 6, 7))
+    edges = (
+        HydraDisplayEdge(obj.node_id, place.node_id, 'interlayer'),
+        HydraDisplayEdge(place.node_id, room.node_id, 'interlayer'),
+    )
+    query = _query(projection=replace(projection, edges=edges))
+    seed = query.node_ref(obj.native_id)
+    neighbor, = query.neighbors(seed).value.items
+    assert neighbor.target.native_id == place.native_id
+    assert neighbor.weight is None
+    assert neighbor.weight_kind == 'not_recorded'
+    graph = query.subgraph((seed,), max_hops=2, max_nodes=2, max_edges=1).value
+    assert len(graph.nodes) == 2
+    assert len(graph.edges) == 1
+    assert graph.truncated
+
+
+def test_topology_page_rechecks_freshness_after_collecting_results(monkeypatch):
+    query = _query()
+    original = query._index
+    snapshot_current = True
+
+    def index():
+        nonlocal snapshot_current
+        snapshot_current = False
+        return original()
+
+    query._live_token = lambda token: snapshot_current
+    monkeypatch.setattr(query, '_index', index)
+    assert query.rooms().status == 'stale'
+
+
+def test_legacy_object_candidates_become_unusable_after_live_revision_moves():
+    query = _query()
+    query._live_token = lambda token: False
+    assert query.status == 'stale'
+    assert query.objects()
+    assert not any(candidate.usable_for_targeting for candidate in query.objects())

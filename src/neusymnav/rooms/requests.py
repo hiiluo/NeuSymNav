@@ -99,7 +99,7 @@ class RoomLabelRequest(Contract):
 
 
 def _native_relations(query: HydraSceneGraphQuery, context: RoomContext) -> tuple[NativeRoomRelation, ...]:
-    projection = query._projection
+    projection = query.projection
     by_id = {node.node_id: node for node in projection.nodes}
     by_native = {node.native_id: node for node in projection.nodes}
     rows: set[tuple[str, str, str]] = set()
@@ -128,7 +128,7 @@ def make_room_label_request(query: HydraSceneGraphQuery,
         raise TypeError('query must be HydraSceneGraphQuery')
     if world_epoch is not None:
         text(world_epoch, 'world_epoch')
-    projection = query._projection
+    projection = query.projection
     room_ids = sorted(node.node_id for node in projection.nodes if node.layer_id == 4)
     requests = []
     for room_id in room_ids:

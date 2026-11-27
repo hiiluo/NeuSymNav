@@ -6,8 +6,8 @@ from collections.abc import Mapping
 import json,threading,time,math
 from ..backends.hydra.graph_adapter import HydraGraphProjection
 from ..contracts.room_semantics import RoomLabelProposal,validate_room_label
-from .debug_context import build_debug_jobs
-from .debug_types import RoomLabelDebugRecord
+from .debug_context import build_debug_jobs, debug_graph_query
+from .debug_types import RoomLabelDebugRecord, record_is_current
 from .evidence_quality import assess_evidence_quality
 
 MAX_PENDING=32;MAX_HISTORY=128;MAX_HISTORY_BYTES=8*1024*1024;MAX_RECORD_BYTES=256*1024
@@ -94,6 +94,25 @@ class RoomLabelDebugService:
             self._status['coalesced_graphs']+=len(self._pending);self._pending.clear();self._processed=None
             self._latest=graph;self._offered_ns=self._now();self._status['offered_graphs']+=1;self._version+=1;self._cv.notify_all()
             return True
+
+    def scene_graph_query(self):
+        """Join labels on the process that owns them, scoped to its exact input graph."""
+        with self._cv:
+            graph = self._latest
+            if self._closed or graph is None:
+                return None
+            identity = _identity(graph)
+            labels = {}
+            for record, _ in reversed(self._history.values()):
+                if record.state == 'complete' and record.result is not None and record_is_current(record, graph):
+                    labels.setdefault(record.result.room_id, record.result)
+
+        def still_current(token):
+            with self._cv:
+                return not self._closed and _identity(self._latest) == identity
+
+        return debug_graph_query(graph, self.taxonomy, live_token=still_current,
+                                 room_label_reader=labels.get)
 
     def records(self):
         with self._cv:

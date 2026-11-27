@@ -110,8 +110,15 @@ def load_config(path):
             if 'hydra' not in scene_graph or 'hydra' not in workers:
                 raise ValueError('Hydra backend requires scene_graph.hydra and workers.hydra configuration')
             h=_mapping(scene_graph['hydra'],'scene_graph.hydra',
-                {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration'},
+                {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration',
+                 'detail_queries','reasoninggraph_evidence','object_event_journal'},
                 {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration'})
+            if type(h.get('detail_queries', False)) is not bool:
+                raise ValueError('scene_graph.hydra.detail_queries must be boolean')
+            if type(h.get('reasoninggraph_evidence', False)) is not bool:
+                raise ValueError('scene_graph.hydra.reasoninggraph_evidence must be boolean')
+            if type(h.get('object_event_journal', False)) is not bool:
+                raise ValueError('scene_graph.hydra.object_event_journal must be boolean')
             for key in ('dataset_sha256','labelspace_sha256'):
                 if type(h[key]) is not str or not SHA.fullmatch(h[key]):raise ValueError('scene_graph.hydra.'+key+' must be a SHA-256')
             if not isinstance(h['config_root'],str) or not h['config_root'].strip():raise ValueError('scene_graph.hydra.config_root is required')

@@ -9,12 +9,14 @@ import logging
 import os
 from pathlib import Path
 import subprocess
+import threading
 import sys
 import traceback
 
 import numpy as np
 
 from ...contracts import HydraFrame, dumps, loads
+from ...contracts.hydra_graph import HydraReadToken
 
 
 PROTOCOL_VERSION = 1
@@ -103,6 +105,12 @@ class _PipelineOwner:
         self.artifact_dir = artifact_dir.resolve()
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.pipeline = None
+        self.detail_run_id = os.environ.get('NEUSYMNAV_HYDRA_DETAIL_RUN')
+        self._object_journal_requested = os.environ.get('NEUSYMNAV_HYDRA_OBJECT_JOURNAL') == '1'
+        self._object_journal_active = False
+        self.detail_snapshot = None
+        self.detail_lock = threading.Lock()
+        self.detail_assets = None
         self.sensor_id = None
         self.calibration_hash = None
         self.labelspace_hash = None
@@ -143,6 +151,11 @@ class _PipelineOwner:
         if self.room_stability_bridge is not None:
             self.room_stability_bridge.validate_loaded_library()
         ExtrinsicsConfig, HydraPipeline = hydra_bindings.ExtrinsicsConfig, hydra_bindings.HydraPipeline
+        self.native_binding_hash = _sha256(Path(hydra_bindings.__file__).resolve())
+        journal_capable = callable(getattr(HydraPipeline, 'enable_object_event_journal', None))
+        if (journal_capable and self.room_stability_bridge is not None
+                and not self.room_stability_bridge.supports_object_event_journal(self.native_binding_hash)):
+            raise RuntimeError('room stability and object journal are from different native builds')
         from hydra_python.pipeline import load_configs, make_camera
 
         config = load_configs('neusymnav', labelspace='neusymnav', config_path=self.config_root)
@@ -162,7 +175,9 @@ class _PipelineOwner:
             height=h, min_range=.1, max_range=5., name='primary_rgbd', extrinsics=extrinsics)
         self.pipeline = HydraPipeline.from_config(yaml.safe_dump(config), sensor,
             robot_id=0, config_verbosity=0, use_step_mode=True, zmq_url='')
-        self.native_binding_hash = _sha256(Path(hydra_bindings.__file__).resolve())
+        if self._object_journal_requested and journal_capable:
+            self.pipeline.enable_object_event_journal()
+            self._object_journal_active = True
         self.binding_hash = (self.room_stability_bridge.build_sha256(self.native_binding_hash)
             if self.room_stability_bridge is not None else self.native_binding_hash)
         self.sensor_id = frame.source_key.sensor_id
@@ -197,14 +212,47 @@ class _PipelineOwner:
                 'capture_monotonic_ns': self.last_source.capture_monotonic_ns,
                 'clock_domain': self.last_source.clock_domain}}
         if accepted:
-            result['graph_summary']=_graph_summary(self.pipeline.graph,
-                graph_revision=self.graph_revision,input_prefix_sha256=self.input_prefix)
+            if getattr(self, 'detail_run_id', None):
+                with self.detail_lock:
+                    self.detail_snapshot = None
+            graph = self.pipeline.graph
+            result['graph_summary'] = _graph_summary(graph,
+                graph_revision=self.graph_revision, input_prefix_sha256=self.input_prefix)
+            if getattr(self, '_object_journal_active', False):
+                batch = self.pipeline.object_event_batch
+                if batch is not None:
+                    result['object_event_journal'] = {'input_prefix_sha256': self.input_prefix, 'native': batch}
+            if getattr(self, 'detail_run_id', None):
+                mesh = graph.mesh
+                if mesh is None or mesh.total_bytes() <= 64 * 1024 * 1024:
+                    token = HydraReadToken(frame.source_key.episode_id, self.detail_run_id,
+                        self.graph_revision, self.input_prefix, source_sha256=self.source_revision,
+                        build_sha256=self.binding_hash, config_sha256=self.config_hash)
+                    with self.detail_lock:
+                        self.detail_snapshot = (token, graph)
         if accepted and getattr(self, 'binding_hash', None):
             result['native_metadata'] = self._native_metadata()
             bridge = getattr(self, 'room_stability_bridge', None)
             if bridge is not None:
                 result['room_stability_diagnostics'] = bridge.diagnostics()
         return result
+
+    def read_detail(self, raw):
+        from ...contracts.hydra_graph import NativeDetailRequest
+        from .detail_reader import AssetStore, extract_detail, mesh_generation
+
+        request = NativeDetailRequest.from_wire(raw)
+        with self.detail_lock:
+            snapshot = self.detail_snapshot
+        if snapshot is None:
+            return dict(status='unavailable', value=None, reason='native_clone_missing_or_over_budget')
+        token, graph = snapshot
+        if request.node.token != token:
+            return dict(status='stale', value=None, reason='native_revision_changed')
+        if self.detail_assets is None:
+            self.detail_assets = AssetStore(self.artifact_dir / 'detail-assets')
+        return extract_detail(graph, request, self.detail_assets,
+                              mesh_generation=mesh_generation(token))
 
     def _native_metadata(self) -> dict:
         bridge = self.room_stability_bridge
@@ -234,10 +282,39 @@ class _PipelineOwner:
             **self._native_metadata()}
 
     def close(self) -> dict:
+        if getattr(self, 'detail_run_id', None):
+            with self.detail_lock:
+                self.detail_snapshot = None
         result = self.save()
         self.pipeline = None
         gc.collect()
         return result
+
+
+def _serve_detail(owner, input_fd, output_fd):
+    from .detail_reader import MAX_DETAIL_RESULT
+
+    try:
+        with os.fdopen(input_fd, 'rb') as stream, os.fdopen(output_fd, 'wb') as output:
+            while line := stream.readline(8192):
+                if not line.endswith(b'\n'):
+                    return
+                raw = json.loads(line)
+                request_id = raw['request_id']
+                if raw.get('type') != 'detail' or not isinstance(request_id, str) or len(request_id) != 32:
+                    return
+                try:
+                    detail = owner.read_detail(raw['request'])
+                except (KeyError, TypeError, ValueError, OSError):
+                    detail = dict(status='unavailable', value=None, reason='invalid_detail_request')
+                result = json.dumps(dict(type='detail_result', request_id=request_id, detail=detail),
+                                    separators=(',', ':'), allow_nan=False).encode() + b'\n'
+                if len(result) > MAX_DETAIL_RESULT:
+                    return
+                output.write(result)
+                output.flush()
+    except (OSError, KeyError, TypeError, ValueError):
+        return
 
 
 def serve(config_root: Path, artifact_dir: Path) -> int:
@@ -246,6 +323,11 @@ def serve(config_root: Path, artifact_dir: Path) -> int:
     for name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
         os.environ[name] = '1'
     owner = _PipelineOwner(config_root, artifact_dir)
+    detail_fds = os.environ.get('NEUSYMNAV_HYDRA_DETAIL_FDS')
+    if owner.detail_run_id and detail_fds is not None:
+        input_fd, output_fd = (int(value) for value in detail_fds.split(':'))
+        threading.Thread(target=_serve_detail, args=(owner, input_fd, output_fd),
+                         daemon=True, name='hydra-detail').start()
     _emit({'type': 'ready', 'protocol': PROTOCOL_VERSION,
            'config_sha256': owner.config_hash,
            'labelspace_config_sha256': owner.labelspace_config_hash,

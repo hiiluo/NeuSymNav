@@ -1,9 +1,9 @@
 """Bounded, nonblocking host session for one Hydra worker and episode."""
 from __future__ import annotations
 
-from collections import deque
+from collections import OrderedDict, deque
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 import os
@@ -17,7 +17,9 @@ import time
 import uuid
 
 from ...contracts import dumps, loads
-from ...contracts.hydra_graph import HydraFrame, validate_hydra_frame_order
+from ...contracts.hydra_graph import (HydraFrame, HydraReadResult, HydraReadToken,
+                                      NativeDetailRequest, validate_hydra_frame_order)
+from ...contracts.hydra_lineage import NativeObjectBatch
 from .wire import serialize_frame_buffers
 
 
@@ -91,6 +93,9 @@ class HydraGraphSnapshot:
     graph_summary: dict | None = None
     last_semantics: dict | None = None
     room_stability: dict | None = None
+    published_monotonic_ns: int | None = None
+    published_clock_domain: str | None = None
+    last_detector_profile_id: str | None = None
 
 
 class HydraSession:
@@ -99,7 +104,9 @@ class HydraSession:
     def __init__(self, episode_id: str, *, command: tuple[str, ...],
                  journal_path: str | Path, worker_timeout_s: float = 30.0,
                  startup_timeout_s: float = 10.0, fps_limit_hz: float | None = None,
-                 artifact_quota_bytes: int = 2 * 1024 * 1024 * 1024):
+                 artifact_quota_bytes: int = 2 * 1024 * 1024 * 1024,
+                 detail_queries: bool = False, detail_asset_root: str | Path | None = None,
+                 object_event_journal: bool = False):
         if not isinstance(episode_id, str) or not episode_id.strip():
             raise ValueError('episode_id must be nonempty')
         if not 0.1 <= float(worker_timeout_s) <= 120.0:
@@ -115,6 +122,32 @@ class HydraSession:
             raise ValueError('artifact_quota_bytes must be positive')
         self.fps_limit_hz = None if fps_limit_hz is None else float(fps_limit_hz)
         self.artifact_quota_bytes = artifact_quota_bytes
+        if type(detail_queries) is not bool:
+            raise ValueError('detail_queries must be boolean')
+        if type(object_event_journal) is not bool:
+            raise ValueError('object_event_journal must be boolean')
+        self.object_event_journal = object_event_journal
+        self._object_batch = None
+        self._object_journal_gap = False
+        self._object_lineage_owner = None
+        self._object_lineage_view = None
+        if object_event_journal:
+            from ...reasoninggraph.native_lineage import NativeObjectLineage
+            self._object_lineage_owner = NativeObjectLineage()
+        self.detail_queries = detail_queries
+        self.detail_asset_root = None if detail_asset_root is None else Path(detail_asset_root)
+        from ...sensors.habitat_worker import host_clock_domain
+        try:
+            self._publication_clock_domain = host_clock_domain()
+        except (OSError, RuntimeError):
+            self._publication_clock_domain = None
+        self._detail_pending = OrderedDict()
+        self._detail_results = OrderedDict()
+        self._detail_active = None
+        self._detail_error = False
+        self._detail_dropped = 0
+        self._detail_service_ms = deque(maxlen=256)
+        self._published_monotonic_ns = None
         self.journal_path = Path(journal_path)
         self.journal_path.parent.mkdir(parents=True, exist_ok=True)
         self._condition = threading.Condition()
@@ -148,11 +181,39 @@ class HydraSession:
 
         env = dict(os.environ)
         env['PYTHONDONTWRITEBYTECODE'] = '1'
+        if self.detail_queries:
+            env['NEUSYMNAV_HYDRA_DETAIL_RUN'] = self.run_id
+        else:
+            env.pop('NEUSYMNAV_HYDRA_DETAIL_RUN', None)
+        if self.object_event_journal:
+            env['NEUSYMNAV_HYDRA_OBJECT_JOURNAL'] = '1'
+        else:
+            env.pop('NEUSYMNAV_HYDRA_OBJECT_JOURNAL', None)
         env['OMP_NUM_THREADS'] = '1'
         env['OPENBLAS_NUM_THREADS'] = '1'
         env['MKL_NUM_THREADS'] = '1'
-        self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, bufsize=0, start_new_session=True, env=env)
+        self._detail_reader = self._detail_writer = None
+        child_fds = ()
+        if self.detail_queries:
+            child_input, host_output = os.pipe()
+            host_input, child_output = os.pipe()
+            child_fds = (child_input, child_output)
+            self._detail_reader = os.fdopen(host_input, 'rb', buffering=0)
+            self._detail_writer = os.fdopen(host_output, 'wb', buffering=0)
+            os.set_blocking(host_input, False)
+            os.set_blocking(host_output, False)
+            env['NEUSYMNAV_HYDRA_DETAIL_FDS'] = f'{child_input}:{child_output}'
+        else:
+            env.pop('NEUSYMNAV_HYDRA_DETAIL_FDS', None)
+        try:
+            self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, bufsize=0, start_new_session=True, env=env, pass_fds=child_fds)
+        except BaseException:
+            self._close_detail_channel()
+            raise
+        finally:
+            for fd in child_fds:
+                os.close(fd)
         if self.process.stdin is None or self.process.stdout is None or self.process.stderr is None:
             self._terminate()
             raise RuntimeError('Hydra worker pipes were not created')
@@ -170,6 +231,11 @@ class HydraSession:
             raise
         self._thread = threading.Thread(target=self._run, name=f'hydra-{self.run_id[:8]}', daemon=True)
         self._thread.start()
+        self._detail_thread = None
+        if self._detail_reader is not None:
+            self._detail_thread = threading.Thread(target=self._run_detail,
+                name=f'hydra-detail-{self.run_id[:8]}', daemon=True)
+            self._detail_thread.start()
 
     @property
     def stats(self) -> dict:
@@ -184,6 +250,12 @@ class HydraSession:
             samples = sorted(self._service_ms)
             values['service_p50_ms'] = _percentile(samples, .50)
             values['service_p95_ms'] = _percentile(samples, .95)
+            values['service_p99_ms'] = _percentile(samples, .99)
+            if self.detail_queries:
+                detail = sorted(self._detail_service_ms)
+                values['detail'] = dict(pending=len(self._detail_pending), dropped=self._detail_dropped,
+                    completed_window=len(detail), service_p95_ms=_percentile(detail, .95),
+                    failed=self._detail_error)
             queue_samples = sorted(self._queue_ms)
             values['queue_p50_ms'] = _percentile(queue_samples, .50)
             values['queue_p95_ms'] = _percentile(queue_samples, .95)
@@ -343,6 +415,9 @@ class HydraSession:
                 worker.get('config_sha256'), worker.get('source_sha256'), worker.get('build_sha256'),
                 asset_path, asset_hash, asset_bytes, node_counts, edge_count,
                 deepcopy(self._last_transform),
+                published_monotonic_ns=self._published_monotonic_ns,
+                published_clock_domain=self._publication_clock_domain,
+                last_detector_profile_id=None if frame is None else frame.detector_profile_id,
                 stale=self._failure is not None,
                 replay_required=self._replay_required,
                 failure_reason=self._failure,graph_summary=deepcopy(self._graph_summary),
@@ -375,6 +450,8 @@ class HydraSession:
             self._closed = True
             self._journal_events.append({'event': 'close_requested', 'run_id': self.run_id})
             self._condition.notify_all()
+        if self._detail_writer is not None:
+            self._detail_writer.close()
         self._thread.join(float(timeout_s))
         if self._thread.is_alive():
             with self._condition:
@@ -387,6 +464,9 @@ class HydraSession:
             self.process.wait(timeout=.5)
         except subprocess.TimeoutExpired:
             self._terminate()
+        if self._detail_thread is not None:
+            self._detail_thread.join(.5)
+        self._close_detail_channel()
         self._flush_journal()
         complete = not self._thread.is_alive() and self.process.poll() is not None and self._failure is None
         return {'complete': complete, 'failure_reason': self._failure,
@@ -394,6 +474,162 @@ class HydraSession:
                 'stderr_tail': tuple(self._stderr_tail),
                 'worker_result': self._worker_close_result,
                 'worker_metadata': dict(self._worker_metadata)}
+
+    def _detail_token_locked(self):
+        if self._closed or self._failure or self._revision == 0:
+            return None
+        return HydraReadToken(self.episode_id, self.run_id, self._revision, self._prefix_hash,
+            source_sha256=self._worker_metadata.get('source_sha256'),
+            build_sha256=self._worker_metadata.get('build_sha256'),
+            config_sha256=self._worker_metadata.get('config_sha256'))
+
+    def has_detail_token(self, token):
+        with self._condition:
+            return self._detail_token_locked() == token
+
+    def current_read_token(self):
+        with self._condition:
+            return self._detail_token_locked()
+
+    def object_event_batch(self, token):
+        """Read the durable raw events for the current exact native publication."""
+        with self._condition:
+            if token is not None and self._detail_token_locked() == token:
+                return self._object_batch
+            return None
+
+    def object_lineage(self, token):
+        """Read the canonical identities from one still-current publication."""
+        with self._condition:
+            if token is not None and self._detail_token_locked() == token:
+                return self._object_lineage_view
+            return None
+
+    def _validated_object_batch(self, response, graph_summary, frame, prefix, native_metadata):
+        if self._object_journal_gap or graph_summary is None or not response['accepted']:
+            return None
+        try:
+            metadata = {**self._worker_metadata, **(native_metadata or {})}
+            token = HydraReadToken(self.episode_id, self.run_id, self._revision + 1, prefix,
+                source_sha256=metadata.get('source_sha256'), build_sha256=metadata.get('build_sha256'),
+                config_sha256=metadata.get('config_sha256'))
+            batch = NativeObjectBatch.from_wire(response.get('object_event_journal'),
+                token=token, timestamp_ns=frame.capture_monotonic_ns)
+        except (TypeError, ValueError):
+            return None
+        if self._object_batch is not None and batch.epoch != self._object_batch.epoch:
+            return None
+        return batch
+
+    def read(self, request: NativeDetailRequest):
+        """Poll or enqueue detail without waiting for the child or touching the frame queue."""
+        if not isinstance(request, NativeDetailRequest):
+            raise TypeError('expected a native detail request')
+        with self._condition:
+            if not self.detail_queries:
+                return HydraReadResult('not_recorded', reason='detail_queries_disabled')
+            if self._detail_token_locked() != request.node.token:
+                return HydraReadResult('stale', reason='detail_revision_changed')
+            if self._detail_error:
+                return HydraReadResult('unavailable', reason='detail_channel_failed')
+            cached = self._detail_results.get(request)
+            if cached is not None:
+                deadline, result = cached
+                if time.monotonic() < deadline:
+                    return result
+                self._detail_results.pop(request)
+            if request in self._detail_pending or self._detail_active == request:
+                return HydraReadResult('pending')
+            if len(self._detail_pending) >= 2:
+                self._detail_dropped += 1
+                return HydraReadResult('unavailable', reason='detail_queue_full')
+            self._detail_pending[request] = time.monotonic() + 2.0
+            self._condition.notify_all()
+            return HydraReadResult('pending')
+
+    def read_asset(self, node, asset):
+        """Explicit IO-lane read of a binary result from the current generation."""
+        from .detail_reader import decode_asset, mesh_generation
+
+        if not self.detail_queries or self.detail_asset_root is None:
+            return HydraReadResult('not_recorded', reason='detail_asset_root_not_connected')
+        if not self.has_detail_token(node.token):
+            return HydraReadResult('stale', reason='detail_revision_changed')
+        result = decode_asset(self.detail_asset_root, asset, node, mesh_generation(node.token))
+        if not self.has_detail_token(node.token):
+            return HydraReadResult('stale', reason='detail_revision_changed')
+        return result
+
+    def _close_detail_channel(self):
+        for stream in (self._detail_writer, self._detail_reader):
+            if stream is not None:
+                stream.close()
+
+    def _detail_exchange(self, raw, deadline, max_reply_bytes):
+        writer = self._detail_writer.fileno()
+        reader = self._detail_reader.fileno()
+        remaining = memoryview(raw)
+        while remaining:
+            _, ready, _ = select.select([], [writer], [], max(0., deadline - time.monotonic()))
+            if not ready:
+                raise TimeoutError('detail send deadline')
+            remaining = remaining[os.write(writer, remaining):]
+        line = bytearray()
+        while len(line) <= max_reply_bytes:
+            ready, _, _ = select.select([reader], [], [], max(0., deadline - time.monotonic()))
+            if not ready:
+                raise TimeoutError('detail receive deadline')
+            chunk = os.read(reader, min(4096, max_reply_bytes + 1 - len(line)))
+            if not chunk:
+                raise OSError('detail channel closed')
+            line.extend(chunk)
+            if b'\n' in line:
+                if len(line) > max_reply_bytes or not line.endswith(b'\n') or line.count(b'\n') != 1:
+                    break
+                return json.loads(line)
+        raise ValueError('oversized or malformed detail reply')
+
+    def _run_detail(self):
+        from .detail_reader import MAX_DETAIL_RESULT, parse_detail
+
+        try:
+            while True:
+                with self._condition:
+                    while not self._closed and not self._failure and (
+                            not self._detail_pending or self._pending is not None or self._in_flight):
+                        self._condition.wait()
+                    if self._closed or self._failure:
+                        return
+                    request, deadline = self._detail_pending.popitem(last=False)
+                    self._detail_active = request
+                started = time.monotonic()
+                result = HydraReadResult('unavailable', reason='detail_deadline')
+                if started < deadline and self.has_detail_token(request.node.token):
+                    request_id = uuid.uuid4().hex
+                    raw = json.dumps(dict(type='detail', request_id=request_id,
+                        request=request.to_wire()), allow_nan=False).encode() + b'\n'
+                    end = min(deadline, started + self.worker_timeout_s)
+                    message = self._detail_exchange(raw, end, MAX_DETAIL_RESULT)
+                    if message.get('type') != 'detail_result' or message.get('request_id') != request_id:
+                        raise ValueError('detail response request mismatch')
+                    if time.monotonic() <= deadline:
+                        result = parse_detail(message['detail'], request)
+                with self._condition:
+                    self._detail_active = None
+                    self._detail_service_ms.append((time.monotonic() - started) * 1000)
+                    if self._detail_token_locked() == request.node.token:
+                        self._detail_results[request] = (time.monotonic() + 2.0, result)
+                        while len(self._detail_results) > 64:
+                            self._detail_results.popitem(last=False)
+        except (OSError, KeyError, TypeError, ValueError, AttributeError):
+            with self._condition:
+                if not self._closed:
+                    self._detail_error = True
+                self._detail_active = None
+                self._detail_pending.clear()
+                self._detail_results.clear()
+        finally:
+            self._close_detail_channel()
 
     def _run(self):
         while True:
@@ -453,10 +689,49 @@ class HydraSession:
                 native_metadata = response.get('native_metadata') if accepted else None
                 diagnostics = response.get('room_stability_diagnostics') if accepted else None
                 self._validate_native_metadata(native_metadata, diagnostics)
+                native_evidence = ({} if native_metadata is None else {
+                    'native_metadata': native_metadata,
+                    'room_stability_diagnostics': diagnostics})
+                journal_event = dict(event='accepted' if accepted else 'step_rejected',
+                    source=_source(frame), accepted=accepted, graph_revision=self._revision + int(accepted),
+                    input_prefix_sha256=expected_prefix, service_ms=elapsed, **native_evidence)
+                object_batch = None
+                lineage_view = None
+                if self.object_event_journal:
+                    object_batch = self._validated_object_batch(
+                        response, graph_summary, frame, expected_prefix, native_metadata)
+                    if object_batch is not None:
+                        journal_event['object_event_journal'] = object_batch.to_wire()
+                        journal_event['object_event_token'] = asdict(object_batch.token)
+                    # Persist before making the optional batch readable at this revision.
+                    if not self._append_journal(journal_event):
+                        with self._condition:
+                            self._in_flight = False
+                            self._in_flight_bytes = 0
+                        self._terminate()
+                        return
+                    if object_batch is not None:
+                        nodes = graph_summary.get('nodes')
+                        projection = None
+                        if isinstance(nodes, list) and all(
+                                isinstance(node, dict) and type(node.get('layer_id')) is int for node in nodes):
+                            projection = (node.get('native_id') for node in nodes if node['layer_id'] == 2)
+                        lineage_view = self._object_lineage_owner.apply(
+                            object_batch.token, object_batch, projection)
                 with self._condition:
                     self._service_ms.append(elapsed)
+                    if self.object_event_journal:
+                        self._object_batch = object_batch
+                        self._object_journal_gap = object_batch is None
+                        self._object_lineage_view = lineage_view
                     if accepted:
                         self._revision += 1
+                        self._published_monotonic_ns = (
+                            time.monotonic_ns() if self._publication_clock_domain else None)
+                        if self.detail_queries:
+                            self._detail_dropped += len(self._detail_pending)
+                            self._detail_pending.clear()
+                            self._detail_results.clear()
                         self._last_accepted = frame
                         self._last_transform = {
                             'source_geometry_hash': frame.source_geometry_hash,
@@ -478,20 +753,13 @@ class HydraSession:
                             self._worker_metadata.update(deepcopy(native_metadata))
                             self._room_stability_diagnostics = deepcopy(diagnostics)
                         self._stats['accepted'] += 1
-                        event = 'accepted'
                     else:
                         self._stats['step_rejected'] += 1
-                        event = 'step_rejected'
                     self._in_flight = False
                     self._in_flight_bytes = 0
                     self._condition.notify_all()
-                native_evidence = ({} if native_metadata is None else {
-                    'native_metadata': native_metadata,
-                    'room_stability_diagnostics': diagnostics})
-                self._append_journal({'event': event, 'source': _source(frame),
-                    'accepted': accepted, 'graph_revision': self._revision,
-                    'input_prefix_sha256': self._prefix_hash, 'service_ms': elapsed,
-                    **native_evidence})
+                if not self.object_event_journal:
+                    self._append_journal(journal_event)
             except BaseException as exc:
                 with self._condition:
                     self._failure = f'{type(exc).__name__}: {exc}'
@@ -615,6 +883,7 @@ class HydraSession:
         return True
 
     def _terminate(self):
+        self._close_detail_channel()
         if self.process.poll() is not None:
             return
         try:

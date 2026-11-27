@@ -271,3 +271,22 @@ def test_brief_stale_recovery_rebuilds_pending_rooms_without_new_revision():
         wait(lambda:len(b.calls)==2)
         assert b.calls[1].key.room_id.endswith('R(1)')
     finally:assert svc.close(2)['clean_shutdown']
+
+
+def test_hna_query_reads_current_label_from_its_owner(tmp_path):
+    from neusymnav.rooms.service import RoomLabelDebugService
+
+    backend = FakeBackend()
+    backend.release.set()
+    service = RoomLabelDebugService(backend, _taxonomy(), artifact_root=tmp_path, debounce_s=0)
+    try:
+        service.offer(graph())
+        wait(lambda: any(record.state == 'complete' for record in service.records()))
+        current = service.scene_graph_query()
+        room, = current.rooms().value.items
+        assert current.room_detail(room).value.label.label == 'bathroom'
+        service.offer(graph(rev=10))
+        assert current.room_detail(room).status == 'stale'
+        assert service.scene_graph_query().room_detail(room).status == 'stale'
+    finally:
+        service.close(2)

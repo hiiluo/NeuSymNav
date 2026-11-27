@@ -59,7 +59,7 @@ def build_room_context(query: HydraSceneGraphQuery, evidence: Mapping[str, Evide
         raise TypeError('query must be HydraSceneGraphQuery')
     if not isinstance(room_id, str) or not room_id:
         raise ValueError('room_id is required')
-    projection = query._projection
+    projection = query.projection
     if evidence is not None and not isinstance(evidence, Mapping):
         raise TypeError('evidence must map native IDs to EvidencePage')
     if room_support is not None:

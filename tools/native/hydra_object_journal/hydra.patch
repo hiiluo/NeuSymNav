@@ -1,0 +1,526 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -107,3 +107,12 @@
+   install(DIRECTORY config DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME})
+   ament_package()
+ endif()
++
++# Optional focused test for the downstream object journal.
++set(NEUSYMNAV_OBJECT_JOURNAL_TEST "" CACHE FILEPATH "Object journal test source")
++if(NEUSYMNAV_OBJECT_JOURNAL_TEST)
++  find_package(GTest REQUIRED)
++  add_executable(hydra_object_journal_test EXCLUDE_FROM_ALL "${NEUSYMNAV_OBJECT_JOURNAL_TEST}")
++  target_include_directories(hydra_object_journal_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests/frontend")
++  target_link_libraries(hydra_object_journal_test PRIVATE hydra::hydra GTest::gtest_main)
++endif()
+--- a/include/hydra/backend/backend_module.h
++++ b/include/hydra/backend/backend_module.h
+@@ -117,6 +117,11 @@
+ 
+   bool step(bool force_optimize = false);
+ 
++  void setObjectEventJournal(const std::shared_ptr<ObjectEventJournal>& journal) {
++    object_events_ = journal;
++    dsg_updater_->setObjectEventJournal(journal);
++  }
++
+   void loadState(const std::filesystem::path& mesh_path,
+                  const std::filesystem::path& dgrf_path,
+                  bool force_loopclosures = true);
+@@ -165,6 +170,7 @@
+   SharedModuleState::Ptr state_;
+ 
+   DsgUpdater::Ptr dsg_updater_;
++  std::shared_ptr<ObjectEventJournal> object_events_;
+ 
+   kimera_pgmo::Path trajectory_;
+   std::vector<size_t> timestamps_;
+--- a/include/hydra/backend/dsg_updater.h
++++ b/include/hydra/backend/dsg_updater.h
+@@ -88,6 +88,10 @@
+ 
+   void callUpdateFunctions(size_t timestamp_ns, UpdateInfo::ConstPtr info);
+ 
++  void setObjectEventJournal(const std::shared_ptr<ObjectEventJournal>& journal) {
++    merge_tracker.setObjectEventJournal(journal);
++  }
++
+  private:
+   MergeTracker merge_tracker;
+   std::map<std::string, UpdateFunctor::Ptr> update_functors_;
+--- a/include/hydra/backend/merge_tracker.h
++++ b/include/hydra/backend/merge_tracker.h
+@@ -37,6 +37,8 @@
+ 
+ namespace hydra {
+ 
++class ObjectEventJournal;
++
+ struct MergeTracker {
+   size_t applyMerges(const DynamicSceneGraph& unmerged,
+                      const MergeList& proposals,
+@@ -45,10 +47,15 @@
+ 
+   void clear();
+ 
++  void setObjectEventJournal(const std::shared_ptr<ObjectEventJournal>& journal) {
++    object_events_ = journal;
++  }
++
+  private:
+   void updateParents(std::map<NodeId, NodeId>& prior_merges, const Merge& merge);
+ 
+   std::map<NodeId, std::set<NodeId>> merge_sets_;
++  std::shared_ptr<ObjectEventJournal> object_events_;
+ };
+ 
+ }  // namespace hydra
+--- /dev/null
++++ b/include/hydra/common/object_event_journal.h
+@@ -0,0 +1,90 @@
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++#include <mutex>
++#include <optional>
++#include <utility>
++#include <vector>
++
++#include <spark_dsg/node_symbol.h>
++
++namespace hydra {
++
++enum class ObjectEventOwner { Frontend, Backend };
++enum class ObjectEventOperation { Create, Delete, Merge };
++
++struct ObjectEvent {
++  ObjectEventOwner owner;
++  ObjectEventOperation operation;
++  spark_dsg::NodeId source;
++  std::optional<spark_dsg::NodeId> target;
++};
++
++// One bounded capture shared by both object owners in a synchronous pipeline step.
++class ObjectEventJournal {
++ public:
++  explicit ObjectEventJournal(std::size_t capacity = 4096) : capacity_(capacity) {}
++
++  void begin() {
++    std::lock_guard<std::mutex> lock(mutex_);
++    events_.clear();
++    overflow_ = false;
++    frontend_input_.reset();
++    backend_input_.reset();
++    active_ = true;
++  }
++
++  void record(ObjectEvent event) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (!active_ || overflow_) {
++      return;
++    }
++    if (events_.size() >= capacity_) {
++      overflow_ = true;
++      events_.clear();
++      return;
++    }
++    events_.push_back(std::move(event));
++  }
++
++  void confirm(ObjectEventOwner owner, uint64_t timestamp, uint64_t sequence) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    if (active_) {
++      auto& input = owner == ObjectEventOwner::Frontend ? frontend_input_ : backend_input_;
++      if (input) {
++        overflow_ = true;  // Multiple packets for one capture are ambiguous.
++      }
++      input = std::make_pair(timestamp, sequence);
++    }
++  }
++
++  std::optional<std::vector<ObjectEvent>> finish(
++      bool accepted, std::optional<uint64_t> expected_timestamp = std::nullopt) {
++    std::lock_guard<std::mutex> lock(mutex_);
++    const bool complete = active_ && accepted && !overflow_ &&
++                          (!expected_timestamp || (frontend_input_ &&
++                              frontend_input_->first == *expected_timestamp &&
++                              frontend_input_ == backend_input_));
++    active_ = false;
++    if (!complete) {
++      events_.clear();
++      return std::nullopt;
++    }
++    auto result = std::move(events_);
++    events_.clear();
++    return result;
++  }
++
++ private:
++  const std::size_t capacity_;
++  std::mutex mutex_;
++  bool active_ = false;
++  bool overflow_ = false;
++  std::vector<ObjectEvent> events_;
++  using InputIdentity = std::pair<uint64_t, uint64_t>;
++  std::optional<InputIdentity> frontend_input_;
++  std::optional<InputIdentity> backend_input_;
++};
++
++}  // namespace hydra
+--- a/include/hydra/frontend/graph_builder.h
++++ b/include/hydra/frontend/graph_builder.h
+@@ -121,6 +121,13 @@
+ 
+   bool spinOnce();
+ 
++  void setObjectEventJournal(const std::shared_ptr<ObjectEventJournal>& journal) {
++    object_events_ = journal;
++    if (segmenter_) {
++      segmenter_->setObjectEventJournal(journal);
++    }
++  }
++
+   inline InputQueue::Ptr queue() const { return queue_; }
+ 
+   void addSink(const Sink::Ptr& sink);
+@@ -183,6 +190,7 @@
+ 
+   std::unique_ptr<VolumetricWindow> map_window_;
+   std::unique_ptr<MeshSegmenter> segmenter_;
++  std::shared_ptr<ObjectEventJournal> object_events_;
+   std::unique_ptr<PoseGraphTracker> tracker_;
+   std::unique_ptr<SurfacePlacesInterface> surface_places_;
+   std::unique_ptr<FreespacePlacesInterface> freespace_places_;
+--- a/include/hydra/frontend/mesh_segmenter.h
++++ b/include/hydra/frontend/mesh_segmenter.h
+@@ -44,6 +44,8 @@
+ 
+ namespace hydra {
+ 
++class ObjectEventJournal;
++
+ using clustering::Clusters;
+ using clustering::LabelIndices;
+ 
+@@ -81,6 +83,10 @@
+ 
+   std::unordered_set<NodeId> getActiveNodes() const;
+ 
++  void setObjectEventJournal(const std::shared_ptr<ObjectEventJournal>& journal) {
++    object_events_ = journal;
++  }
++
+  private:
+   void updateOldNodes(const kimera_pgmo::MeshOffsetInfo& offsets,
+                       DynamicSceneGraph& graph);
+@@ -102,6 +108,7 @@
+   std::set<uint32_t> labels_;
+   std::map<uint32_t, std::set<NodeId>> active_nodes_;
+   Sink::List sinks_;
++  std::shared_ptr<ObjectEventJournal> object_events_;
+ };
+ 
+ void declare_config(MeshSegmenter::Config& config);
+--- a/python/bindings/src/python_pipeline.cpp
++++ b/python/bindings/src/python_pipeline.cpp
+@@ -45,6 +45,7 @@
+ #include <hydra/backend/zmq_interfaces.h>
+ #include <hydra/common/global_info.h>
+ #include <hydra/common/hydra_pipeline.h>
++#include <hydra/common/object_event_journal.h>
+ #include <hydra/common/pipeline_queues.h>
+ #include <hydra/frontend/graph_builder.h>
+ #include <hydra/input/camera.h>
+@@ -54,6 +55,7 @@
+ #include <pybind11/stl/filesystem.h>
+ #include <pybind11/stl_bind.h>
+ 
++#include <atomic>
+ #include <filesystem>
+ 
+ #include "hydra/bindings/glog_utilities.h"
+@@ -62,6 +64,8 @@
+ #include "hydra/bindings/python_sensors.h"
+ 
+ namespace hydra::python {
++
++namespace py = pybind11;
+ 
+ struct ExternalPluginConfig {
+   bool allow = true;
+@@ -103,6 +107,9 @@
+ 
+   void reset();
+ 
++  void enableObjectEventJournal();
++  py::object getObjectEventBatch() const;
++
+   bool step(const InputPacket::Ptr& input);
+ 
+   DynamicSceneGraph::Ptr getSceneGraph() const;
+@@ -121,6 +128,15 @@
+ 
+  private:
+   void initModules();
++  bool stepModules(const InputPacket::Ptr& input);
++
++  std::shared_ptr<ObjectEventJournal> object_events_;
++  std::optional<std::vector<ObjectEvent>> event_batch_;
++  uint64_t journal_epoch_ = 0;
++  uint64_t journal_step_ = 0;
++  uint64_t journal_timestamp_ = 0;
++  bool stepped_ = false;
++  bool journal_gap_ = false;
+ };
+ 
+ void declare_config(PythonPipeline::Config& config) {
+@@ -173,6 +189,10 @@
+   modules_["frontend"] = frontend_;
+   backend_ = config.backend.create(backend_dsg_, shared_state_);
+   modules_["backend"] = backend_;
++  if (object_events_) {
++    frontend_->setObjectEventJournal(object_events_);
++    backend_->setObjectEventJournal(object_events_);
++  }
+   active_window_ = config.active_window.create(frontend_->queue());
+   modules_["reconstruction"] = active_window_;
+ 
+@@ -194,8 +214,22 @@
+   HydraPipeline::stop();
+ }
+ 
++namespace {
++uint64_t nextObjectJournalEpoch() {
++  static std::atomic<uint64_t> epoch{0};
++  return ++epoch;
++}
++}  // namespace
++
+ void PythonPipeline::reset() {
+   stop();
++  stepped_ = false;
++  event_batch_.reset();
++  journal_gap_ = false;
++  journal_step_ = 0;
++  if (object_events_) {
++    journal_epoch_ = nextObjectJournalEpoch();
++  }
+ 
+   // reset specific module instances
+   active_window_.reset();
+@@ -227,7 +261,74 @@
+   }
+ }
+ 
++void PythonPipeline::enableObjectEventJournal() {
++  if (!step_mode_only_ || stepped_) {
++    throw std::logic_error("Enable the object journal before the first synchronous step");
++  }
++  if (!object_events_) {
++    object_events_ = std::make_shared<ObjectEventJournal>();
++    journal_epoch_ = nextObjectJournalEpoch();
++    frontend_->setObjectEventJournal(object_events_);
++    backend_->setObjectEventJournal(object_events_);
++  }
++}
++
++py::object PythonPipeline::getObjectEventBatch() const {
++  if (!event_batch_) {
++    return py::none();
++  }
++  py::list events;
++  for (const auto& event : *event_batch_) {
++    py::dict entry;
++    entry["owner"] = event.owner == ObjectEventOwner::Frontend ? "frontend" : "backend";
++    switch (event.operation) {
++      case ObjectEventOperation::Create: entry["operation"] = "create"; break;
++      case ObjectEventOperation::Delete: entry["operation"] = "delete"; break;
++      case ObjectEventOperation::Merge: entry["operation"] = "merge"; break;
++    }
++    entry["source"] = NodeSymbol(event.source).str();
++    if (event.target) {
++      entry["target"] = NodeSymbol(*event.target).str();
++    } else {
++      entry["target"] = py::none();
++    }
++    events.append(entry);
++  }
++  py::dict batch;
++  batch["schema_version"] = 1;
++  batch["status"] = "complete";
++  batch["epoch"] = journal_epoch_;
++  batch["step"] = journal_step_;
++  batch["timestamp_ns"] = journal_timestamp_;
++  batch["events"] = events;
++  return batch;
++}
++
+ bool PythonPipeline::step(const InputPacket::Ptr& input) {
++  stepped_ = true;
++  if (!object_events_ || journal_gap_) {
++    return stepModules(input);
++  }
++
++  event_batch_.reset();
++  object_events_->begin();
++  try {
++    const bool accepted = stepModules(input);
++    event_batch_ = object_events_->finish(accepted, input->timestamp_ns);
++    journal_gap_ = !event_batch_;
++    if (event_batch_) {
++      ++journal_step_;
++      journal_timestamp_ = input->timestamp_ns;
++    }
++    return accepted;
++  } catch (...) {
++    object_events_->finish(false);
++    journal_gap_ = true;
++    throw;
++  }
++}
++
++bool PythonPipeline::stepModules(const InputPacket::Ptr& input) {
+   if (!active_window_->step(input)) {
+     return false;
+   }
+@@ -248,7 +349,6 @@
+ namespace python_pipeline {
+ 
+ using namespace pybind11::literals;
+-namespace py = pybind11;
+ 
+ struct PluginManager {
+   static void init(const ExternalPluginConfig& config) {
+@@ -355,6 +455,8 @@
+           "path"_a,
+           "include_mesh"_a = true)
+       .def("reset", &PythonPipeline::reset)
++      .def("enable_object_event_journal", &PythonPipeline::enableObjectEventJournal)
++      .def_property_readonly("object_event_batch", &PythonPipeline::getObjectEventBatch)
+       .def(
+           "step",
+           [](PythonPipeline& pipeline,
+--- a/src/backend/backend_module.cpp
++++ b/src/backend/backend_module.cpp
+@@ -34,6 +34,8 @@
+  * -------------------------------------------------------------------------- */
+ #include "hydra/backend/backend_module.h"
+ 
++#include "hydra/common/object_event_journal.h"
++
+ #include <config_utilities/config.h>
+ #include <config_utilities/printing.h>
+ #include <config_utilities/validation.h>
+@@ -270,6 +272,9 @@
+ 
+   ScopedTimer sink_timer("backend/sinks", timestamp_ns);
+   Sink::callAll(sinks_, timestamp_ns, *private_dsg_->graph, *deformation_graph_);
++  if (object_events_ && has_data) {
++    object_events_->confirm(ObjectEventOwner::Backend, timestamp_ns, last_sequence_number_);
++  }
+   return true;
+ }
+ 
+--- a/src/backend/merge_tracker.cpp
++++ b/src/backend/merge_tracker.cpp
+@@ -35,6 +35,9 @@
+ #include "hydra/backend/merge_tracker.h"
+ 
+ #include <glog/logging.h>
++#include <spark_dsg/node_attributes.h>
++
++#include "hydra/common/object_event_journal.h"
+ 
+ namespace hydra {
+ 
+@@ -56,6 +59,10 @@
+       continue;
+     }
+ 
++    const auto* source = object_events_ ? graph.findNode(merge.from) : nullptr;
++    const auto* target = source ? graph.findNode(merge.to) : nullptr;
++    const bool object_merge = target && source->tryAttributes<ObjectNodeAttributes>() &&
++                              target->tryAttributes<ObjectNodeAttributes>();
+     if (!graph.mergeNodes(merge.from, merge.to)) {
+       LOG(WARNING) << "Failed to apply merge: " << merge << " (original: " << orig_merge
+                    << ", from: " << std::boolalpha << graph.hasNode(merge.from)
+@@ -68,6 +75,10 @@
+     ++num_applied;
+     to_update.insert(merge.to);
+     updateParents(prior_merges, merge);
++    if (object_merge) {
++      object_events_->record({ObjectEventOwner::Backend, ObjectEventOperation::Merge,
++                              merge.from, merge.to});
++    }
+   }
+ 
+   if (!merge_attrs) {
+--- a/src/frontend/graph_builder.cpp
++++ b/src/frontend/graph_builder.cpp
+@@ -34,6 +34,8 @@
+  * -------------------------------------------------------------------------- */
+ #include "hydra/frontend/graph_builder.h"
+ 
++#include "hydra/common/object_event_journal.h"
++
+ #include <config_utilities/config.h>
+ #include <config_utilities/printing.h>
+ #include <config_utilities/validation.h>
+@@ -367,6 +369,9 @@
+     Sink::callAll(sinks_, msg->timestamp_ns, *dsg_->graph, *backend_input_);
+   }
+ 
++  if (object_events_) {
++    object_events_->confirm(ObjectEventOwner::Frontend, msg->timestamp_ns, sequence_number_);
++  }
+   ++sequence_number_;
+ }
+ 
+--- a/src/frontend/mesh_segmenter.cpp
++++ b/src/frontend/mesh_segmenter.cpp
+@@ -33,6 +33,8 @@
+  * purposes notwithstanding any copyright notation herein.
+  * -------------------------------------------------------------------------- */
+ #include "hydra/frontend/mesh_segmenter.h"
++
++#include "hydra/common/object_event_journal.h"
+ 
+ #include <config_utilities/config.h>
+ #include <config_utilities/types/conversions.h>
+@@ -177,7 +179,10 @@
+       VLOG(20) << "After update: " << attrs.mesh_connections << std::boolalpha
+                << " (active: " << !stats.all_archived << ")";
+       if (attrs.mesh_connections.size() < config.clustering.min_cluster_size) {
+-        graph.removeNode(node_id);
++        if (graph.removeNode(node_id) && object_events_) {
++          object_events_->record({ObjectEventOwner::Frontend, ObjectEventOperation::Delete,
++                                  node_id, std::nullopt});
++        }
+         iter = label_nodes.erase(iter);
+         continue;
+       }
+@@ -261,7 +266,10 @@
+       const auto& other = graph.getNode(other_id);
+       auto& other_attrs = other.attributes<ObjectNodeAttributes>();
+       mergeList(attrs.mesh_connections, other_attrs.mesh_connections);
+-      graph.removeNode(other_id);
++      if (graph.removeNode(other_id) && object_events_) {
++        object_events_->record({ObjectEventOwner::Frontend, ObjectEventOperation::Merge,
++                                other_id, node_id});
++      }
+       merged_nodes.insert(other_id);
+     }
+ 
+@@ -314,7 +322,10 @@
+ 
+   updateObjectGeometry(*graph.mesh(), *attrs, nullptr, config.bounding_box_type);
+ 
+-  graph.emplaceNode(config.layer_id, next_node_id_, std::move(attrs));
++  if (graph.emplaceNode(config.layer_id, next_node_id_, std::move(attrs)) && object_events_) {
++    object_events_->record({ObjectEventOwner::Frontend, ObjectEventOperation::Create,
++                            next_node_id_, std::nullopt});
++  }
+   active_nodes_.at(label).insert(next_node_id_);
+   ++next_node_id_;
+ }

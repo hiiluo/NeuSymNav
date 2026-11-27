@@ -274,3 +274,15 @@ def test_build_sha256_is_deterministic_and_closes_over_bridge_worker_and_private
         allow_nan=False).encode("utf-8")).hexdigest()
     assert first == expected
     assert len(first) == 64 and all(char in "0123456789abcdef" for char in first)
+
+
+def test_object_journal_requires_the_companion_binding_hash(tmp_path):
+    module = _module()
+    native = _NativeLibrary()
+    bridge = module.RoomStabilityBridge(native_library=native, version=module.VERSION,
+        library_path=tmp_path / 'libhydra.so', library_sha256='a'*64, policy_config={},
+        policy_sha256='b'*64, python_bridge_sha256='c'*64, worker_source_sha256='d'*64)
+    assert not bridge.supports_object_event_journal('e'*64)
+    native.nsn_object_journal_binding_sha256 = _NativeFunction(('e'*64).encode())
+    assert bridge.supports_object_event_journal('e'*64)
+    assert not bridge.supports_object_event_journal('f'*64)

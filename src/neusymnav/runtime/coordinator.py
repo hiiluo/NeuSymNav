@@ -469,6 +469,8 @@ class Pipeline:
             atomic_write(certificate_path,json.dumps(dict(complete=False,stopped=False,reason='runtime_active_or_unclean_exit')).encode())
             if self.scene_graph_backend=='hydra':
                 hydra_runtime=self.hydra_runtime_factory()
+                start_evidence=getattr(hydra_runtime,'start_reasoninggraph',None)
+                if callable(start_evidence):start_evidence(self.root,self.quota)
                 diagnostics=getattr(hydra_runtime,'diagnostics',None)
                 with self._lock:
                     self._hydra_runtime=hydra_runtime
@@ -1239,6 +1241,9 @@ class Pipeline:
                 return dict(samples=len(ordered),p50_ms=percentile(.50),p95_ms=percentile(.95),max_ms=ordered[-1])
         hydra_snapshot=self._hydra_snapshot
         hydra_close=self._hydra_close_report
+        hydra_diagnostics=self._hydra_diagnostics
+        if hydra_close is not None and hydra_close.get('reasoninggraph') is not None:
+            hydra_diagnostics={**(hydra_diagnostics or {}), 'reasoninggraph':hydra_close['reasoninggraph']}
         hydra_export=None if hydra_close is None else dict(
             complete=bool(hydra_close.get('complete')),
             manifest_path=hydra_close.get('manifest_path'),
@@ -1278,7 +1283,7 @@ class Pipeline:
                         stop_requested=self._stop_requested,cleanup_pending=dict(self._cleanup_pending),
                         hydra=dict(backend='hydra' if self.scene_graph_backend=='hydra' else None,
                             failure=self._hydra_failure,counts=dict(self._hydra_counts),snapshot=hydra_snapshot,
-                            diagnostics=self._hydra_diagnostics,native_export=hydra_export),
+                            diagnostics=hydra_diagnostics,native_export=hydra_export),
                         places=dict(self._place_counts,status=self._place_status,pose_pending=self._pose_offer is not None,pair_pending=self._place_input is not None))
         # In particular quota.lock can cover a filesystem scan. Never acquire
         # it while holding the lock needed by source admission and control.

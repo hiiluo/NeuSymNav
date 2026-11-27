@@ -12,7 +12,7 @@ from ..contracts.room_semantics import ROOM_LABELS, RoomLabelProposal
 from .labels import MAX_RESPONSE_BYTES, _unique_fields
 from .output_grammar import (_alternatives_rule, _gbnf_literal, _reason_rules,
     _support_rules, RoomOutputGrammar, MAX_OUTPUT_GRAMMAR_BYTES)
-from .persistent_backend import PersistentRoomLabelBackend, _BackendUnavailable
+from .persistent_backend import PersistentRoomLabelBackend, _BackendUnavailable, _JobDeadline
 from .prompt import PromptRecord, RoomPromptError
 from .requests import RoomLabelRequest
 
@@ -159,6 +159,36 @@ class RoomVlmBackend(PersistentRoomLabelBackend):
         super()._validate_runtime_pins()
         if not self.config.mmproj_path or not self.config.mmproj_sha256:
             raise _BackendUnavailable('mmproj_asset_not_configured')
+
+    def complete_visual(self, prompt: str, grammar: str, jpeg: bytes) -> str:
+        """Run a bounded visual request on the same pinned llama.cpp recipe."""
+        if not self.config.enabled:
+            raise _BackendUnavailable('model_runtime_disabled')
+        self._validate_runtime_pins()
+        deadline = time.monotonic() + self.config.inference_timeout_s
+        with self._infer_lock:
+            with self._condition:
+                generation = self._generation
+            try:
+                _, base, _ = self._existing_or_start(None, generation, deadline, {})
+                content = [{'type': 'text', 'text': prompt}, {'type': 'image_url', 'image_url': {
+                    'url': 'data:image/jpeg;base64,' + base64.b64encode(jpeg).decode('ascii')}}]
+                body = {'model': self.config.model_id, 'messages': [{'role': 'user', 'content': content}],
+                        'temperature': 0, 'seed': 0, 'max_tokens': self.config.max_output_tokens,
+                        'stream': False, 'cache_prompt': False, 'grammar': grammar,
+                        'chat_template_kwargs': {'enable_thinking': False}}
+                response = self._http_deadlined('POST', base + '/v1/chat/completions', body,
+                                                 deadline, generation, max_response_bytes=128 * 1024)
+                self._check_active(generation, deadline)
+            except (TimeoutError, OSError, _JobDeadline):
+                self._drop_generation_process(generation)
+                raise
+            result = response['choices'][0]
+            usage = response.get('usage') or {}
+            if (result.get('finish_reason') == 'length' or
+                    usage.get('prompt_tokens', 0) > self.config.max_input_tokens):
+                raise ValueError('visual response exceeded the token budget')
+            return result['message']['content']
 
     def _infer_one(self, request, generation, deadline, metrics):
         self._validate_runtime_pins()

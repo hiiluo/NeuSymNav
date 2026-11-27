@@ -126,3 +126,22 @@ def test_hydra_frame_order_rejects_duplicate_replay_and_clock_reordering():
         np.zeros((2, 3), np.int32), detector_profile_id='detector:v1', **_LABELSPACE)
     with pytest.raises(ValueError, match='episode/sensor'):
         validate_hydra_frame_order(first, wrong_episode)
+
+
+def test_hydra_contracts_import_in_habitat_sensor_runtime():
+    import os
+    from pathlib import Path
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    habitat = root / '.runtime' / 'sensor' / 'bin' / 'python'
+    if not habitat.is_file():
+        pytest.skip('local Habitat sensor interpreter is unavailable')
+    script = (
+        'from neusymnav.sensors.client import HabitatPoseSource; '
+        'from neusymnav.contracts.hydra_graph import HydraReadToken; '
+        'assert HydraReadToken("episode", "run", 1, "0" * 64).graph_revision == 1'
+    )
+    result = subprocess.run([str(habitat), '-c', script], capture_output=True, text=True,
+                            env=dict(os.environ, PYTHONPATH=str(root / 'src')), timeout=15)
+    assert result.returncode == 0, result.stderr

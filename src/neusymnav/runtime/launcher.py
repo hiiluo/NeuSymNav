@@ -641,9 +641,13 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
                 worker_timeout_s=hydra_worker.get('timeout_s',30.),
                 startup_timeout_s=hydra_worker.get('startup_timeout_s',10.),
                 fps_limit_hz=hydra_worker.get('fps_limit_hz'),
-                artifact_quota_bytes=hydra_worker.get('artifact_quota_bytes',2*1024**3))
+                artifact_quota_bytes=hydra_worker.get('artifact_quota_bytes',2*1024**3),
+                detail_queries=scene_config.get('detail_queries', False),
+                detail_asset_root=artifact_dir/'detail-assets',
+                object_event_journal=scene_config.get('object_event_journal', False))
             return HydraGraphRuntime(session,calibration=calibration,taxonomy=taxonomy,
                 detector_profile_id=scene_config['detector_profile_id'],
+                reasoninggraph_enabled=scene_config.get('reasoninggraph_evidence',False),
                 display_robot=None if mapper is None else mapper.robot)
     pipeline=Pipeline(root,episode_id=e['id'],primary_sensor_id=e['primary_sensor_id'],clock_domain=domain,
         floor_id=e['floor_id'],owner_factory=None if hydra_runtime_factory else owner,detector_factory=detector,
