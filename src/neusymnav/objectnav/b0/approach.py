@@ -82,9 +82,11 @@ def wrap(angle: float) -> float:
     return (angle + math.pi) % (2 * math.pi) - math.pi
 
 
-def facing_rate(robot_xy, yaw_rad, target_xy, *, max_rate=math.radians(29.5), pulse_s=0.5, tol=math.radians(10.0)):
+def facing_rate(robot_xy, yaw_rad, target_xy, *, max_rate=math.radians(29.5), pulse_s=0.5,
+                tol=math.radians(10.0)):
     """In-place yaw rate toward a target (0.0 when within tolerance); never overshoots one pulse."""
-    err = wrap(math.atan2(target_xy[1] - robot_xy[1], target_xy[0] - robot_xy[0]) - yaw_rad)
+    heading = math.atan2(target_xy[1] - robot_xy[1], target_xy[0] - robot_xy[0])
+    err = wrap(heading - yaw_rad)
     if abs(err) <= tol:
         return 0.0, err
     return max(-max_rate, min(max_rate, err / pulse_s)), err

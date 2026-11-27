@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "paper-b0-v2",
+  "description": "Paper ObjectNav B0 foundation. Plant uses appearance-specific YOLOE prompts. Approach goals are chosen in the reachable component.",
+  "detection_rule": "configs/objectnav/b0-detection-v1.json",
+  "mapping": "configs/objectnav/paper-goal-categories-v2.json",
+  "detector_profile": "configs/demo-00806.hydra-tour-slm.experimental.local.json",
+  "stop_distance_m": 0.4,
+  "far_stop_distance_m": 0.9,
+  "aim_margin_m": 0.1,
+  "spin_turns": 12,
+  "approach_max_steps": 100,
+  "approach_no_path_steps": 10,
+  "approach_reached_far_steps": 3,
+  "face_max_steps": 6,
+  "memory_height_m": 1.5,
+  "fallback_best_unconfirmed": true,
+  "nav": {},
+  "plant_taxonomy": "configs/objectnav/paper-plant-taxonomy-v1.json",
+  "reachable_approach": true
+}

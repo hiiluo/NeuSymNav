@@ -51,9 +51,21 @@ def recipe_from_profile(profile: Path) -> dict:
                 startup_timeout_s=float(worker.get('startup_timeout_s', 60.0)))
 
 
-def client_factory(profile: Path) -> Callable[[], object]:
-    launch = recipe_from_profile(profile)
+def with_taxonomy(launch: dict, path: Path) -> dict:
+    """Pin an alternate text vocabulary for the same local Torch detector."""
+    recipe = dict(launch['recipe'])
+    if recipe['backend'] != 'torch':
+        raise ValueError('plant taxonomy override requires a Torch detector profile')
+    path = Path(path).resolve()
+    recipe.update(taxonomy_path=str(path), taxonomy_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    return {**launch, 'recipe': validate_recipe(recipe)}
 
+
+def client_factory(profile: Path) -> Callable[[], object]:
+    return client_from_launch(recipe_from_profile(profile))
+
+
+def client_from_launch(launch: dict) -> Callable[[], object]:
     def make():
         from ...perception.detector_client import DetectorClient
         client = DetectorClient(python=launch['python'], worker_script=launch['worker_script'],

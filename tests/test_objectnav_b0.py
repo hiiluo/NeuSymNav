@@ -608,3 +608,20 @@ def test_bootstrap_probe_explains_a_blocked_fresh_frame(tmp_path):
     assert not hit['bootstrap']['ready'] and hit['not_free'] > 0
     assert hit['kinds'].get('occupied_body', 0) > 0
     assert all(c['d_m'] <= .25 for c in hit['cells_detail'])
+
+
+def test_offline_evidence_resolves_historical_aliases():
+    from tools.objectnav.b0.failure_evidence import episode_evidence
+    from neusymnav.objectnav.detector_eval.masks import rle_encode
+
+    semantic = np.full((10, 10), 7, dtype=np.uint32)
+    depth = np.ones_like(semantic, dtype=float)
+    frames = [dict(T_world_camera=np.eye(4).tolist(), detections=[
+        dict(goal='chair', rle=rle_encode(semantic == 7), cid=3)])]
+    record = dict(diagnostics=dict(policy=dict(
+        aliases={'3': 2, '2': 1}, stop={'cid': 1},
+        candidates=[dict(cid=1, confirmed=True)],
+        events=[dict(state='APPROACH', target=2)])))
+    result = episode_evidence(frames, {7}, 'chair', record, lambda _: (semantic, depth), {})
+    assert result['stop_object']['is_goal']
+    assert result['confirmed_goal'] and result['committed_goal']

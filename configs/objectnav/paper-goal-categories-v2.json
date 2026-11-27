@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "name": "paper-goal-categories-v2",
+  "description": "Paper ObjectNav mapping with plant-specific appearance prompts. A generic vase remains a separate label.",
+  "detector_vocabulary": "neusymnav:taxonomy:v1",
+  "hm3d": {
+    "chair": [
+      "chair",
+      "armchair"
+    ],
+    "bed": [
+      "bed"
+    ],
+    "plant": [
+      "plant",
+      "potted plant",
+      "houseplant",
+      "flowers in a vase"
+    ],
+    "toilet": [
+      "toilet"
+    ],
+    "tv_monitor": [
+      "television"
+    ],
+    "sofa": [
+      "sofa"
+    ]
+  },
+  "near_miss": {
+    "tv_monitor": [
+      "computer monitor"
+    ],
+    "sofa": [
+      "armchair"
+    ],
+    "chair": [
+      "stool",
+      "bench"
+    ]
+  },
+  "mp3d_draft": {
+    "chair": [
+      "chair",
+      "armchair"
+    ],
+    "table": [
+      "table",
+      "dining table",
+      "coffee table",
+      "desk"
+    ],
+    "picture": [
+      "painting"
+    ],
+    "cabinet": [
+      "cabinet",
+      "wardrobe"
+    ],
+    "cushion": [
+      "pillow"
+    ],
+    "sofa": [
+      "sofa"
+    ],
+    "bed": [
+      "bed"
+    ],
+    "chest_of_drawers": [
+      "dresser",
+      "nightstand"
+    ],
+    "plant": [
+      "plant"
+    ],
+    "sink": [
+      "sink"
+    ],
+    "toilet": [
+      "toilet"
+    ],
+    "stool": [
+      "stool"
+    ],
+    "towel": [
+      "towel"
+    ],
+    "tv_monitor": [
+      "television",
+      "computer monitor"
+    ],
+    "shower": [],
+    "bathtub": [
+      "bathtub"
+    ],
+    "counter": [
+      "counter",
+      "kitchen island"
+    ],
+    "fireplace": [
+      "fireplace"
+    ],
+    "gym_equipment": [],
+    "seating": [
+      "bench"
+    ],
+    "clothes": []
+  },
+  "detector_vocabulary_by_goal": {
+    "plant": "neusymnav:paper-plant:v1"
+  }
+}

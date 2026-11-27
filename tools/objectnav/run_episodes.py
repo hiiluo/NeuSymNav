@@ -17,8 +17,8 @@ replaces the runner's max_sim_s, and per-episode detection evidence goes to
 <out-dir>/evidence/ for the offline failure analysis).
 """
 import argparse
+import fcntl
 import hashlib
-import json
 import subprocess
 import sys
 from dataclasses import replace
@@ -27,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'src'))
 
+from neusymnav.objectnav.b0.trace import lock_run  # noqa: E402
+from neusymnav.objectnav.run_lock import build_lock  # noqa: E402
 from neusymnav.objectnav.episodes import DEFAULT_HABITAT_DATA, load_episode_set, read_manifest, select  # noqa: E402
 from neusymnav.objectnav.runner import ExplorePolicy, LockstepRunner, RunnerConfig  # noqa: E402
 
@@ -37,22 +39,29 @@ def main(argv=None):
     ap.add_argument('--split', required=True)
     ap.add_argument('--run-id', required=True)
     ap.add_argument('--out-dir', required=True, type=Path)
-    ap.add_argument('--config', type=Path, default=ROOT / 'configs/objectnav/lockstep-b0.json')
+    ap.add_argument('--config', type=Path)
     ap.add_argument('--policy', choices=('explore', 'b0'), default='explore')
-    ap.add_argument('--b0-config', type=Path, default=ROOT / 'configs/objectnav/b0-policy-v1.json')
+    ap.add_argument('--b0-config', type=Path)
     ap.add_argument('--stop-after-cycles', type=int, default=400)
     ap.add_argument('--scenes', nargs='*')
     ap.add_argument('--limit', type=int)
     ap.add_argument('--manifest', type=Path, help='frozen episode list (uids)')
     ap.add_argument('--habitat-data', type=Path, default=DEFAULT_HABITAT_DATA)
     ap.add_argument('--habitat-python', type=Path, default=Path.home() / 'miniconda3/envs/habitat/bin/python')
+    ap.add_argument('--trace', action='store_true', help='write bounded per-episode decision traces')
     a = ap.parse_args(argv)
+    a.habitat_python = a.habitat_python.absolute()
+    if a.b0_config is None:
+        a.b0_config = ROOT / 'configs/objectnav/b0-policy-v1.json'
+    if a.config is None:
+        a.config = ROOT / 'configs/objectnav/lockstep-b0.json'
     episodes = load_episode_set(a.episode_set, a.split, a.habitat_data, scenes=a.scenes)
     episodes = read_manifest(a.manifest, episodes) if a.manifest else select(episodes, limit=a.limit)
     config = RunnerConfig.load(a.config)
     a.out_dir.mkdir(parents=True, exist_ok=True)
     policy_factory = lambda: ExplorePolicy(stop_after_cycles=a.stop_after_cycles)
     b0_sha = None
+    b0 = None
     if a.policy == 'b0':
         from neusymnav.objectnav.b0.policy import B0Config, B0Policy
         from neusymnav.objectnav.b0.detection import client_factory
@@ -61,12 +70,15 @@ def main(argv=None):
         b0_sha = hashlib.sha256(a.b0_config.read_bytes()).hexdigest()
         config = replace(config, max_sim_s=b0.max_sim_s)
         categories = GoalCategories.load(b0.resolve('mapping'))
-        make_client = client_factory(b0.resolve('detector_profile'))
+        profile = b0.resolve('detector_profile')
+        make_client = client_factory(profile)
         policy_factory = lambda: B0Policy(b0, categories=categories, detector_factory=make_client,
                                           robot_height_m=config.robot['height_m'],
                                           robot_radius_m=config.robot['radius_m'],
                                           robot_margin_m=config.robot['margin_m'],
                                           evidence_dir=a.out_dir / 'evidence')
+    if not episodes or len({episode.uid for episode in episodes}) != len(episodes):
+        raise SystemExit('manifest must contain at least one episode and unique episode UIDs')
     try:
         commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
         dirty = bool(subprocess.run(['git', 'status', '--porcelain'], cwd=ROOT, capture_output=True, text=True).stdout.strip())
@@ -75,22 +87,21 @@ def main(argv=None):
     run_info = dict(schema_version=1, run_id=a.run_id, episode_set=a.episode_set, split=a.split,
                     episodes=[e.uid for e in episodes], policy=a.policy, stop_after_cycles=a.stop_after_cycles,
                     config=str(a.config), config_sha256=hashlib.sha256(a.config.read_bytes()).hexdigest(),
-                    b0_config=str(a.b0_config) if a.policy == 'b0' else None, b0_config_sha256=b0_sha,
+                    b0_config=str(a.b0_config) if b0 is not None else None, b0_config_sha256=b0_sha,
                     max_sim_s=config.max_sim_s,
-                    git_commit=commit, git_dirty=dirty, habitat_python=str(a.habitat_python))
-    info_path = a.out_dir / 'run.json'
-    if info_path.exists():
-        previous = json.loads(info_path.read_text())
-        same = {k: previous.get(k) for k in ('run_id', 'config_sha256', 'policy', 'stop_after_cycles',
-                                             'b0_config_sha256')}
-        if same != {k: run_info[k] for k in same}:
-            raise SystemExit('out-dir holds a different run (%s); use a new --out-dir' % info_path)
-    else:
-        info_path.write_text(json.dumps(run_info, indent=2) + '\n')
-    runner = LockstepRunner(config, habitat_python=a.habitat_python, out_dir=a.out_dir, run_id=a.run_id,
-                            policy_factory=policy_factory,
-                            log=lambda msg: print(msg, flush=True))
-    out = runner.run(episodes)
+                    git_commit=commit, git_dirty=dirty, habitat_python=str(a.habitat_python),
+                    trace_enabled=a.trace)
+    inputs = build_lock(ROOT, a, config, episodes, b0)
+    with (a.out_dir / '.run.lock').open('a') as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SystemExit('another process holds the run output directory') from exc
+        lock_run(a.out_dir, run_info, inputs)
+        runner = LockstepRunner(config, habitat_python=a.habitat_python, out_dir=a.out_dir, run_id=a.run_id,
+                                policy_factory=policy_factory, trace_enabled=a.trace,
+                                log=lambda msg: print(msg, flush=True))
+        out = runner.run(episodes)
     print('trajectories:', out)
 
 

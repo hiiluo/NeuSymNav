@@ -23,6 +23,7 @@ import re
 import subprocess
 import tempfile
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from itertools import groupby
 from pathlib import Path
@@ -31,6 +32,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 import numpy as np
 
 from ..contracts import NavigationDecision
+from .b0.trace import DecisionTrace, TraceWriter, completed_uids
 from .episodes import Episode
 
 SIM_ENTRY = Path(__file__).with_name('sim_worker_entry.py')
@@ -112,9 +114,15 @@ def measure_floor(observation, *, patch: int = 10, max_spread_m: float = 0.03,
 
 # ---------------------------------------------------------------- policies
 
+@dataclass(frozen=True)
+class EpisodePolicyInput:
+    episode_uid: str
+    object_category: str
+
+
 @dataclass
 class StepContext:
-    episode: Episode            # policy may read object_category only
+    episode: EpisodePolicyInput
     nav: object                 # NavSnapshot
     navigation_obs: object      # depth-only Observation
     robot_xy: tuple
@@ -203,12 +211,14 @@ def group_for_workers(episodes: Sequence[Episode]) -> List[List[Episode]]:
 
 class LockstepRunner:
     def __init__(self, config: RunnerConfig, *, habitat_python: Path, out_dir: Path, run_id: str,
-                 policy_factory: Callable[[], object], sensor_factory=None, start_snapper=None, log=print):
+                 policy_factory: Callable[[], object], sensor_factory=None, start_snapper=None, log=print,
+                 trace_enabled: bool = False):
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', run_id):
             raise ValueError('run_id must be 1-64 chars of [A-Za-z0-9_.-]')
         self.config, self.habitat_python, self.run_id = config, Path(habitat_python), run_id
         self.out_dir = Path(out_dir)
         self.policy_factory, self.log = policy_factory, log
+        self.trace_enabled = trace_enabled
         self._sensor_factory = sensor_factory or self._habitat_sensor
         self._start_snapper = start_snapper or self._habitat_snap
         self._episode_counter = 0
@@ -253,7 +263,9 @@ class LockstepRunner:
         missing = [e for e in episodes if e.uid not in cache]
         if missing:
             cache.update(self._start_snapper(missing))
-            path.write_text(json.dumps(cache, indent=1, sort_keys=True) + '\n')
+            from ..recording.replay import _write_atomic
+
+            _write_atomic(path, (json.dumps(cache, indent=1, sort_keys=True) + '\n').encode())
         return cache
 
     def _invalid_start_record(self, episode: Episode, snap: dict) -> dict:
@@ -266,9 +278,10 @@ class LockstepRunner:
     def run(self, episodes: Sequence[Episode]) -> Path:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         out = self.out_dir / 'trajectories.jsonl'
-        done = set()
-        if out.exists():   # resume: never re-run a finished episode
-            done = {json.loads(line)['uid'] for line in out.read_text().splitlines() if line.strip()}
+        expected = {e.uid for e in episodes}
+        if len(expected) != len(episodes):
+            raise ValueError('duplicate episode in run manifest')
+        done = completed_uids(out, expected, self.run_id)
         todo = [e for e in episodes if e.uid not in done]
         self.log('episodes: %d total, %d already done, %d to run' % (len(episodes), len(done), len(todo)))
         snaps = self._snapped(todo) if todo else {}
@@ -309,6 +322,13 @@ class LockstepRunner:
         return out
 
     def run_episode(self, sensor, episode: Episode) -> dict:
+        tag = re.sub(r'[^A-Za-z0-9_.-]', '_', episode.uid)
+        suffix = hashlib.sha256(episode.uid.encode()).hexdigest()[:12]
+        writer = TraceWriter(self.out_dir / 'trace' / f'{tag}-{suffix}.jsonl') if self.trace_enabled else nullcontext()
+        with writer as trace:
+            return self._run_episode(sensor, episode, trace)
+
+    def _run_episode(self, sensor, episode: Episode, trace: TraceWriter | None) -> dict:
         from ..mapping.occupancy import NavMapper, RobotGeometry
         from ..navigation.controller import Navigator
         from ..navigation.safety import MotionGuard
@@ -319,7 +339,10 @@ class LockstepRunner:
         floor_record = dict(floor, episode=episode.uid)
         floor_hash = hashlib.sha256(json.dumps(floor_record, sort_keys=True).encode()).hexdigest()
         robot = RobotGeometry(**cfg.robot)
-        tiles = self.out_dir / 'tiles' / re.sub(r'[^A-Za-z0-9_.-]', '_', episode.uid)
+        tiles_root = self.out_dir / 'tiles'
+        tiles_root.mkdir(parents=True, exist_ok=True)
+        episode_tag = re.sub(r'[^A-Za-z0-9_.-]', '_', episode.uid)
+        tiles = Path(tempfile.mkdtemp(prefix=episode_tag + '.', dir=tiles_root))
         mapper = NavMapper(robot=robot, floor_z_m=floor['floor_z_m'],
                            floor_datum_source='measured-downward-depth-v1:objectnav:' + episode.uid,
                            calibration_hash=floor_hash, tile_archive_dir=tiles, **cfg.mapper)
@@ -331,7 +354,8 @@ class LockstepRunner:
                             start_unknown_tolerance=cfg.start_unknown_tolerance, escape=cfg.escape,
                             column_fallback_cells=cfg.column_fallback_cells)
         policy = self.policy_factory()
-        policy.reset(episode)
+        policy_episode = EpisodePolicyInput(episode.uid, episode.object_category)
+        policy.reset(policy_episode)
         wall: Dict[str, float] = {}
         from collections import deque
         tail = deque(maxlen=60)             # last cycles: decision / guard / worker reasons (stuck diagnosis)
@@ -383,8 +407,17 @@ class LockstepRunner:
                 pose = sensor.robot_pose(obs)
                 xy, yaw, now = tuple(pose['robot_xy']), float(pose['yaw_rad']), obs.capture_monotonic_ns
                 guard.bind_nav(nav, robot_xy=xy, yaw_rad=yaw)
-                action = timed('policy', policy.act, StepContext(episode, nav, obs, xy, yaw, now, cycle, navigator))
+                state_before = getattr(policy, 'state', None)
+                decision_started = time.perf_counter_ns() if trace else 0
+                action = timed('policy', policy.act, StepContext(policy_episode, nav, obs, xy, yaw, now, cycle, navigator))
+                if trace:
+                    trace_fields = dict(uid=episode.uid, cycle=cycle, now_ns=now, clock_domain=domain,
+                                        source=str(obs.key), map_revision=nav.revision, state_before=state_before,
+                                        state_after=getattr(policy, 'state', None),
+                                        policy_ns=time.perf_counter_ns() - decision_started)
                 if action.stop:
+                    if trace:
+                        trace.write_trace(DecisionTrace(**trace_fields, reason=action.note), terminal=True)
                     called_stop, end_reason = True, 'policy_stop:' + action.note
                     break
                 decision = action.decision
@@ -429,6 +462,15 @@ class LockstepRunner:
                 # The failure watch sees a body that does not move as a blocked goal too.
                 navigator.observe_navigation_result(nav, xy, now, 'actuation_no_progress' if no_progress else reason,
                                                     no_progress or not moved)
+                if trace:
+                    trace.write_trace(DecisionTrace(
+                        **trace_fields, reason=decision.reason, goal_id=decision.goal_id,
+                        guard_reason=command.reason,
+                        worker_reason=result.get('reason') if isinstance(result, dict) else None,
+                        requested=(decision.desired_linear_mps, decision.desired_yaw_radps),
+                        guarded=(command.linear_mps, command.yaw_radps),
+                        pose_delta_m=math.dist(xy, after['robot_xy']),
+                        yaw_delta_rad=math.remainder(float(after['yaw_rad']) - yaw, math.tau)))
                 positions.append(habitat_xyz(after['robot_xy'], floor_y))
             else:
                 cycle = cfg.max_cycles

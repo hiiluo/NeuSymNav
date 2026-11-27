@@ -91,10 +91,23 @@ def episode_evidence(frames, goal_ids, target, record, render_fn, names):
     seen = detected = False
     aligned = checked = 0
     stop_masks, confirmed_masks = [], defaultdict(list)
-    stop = ((record['diagnostics'].get('policy') or {}).get('stop') or {})
-    stop_cid = stop.get('cid')
-    cand_rows = (record['diagnostics'].get('policy') or {}).get('candidates', [])
-    confirmed = {c['cid'] for c in cand_rows if c.get('confirmed')}
+    policy = record['diagnostics'].get('policy') or {}
+    aliases = {int(old): current for old, current in policy.get('aliases', {}).items()}
+
+    def resolve(cid):
+        visited = set()
+        while cid in aliases and cid not in visited:
+            visited.add(cid)
+            cid = aliases[cid]
+        return None if cid in visited else cid
+
+    stop_cid = resolve((policy.get('stop') or {}).get('cid'))
+    confirmed = {resolve(c['cid']) for c in policy.get('candidates', []) if c.get('confirmed')}
+    confirmed.discard(None)
+    committed = {resolve(event.get('target')) for event in policy.get('events', [])
+                 if event.get('state') == 'APPROACH'}
+    committed.discard(None)
+    committed_masks = defaultdict(list)
     for row in frames:
         dets = row['detections']
         if seen and not any(d['goal'] == target for d in dets):
@@ -119,10 +132,15 @@ def episode_evidence(frames, goal_ids, target, record, render_fn, names):
             mask = rle_decode(d['rle'])
             if not detected and any(iou(mask, sem == gid) >= LOOSE_IOU for gid in goal_ids):
                 detected = True
-            if d['cid'] is not None and d['cid'] == stop_cid:
-                stop_masks.append(dominant_instance(sem, mask))
-            if d['cid'] in confirmed:
-                confirmed_masks[d['cid']].append(dominant_instance(sem, mask))
+            cid = resolve(d['cid'])
+            if cid is not None and (cid == stop_cid or cid in confirmed or cid in committed):
+                match = dominant_instance(sem, mask)
+                if cid == stop_cid:
+                    stop_masks.append(match)
+                if cid in confirmed:
+                    confirmed_masks[cid].append(match)
+                if cid in committed:
+                    committed_masks[cid].append(match)
 
     def dominant(pairs):
         votes = Counter(i for i, share in pairs if i and share >= 0.3)
@@ -139,6 +157,7 @@ def episode_evidence(frames, goal_ids, target, record, render_fn, names):
                                                   name=names.get(dominant(p)))
                                    for cid, p in confirmed_masks.items()}
     out['confirmed_goal'] = any(v['is_goal'] for v in out['confirmed_candidates'].values())
+    out['committed_goal'] = any(dominant(masks) in goal_ids for masks in committed_masks.values())
     return out
 
 

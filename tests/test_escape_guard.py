@@ -16,7 +16,7 @@ def down(i=0):
 DOMAIN = 'host_monotonic:test'
 
 
-def setup(tmp_path, *, escape=True, obstacle_x=(0.25, 0.30)):
+def _make_guard_fixture(tmp_path, *, escape=True, obstacle_x=(0.25, 0.30)):
     robot = RobotGeometry('cylinder-v1', .2, 1., .1, .05)          # body 0.2 m, inflated 0.3 m
     m = NavMapper(robot=robot, floor_z_m=3., floor_datum_source='scene-calibration:v1', calibration_hash='a' * 64,
                   resolution_m=.05, tile_size_cells=16, sampling_stride=1, snapshot_radius_m=3., tile_archive_dir=tmp_path)
@@ -39,7 +39,7 @@ def decide(n, reason, linear=0., yaw=0.):
 
 
 def test_normal_commands_stay_blocked_inside_the_margin(tmp_path):
-    guard, n = setup(tmp_path)
+    guard, n = _make_guard_fixture(tmp_path)
     guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=np.pi)
     cmd = guard.filter(NavigationDecision('g', ((0., 0.), (-.3, 0.)), .15, 0., n.revision, 'tracking'), down(2), 1_000_000_000)
     assert cmd.linear_mps == 0 and cmd.reason == 'footprint_not_observed'
@@ -48,7 +48,7 @@ def test_normal_commands_stay_blocked_inside_the_margin(tmp_path):
 
 
 def test_escape_step_away_is_issued_short_and_toward_is_refused(tmp_path):
-    guard, n = setup(tmp_path)
+    guard, n = _make_guard_fixture(tmp_path)
     assert free_distance(n, (-.05, 0.), 1.) > free_distance(n, (0., 0.), 1.)
     guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=np.pi)            # facing away from the obstacle
     cmd = guard.filter(decide(n, 'escape_step', linear=.1), down(2), 1_000_000_000)
@@ -61,10 +61,10 @@ def test_escape_step_away_is_issued_short_and_toward_is_refused(tmp_path):
 
 
 def test_escape_rotation_needs_the_body_disc_clear(tmp_path):
-    guard, n = setup(tmp_path)
+    guard, n = _make_guard_fixture(tmp_path)
     guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=0.)
     assert guard.filter(decide(n, 'escape_rotate', yaw=.5), down(2), 1_000_000_000).yaw_radps == .5
-    guard, n = setup(tmp_path / 'b', obstacle_x=(.10, .15))         # obstacle inside the body radius
+    guard, n = _make_guard_fixture(tmp_path / 'b', obstacle_x=(.10, .15))         # obstacle inside the body radius
     guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=0.)
     cmd = guard.filter(decide(n, 'escape_rotate', yaw=.5), down(2), 1_000_000_000)
     assert cmd.yaw_radps == 0 and cmd.reason == 'escape_body_not_clear'
@@ -76,14 +76,14 @@ def test_escape_rotation_needs_the_body_disc_clear(tmp_path):
     lambda n: decide(n, 'escape_rotate', linear=.1, yaw=.2),       # rotation must be in place
 ])
 def test_malformed_escape_commands_are_refused(tmp_path, dec):
-    guard, n = setup(tmp_path)
+    guard, n = _make_guard_fixture(tmp_path)
     guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=np.pi)
     cmd = guard.filter(dec(n), down(2), 1_000_000_000)
     assert cmd.linear_mps == cmd.yaw_radps == 0
 
 
 def test_escape_is_off_unless_enabled(tmp_path):
-    guard, n = setup(tmp_path, escape=False)
+    guard, n = _make_guard_fixture(tmp_path, escape=False)
     guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=np.pi)
     cmd = guard.filter(decide(n, 'escape_step', linear=.1), down(2), 1_000_000_000)
     assert cmd.linear_mps == 0 and cmd.reason == 'escape_disabled'
@@ -157,7 +157,7 @@ def test_column_fallback_never_covers_unseen_floor_or_a_return_in_the_body(tmp_p
 
 def test_guard_escape_uses_the_column_fallback_only_when_enabled(tmp_path):
     for cells, expected in ((0, 'escape_bootstrap_blocked'), (6, 'escape_rotate')):
-        guard, n = setup(tmp_path / str(cells), obstacle_x=(2.0, 2.05))
+        guard, n = _make_guard_fixture(tmp_path / str(cells), obstacle_x=(2.0, 2.05))
         guard.column_fallback_cells = cells
         guard.bind_nav(n, robot_xy=(0., 0.), yaw_rad=0.)
         cmd = guard.filter(decide(n, 'escape_rotate', yaw=.5), _occluded(2), 1_000_000_000)

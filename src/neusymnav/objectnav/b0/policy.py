@@ -18,7 +18,7 @@ from __future__ import annotations
 import gzip
 import json
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -171,11 +171,12 @@ class B0Policy:
             rows = []
             for det in batch.detections:
                 goal = self.categories.goal_category(det.raw_label)
+                o = projected.get(det.detection_id)
+                cid = None
                 if goal is None:
                     continue
-                o = projected.get(det.detection_id)
-                cid = self.memory.add(obs.key.frame_index, det.raw_label, float(det.score),
-                                      o.points_world) if o is not None else None
+                if o is not None:
+                    cid = self.memory.add(obs.key.frame_index, det.raw_label, float(det.score), o.points_world)
                 rows.append(dict(label=det.raw_label, goal=goal, score=round(float(det.score), 4),
                                  bbox=bbox_xyxy(det.mask), rle=rle_encode(det.mask), cid=cid,
                                  points=0 if o is None else int(len(o.points_world))))
@@ -187,8 +188,9 @@ class B0Policy:
                                     np.round(np.nan_to_num(np.asarray(obs.depth_m, dtype=np.float64)
                                                            [10::20, 10::20]) * 100).astype(int).tolist(),
                                     cap_reached=bool(batch.cap_reached)))
-            if self.state == 'VERIFY' and self._verify_after_ns is not None and obs.capture_monotonic_ns >= self._verify_after_ns:
-                self._verify_after_ns = None          # the arrival view is in
+            if (self.state == 'VERIFY' and self._verify_after_ns is not None
+                    and obs.capture_monotonic_ns >= self._verify_after_ns):
+                self._verify_after_ns = None
 
     # ------------------------------------------------------------ control
     def _to(self, state: str, ctx, note: str = '') -> None:
@@ -202,7 +204,9 @@ class B0Policy:
             ctx.navigator.release_goal()
 
     def _target(self):
-        return None if self._target_cid is None else self.memory.candidates.get(self._target_cid)
+        if self._target_cid is None:
+            return None
+        return self.memory.candidates.get(self._target_cid)
 
     def _reject(self, ctx, reason: str) -> None:
         cand = self._target()
@@ -328,7 +332,8 @@ class B0Policy:
 
     def _act_spin(self, ctx) -> PolicyAction:
         if self._spin_prev_yaw is not None:
-            self._spin_turned += abs(wrap(ctx.yaw_rad - self._spin_prev_yaw))
+            delta = wrap(ctx.yaw_rad - self._spin_prev_yaw)
+            self._spin_turned += abs(delta)
         self._spin_prev_yaw = ctx.yaw_rad
         if self._spin_turned >= 2 * math.pi - math.radians(10) or self.state_cycles > self.cfg.spin_max_cycles:
             self._to('EXPLORE', ctx, 'spin_done' if self._spin_turned >= 6 else 'spin_cycles')
@@ -476,4 +481,5 @@ class B0Policy:
                     detections=dict(frames=len(self.frames), wall_s_mean=round(float(np.mean(walls)), 4) if walls else None,
                                     wall_s_max=round(float(np.max(walls)), 4) if walls else None),
                     candidates=self.memory.summary(self.target) if self.memory is not None else [],
+                    detector_runtime=getattr(self._client, 'runtime_metadata', None),
                     evidence_file=None if evidence_file is None else str(evidence_file))

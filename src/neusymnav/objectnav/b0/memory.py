@@ -23,6 +23,7 @@ least as frequent as every other goal category counted at the same threshold.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -102,7 +103,6 @@ class CandidateMemory:
         self.floor_z_m, self.robot_height_m = float(floor_z_m), float(robot_height_m)
         self.candidates: Dict[int, Candidate] = {}
         self._next = 1
-
     @classmethod
     def from_files(cls, categories, rule_path: Path, **kw) -> 'CandidateMemory':
         data = json.loads(Path(rule_path).read_text())
