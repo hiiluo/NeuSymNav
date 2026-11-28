@@ -1,0 +1,121 @@
+--- a/src/frontend/mesh_segmenter.cpp
++++ b/src/frontend/mesh_segmenter.cpp
+@@ -36,6 +36,9 @@
+ 
+ #include "hydra/common/object_event_journal.h"
+ 
++#include <cstdlib>
++#include <cstring>
++
+ #include <config_utilities/config.h>
+ #include <config_utilities/types/conversions.h>
+ #include <config_utilities/types/enum.h>
+@@ -94,6 +97,80 @@
+       cluster.centroid);
+ }
+ 
++// Experimental admission policy for isolated replay. Exact support is compared
++// only after remapping the previous object into the current mesh index space.
++bool hasSharedMeshSupport(const Cluster& observation, const ObjectNodeAttributes& attrs) {
++  constexpr size_t min_vertices = 12;
++  constexpr double min_coverage = 0.85;
++  const std::unordered_set<size_t> previous(attrs.mesh_connections.begin(),
++                                            attrs.mesh_connections.end());
++  const std::unordered_set<size_t> current(observation.indices.begin(),
++                                           observation.indices.end());
++  if (previous.size() < min_vertices || current.size() < min_vertices) {
++    return false;
++  }
++
++  size_t shared = 0;
++  for (const auto index : current) {
++    shared += previous.count(index);
++  }
++  return shared >= min_vertices && shared >= min_coverage * previous.size() &&
++         shared >= min_coverage * current.size();
++}
++
++std::map<const Cluster*, NodeId> getCrossCategoryAdmissions(
++    const LabelClusters& clusters,
++    const std::map<uint32_t, std::set<NodeId>>& active_nodes,
++    const DynamicSceneGraph& graph) {
++  constexpr size_t max_active_objects = 64;
++  constexpr size_t max_clusters = 128;
++  size_t object_count = 0;
++  size_t cluster_count = 0;
++  for (const auto& [label, nodes] : active_nodes) {
++    object_count += nodes.size();
++  }
++  for (const auto& [label, group] : clusters) {
++    cluster_count += group.size();
++  }
++  if (object_count > max_active_objects || cluster_count > max_clusters) {
++    return {};
++  }
++
++  std::map<const Cluster*, NodeId> tentative;
++  std::map<NodeId, size_t> claims;
++  for (const auto& [label, group] : clusters) {
++    for (const auto& cluster : group) {
++      bool has_baseline_match = false;
++      std::vector<NodeId> cross_category;
++      for (const auto& [old_label, nodes] : active_nodes) {
++        for (const auto id : nodes) {
++          const auto& node = graph.getNode(id);
++          const auto& attrs = node.attributes<ObjectNodeAttributes>();
++          if (label == old_label && nodesMatch(cluster, node)) {
++            has_baseline_match = true;
++            ++claims[id];
++          } else if (label != old_label && hasSharedMeshSupport(cluster, attrs)) {
++            cross_category.push_back(id);
++            ++claims[id];
++          }
++        }
++      }
++      if (!has_baseline_match && cross_category.size() == 1) {
++        tentative.emplace(&cluster, cross_category.front());
++      }
++    }
++  }
++
++  for (auto it = tentative.begin(); it != tentative.end();) {
++    if (claims.at(it->second) != 1) {
++      it = tentative.erase(it);
++    } else {
++      ++it;
++    }
++  }
++  return tentative;
++}
++
+ // TODO(nathan) move node ID to not be here
+ MeshSegmenter::MeshSegmenter(const Config& config, const std::set<uint32_t>& labels)
+     : config(config::checkValid(config)),
+@@ -213,6 +290,12 @@
+     return;
+   }
+ 
++  std::map<const Cluster*, NodeId> cross_category;
++  const char* option = std::getenv("NEUSYMNAV_EXPERIMENT_EXACT_MESH_ADMISSION");
++  if (object_events_ && option && std::strcmp(option, "1") == 0) {
++    cross_category = getCrossCategoryAdmissions(clusters, active_nodes_, graph);
++  }
++
+   for (auto&& [label, clusters_for_label] : clusters) {
+     for (const auto& cluster : clusters_for_label) {
+       bool matches_prev_node = false;
+@@ -227,7 +310,13 @@
+       }
+ 
+       if (!matches_prev_node) {
+-        addNodeToGraph(graph, cluster, label, timestamp_ns);
++        const auto alternative = cross_category.find(&cluster);
++        if (alternative != cross_category.end() && graph.hasNode(alternative->second)) {
++          const auto& previous = graph.getNode(alternative->second);
++          updateNodeInGraph(graph, cluster, previous, timestamp_ns);
++        } else {
++          addNodeToGraph(graph, cluster, label, timestamp_ns);
++        }
+       }
+ 
+       mergeActiveNodes(graph, label);

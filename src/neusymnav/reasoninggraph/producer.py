@@ -1,6 +1,8 @@
 """Optional producer for per-instance evidence on accepted Hydra revisions."""
+from collections import Counter
 from dataclasses import asdict, replace
 import hashlib
+from itertools import islice
 import json
 from pathlib import Path
 import re
@@ -14,6 +16,7 @@ from ..contracts.hydra_evidence import HydraEvidenceIndex, HydraObjectKey, Obser
 from ..contracts.observations import validate_detection_batch
 from ..contracts.reasoninggraph import DetectionGeometry
 from ..perception.projector import Projector
+from .association_receipts import InstanceConfirmation, confirm_evidence
 from .evidence import link_frame
 
 
@@ -49,9 +52,15 @@ def _crop(observation, detection, projected, token, directory):
 class EvidenceProducer:
     """A single bounded writer. Reading evidence never runs projection or file IO."""
 
-    def __init__(self, root, run_id, *, accepted, native_is_current, projector=None, quota=None):
+    def __init__(self, root, run_id, *, accepted, native_is_current, projector=None, quota=None,
+                 confirmation_source=None, lineage_reader=None, receipt_commit=None):
         if not isinstance(run_id, str) or not re.fullmatch(r'[a-zA-Z0-9_.-]{1,64}', run_id) or run_id in {'.', '..'}:
             raise ValueError('invalid ReasoningGraph run directory')
+        if ((confirmation_source is not None or lineage_reader is not None)
+                and not (callable(confirmation_source) and callable(lineage_reader))):
+            raise ValueError('instance confirmations require a native lineage reader')
+        if receipt_commit is not None and not callable(receipt_commit):
+            raise TypeError('receipt_commit must be callable')
         self.root = Path(root) / 'reasoninggraph' / run_id
         self.root.mkdir(parents=True, exist_ok=False)
         if quota is not None:
@@ -65,6 +74,9 @@ class EvidenceProducer:
         self._accepted = accepted
         self._native_is_current = native_is_current
         self._projector = projector or Projector()
+        self._confirmation_source = confirmation_source
+        self._lineage_reader = lineage_reader
+        self._receipt_commit = receipt_commit
         self._lock = Lock()
         self._pending = {}
         self._index = None
@@ -149,10 +161,11 @@ class EvidenceProducer:
             self._bump('budget_skipped')
             return False
         detections = {d.detection_id: d for d in batch.detections if d.category is not None}
+        proofs, lineage = self._confirmation_inputs(token)
         index = HydraEvidenceIndex(run_id=token.native.run_id, episode_id=token.native.episode_id, max_entries=256)
         with TemporaryDirectory(prefix='.staging-', dir=self.root) as staging:
             stage = Path(staging)
-            total, links, refs = 0, [], []
+            total, links, refs, receipts = 0, [], [], []
             prepared = []
             for item in self._projector.project(obs, batch):
                 detection = detections.get(item.detection_id)
@@ -161,7 +174,11 @@ class EvidenceProducer:
             resolved = link_frame([row[0] for row in prepared], endpoints, token)
             for (geometry, filename, arrays), link in zip(prepared, resolved):
                 links.append(asdict(link))
-                if link.status != 'geometric_candidate':
+                detection = detections[geometry.evidence.detection_id]
+                proof = proofs.get(detection.detection_id)
+                receipt = confirm_evidence(token, geometry, proof, lineage,
+                    raw_label=detection.raw_label, score=detection.score) if proof is not None else None
+                if receipt is None and link.status != 'geometric_candidate':
                     continue
                 if total + sum(value.nbytes for value in arrays) + 4096 + MANIFEST_LIMIT > available:
                     self._bump('budget_skipped')
@@ -170,30 +187,57 @@ class EvidenceProducer:
                 path = stage / filename
                 np.savez(path, rgb=rgb, mask=mask, depth_m=depth, valid=valid)
                 total += path.stat().st_size
-                ref = replace(geometry.evidence, link_status=link.status, link_method=link.policy_version)
+                if receipt is None:
+                    ref = replace(geometry.evidence, link_status=link.status, link_method=link.policy_version)
+                    raw_endpoint = link.endpoint.native_id
+                else:
+                    ref = receipt.evidence
+                    raw_endpoint = receipt.canonical_object.native_id
+                    receipts.append(receipt)
                 refs.append(asdict(ref))
                 index.add(HydraObjectKey(token.native.episode_id, token.native.run_id,
-                                         link.endpoint.native_id, token.native.graph_revision), ref)
-            payload = json.dumps({**asdict(token), 'links': links, 'refs': refs},
+                                         raw_endpoint, token.native.graph_revision), ref)
+            manifest = {**asdict(token), 'links': links, 'refs': refs}
+            if self._confirmation_source is not None:
+                manifest['confirmed_receipts'] = [asdict(receipt) for receipt in receipts]
+            payload = json.dumps(manifest,
                                  separators=(',', ':'), sort_keys=True, allow_nan=False).encode()
             if len(payload) > MANIFEST_LIMIT or total + len(payload) > available:
                 self._bump('budget_skipped')
                 return False
             (stage / 'manifest.json').write_bytes(payload)
             if (self._stop.is_set() or time.monotonic() - timestamp > FRAME_AGE_S
-                    or not self._native_is_current(token.native)):
+                    or not self._native_is_current(token.native)
+                    or (receipts and self._lineage_reader(token) != lineage)):
                 self._bump('stale')
                 return False
             stage.rename(self.root / directory)
             self._written += total + len(payload)
+        if self._receipt_commit is not None and not self._receipt_commit(token, tuple(receipts)):
+            self._bump('belief_rejected')
         with self._lock:
             self._index = (token.native, index)
             self._stats['published'] += 1
         return True
 
+    def _confirmation_inputs(self, token):
+        if self._confirmation_source is None:
+            return {}, None
+        lineage = self._lineage_reader(token)
+        if lineage is None or lineage.token != token.native:
+            return {}, None
+        candidates = tuple(islice(self._confirmation_source(token), 257))
+        if len(candidates) > 256 or any(not isinstance(proof, InstanceConfirmation) for proof in candidates):
+            raise ValueError('invalid confirmation source batch')
+        current = tuple(proof for proof in candidates if proof.token == token)
+        detections = Counter(proof.detection_id for proof in current)
+        endpoints = Counter(proof.current_endpoint for proof in current)
+        return {proof.detection_id: proof for proof in current if detections[proof.detection_id] == 1
+                and endpoints[proof.current_endpoint] == 1}, lineage
+
     def _bump(self, name):
         with self._lock:
-            self._stats[name] += 1
+            self._stats[name] = self._stats.get(name, 0) + 1
 
     def index(self, native):
         with self._lock:

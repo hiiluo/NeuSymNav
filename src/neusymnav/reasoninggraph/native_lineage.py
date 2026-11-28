@@ -4,7 +4,7 @@ from itertools import islice
 from types import MappingProxyType
 
 from ..contracts.hydra_graph import HydraReadToken
-from ..contracts.hydra_lineage import NativeObjectBatch, object_id
+from ..contracts.hydra_lineage import MAX_RECONCILE_AGE, NativeObjectBatch, object_id
 from .lifecycle import _graph_scope
 
 
@@ -46,6 +46,7 @@ class NativeObjectLineage:
         self._last_batch = None
         self._allocated = set()
         self._aliases = {}
+        self._retired = {}
         self._backend_endpoints = set()
         self.failure = None
 
@@ -92,6 +93,9 @@ class NativeObjectLineage:
         allocated = self._allocated.copy()
         aliases = self._aliases.copy()
         backend_endpoints = self._backend_endpoints.copy()
+        revision = token.graph_revision
+        retired = {raw: deleted for raw, deleted in self._retired.items()
+                   if revision - deleted <= MAX_RECONCILE_AGE}
         objects = {} if self._view is None else dict(self._view.objects)
         for event in batch.events:
             source, target = event.source, event.target
@@ -104,6 +108,14 @@ class NativeObjectLineage:
                 allocated.add(source)
                 objects[source] = CanonicalObjectId(token.episode_id, token.run_id, batch.epoch, source)
                 continue
+            if event.operation == 'reconcile':
+                if (source not in retired or retired[source] >= revision or source in objects
+                        or source in aliases or target not in objects
+                        or int(source[2:-1]) >= int(target[2:-1])):
+                    raise ValueError('reconcile requires an older retired endpoint and a live successor')
+                aliases[source] = target
+                del retired[source]
+                continue
             if source not in objects or (target is not None and target not in objects):
                 raise ValueError('native event touches a missing canonical endpoint')
             del objects[source]
@@ -111,10 +123,13 @@ class NativeObjectLineage:
                 aliases[source] = target
                 if event.owner == 'backend':
                     backend_endpoints.update((source, target))
+            else:
+                retired[source] = revision
 
         if set(objects) != observed:
             raise ValueError('native object snapshot is not accounted for by owner events')
         self._allocated, self._aliases, self._backend_endpoints = allocated, aliases, backend_endpoints
+        self._retired = retired
         self._last_batch = batch
         self._view = ObjectLineageView(token, batch.epoch, MappingProxyType(objects), MappingProxyType(aliases))
         return self._view

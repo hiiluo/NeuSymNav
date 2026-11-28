@@ -1,0 +1,113 @@
+--- a/src/frontend/mesh_segmenter.cpp
++++ b/src/frontend/mesh_segmenter.cpp
+@@ -38,6 +38,8 @@
+ 
+ #include <cstdlib>
+ #include <cstring>
++#include <mutex>
++#include <optional>
+ 
+ #include <config_utilities/config.h>
+ #include <config_utilities/types/conversions.h>
+@@ -59,6 +61,50 @@
+ using LabelClusters = MeshSegmenter::LabelClusters;
+ using timing::ScopedTimer;
+ 
++namespace {
++struct RgbdMergeRequest {
++  uint64_t timestamp_ns;
++  NodeId source;
++  NodeId target;
++};
++
++// The synchronous pipeline joins its frontend callbacks but runs them on
++// separate threads. The isolated replay owns the only pending command.
++std::mutex rgbd_merge_mutex;
++std::optional<RgbdMergeRequest> rgbd_merge_request;
++
++std::optional<RgbdMergeRequest> takeRgbdMerge(uint64_t timestamp_ns) {
++  const std::lock_guard<std::mutex> lock(rgbd_merge_mutex);
++  if (!rgbd_merge_request || rgbd_merge_request->timestamp_ns != timestamp_ns) {
++    return std::nullopt;
++  }
++  auto request = rgbd_merge_request;
++  rgbd_merge_request.reset();
++  return request;
++}
++}  // namespace
++
++// Run-scoped synchronous replay seam. The caller pins the previous publication
++// and clears this command on every exit from the next step.
++extern "C" bool neusymnav_stage_rgbd_merge(uint64_t timestamp_ns,
++                                           uint64_t newer_index,
++                                           uint64_t older_index) {
++  const char* option = std::getenv("NEUSYMNAV_EXPERIMENT_RGBD_OWNER_MERGE");
++  const std::lock_guard<std::mutex> lock(rgbd_merge_mutex);
++  if (!option || std::strcmp(option, "1") != 0 || !timestamp_ns ||
++      rgbd_merge_request || newer_index <= older_index || newer_index >= 8192) {
++    return false;
++  }
++  rgbd_merge_request = RgbdMergeRequest{timestamp_ns, NodeSymbol('O', newer_index),
++                                        NodeSymbol('O', older_index)};
++  return true;
++}
++
++extern "C" void neusymnav_clear_rgbd_merge() {
++  const std::lock_guard<std::mutex> lock(rgbd_merge_mutex);
++  rgbd_merge_request.reset();
++}
++
+ void declare_config(MeshSegmenter::Config& config) {
+   using namespace config;
+   name("MeshSegmenterConfig");
+@@ -322,6 +368,50 @@
+       mergeActiveNodes(graph, label);
+     }
+   }
++
++  const char* merge_option = std::getenv("NEUSYMNAV_EXPERIMENT_RGBD_OWNER_MERGE");
++  if (!object_events_ || !merge_option || std::strcmp(merge_option, "1") != 0) {
++    return;
++  }
++  const auto pending = takeRgbdMerge(timestamp_ns);
++  if (!pending) {
++    return;
++  }
++  const auto& request = *pending;
++  const auto* source_node = graph.findNode(request.source);
++  const auto* target_node = graph.findNode(request.target);
++  if (!source_node || !target_node) {
++    return;
++  }
++  const auto* source = source_node->tryAttributes<ObjectNodeAttributes>();
++  auto* target = target_node->tryAttributes<ObjectNodeAttributes>();
++  if (!source || !target || source->semantic_label == target->semantic_label ||
++      source->mesh_connections.empty() || target->mesh_connections.empty()) {
++    return;
++  }
++
++  auto connections = target->mesh_connections;
++  mergeList(connections, source->mesh_connections);
++  if (std::any_of(connections.begin(), connections.end(),
++                  [&](size_t index) { return index >= graph.mesh()->numVertices(); })) {
++    return;
++  }
++  const auto label = source->semantic_label;
++  const bool active = source->is_active || target->is_active;
++  const auto last_update = std::max(source->last_update_time_ns, target->last_update_time_ns);
++  if (!graph.mergeNodes(request.source, request.target)) {
++    return;
++  }
++  active_nodes_.at(label).erase(request.source);
++  if (active) {
++    active_nodes_.at(target->semantic_label).insert(request.target);
++  }
++  target->is_active = active;
++  target->last_update_time_ns = last_update;
++  target->mesh_connections = std::move(connections);
++  updateObjectGeometry(*graph.mesh(), *target);
++  object_events_->record({ObjectEventOwner::Frontend, ObjectEventOperation::Merge,
++                          request.source, request.target});
+ }
+ 
+ void MeshSegmenter::mergeActiveNodes(DynamicSceneGraph& graph, uint32_t label) {

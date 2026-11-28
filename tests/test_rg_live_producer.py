@@ -163,3 +163,49 @@ def test_startup_failure_releases_only_evidence_reservation(tmp_path, monkeypatc
     assert runtime.diagnostics()['accepted'] == 1
     assert runtime.diagnostics()['reasoninggraph']['startup_error'] == 'injected producer startup failure'
     assert not quota.reservations
+
+
+def test_producer_publishes_confirmed_receipt_once_at_exact_revision(tmp_path):
+    from types import MappingProxyType
+
+    from neusymnav.reasoninggraph.association_receipts import InstanceAnchor, InstanceConfirmation
+    from neusymnav.reasoninggraph.native_lineage import CanonicalObjectId, ObjectLineageView
+
+    _, node, token = inputs()
+    obs = replace(observation(), key=replace(observation().key, frame_index=7), capture_monotonic_ns=100)
+    token = replace(token, native=replace(token.native, episode_id=obs.key.episode_id),
+                    source=obs.key, source_geometry_hash=obs.geometry_hash,
+                    capture_monotonic_ns=obs.capture_monotonic_ns, clock_domain=obs.clock_domain,
+                    calibration_id=obs.calibration_id, pose_version=obs.pose_version)
+    node = replace(node, ref=replace(node.ref, token=token.native))
+    identity = CanonicalObjectId(token.native.episode_id, token.native.run_id, 1, node.ref.native_id)
+    lineage = ObjectLineageView(token.native, 1, MappingProxyType({node.ref.native_id: identity}),
+                               MappingProxyType({'O(0)': node.ref.native_id}))
+    anchors = tuple(InstanceAnchor(
+        replace(token, native=replace(token.native, graph_revision=r, input_prefix_sha256=f'{r:064x}'),
+                source=replace(token.source, frame_index=r), capture_monotonic_ns=80 + r),
+        str(r), 'O(0)', 1, (r + 1, r + 2), 'd' * 64,
+    ) for r in (1, 2))
+    detection = Detection('from-detector', 'chair', 'chair', .9, np.ones(obs.depth_m.shape, dtype=np.bool_))
+    batch = DetectionBatch.from_observation(obs, (detection,), vocabulary_id=token.vocabulary_id)
+    proof = InstanceConfirmation(token, detection.detection_id, node.ref.native_id, anchors)
+    now = [token.native]
+    producer = EvidenceProducer(tmp_path, 'run', accepted=lambda: (token, (node,)),
+        native_is_current=lambda native: native == now[0],
+        projector=SimpleNamespace(project=lambda *_: (
+            SimpleNamespace(detection_id=detection.detection_id, points_world=np.array([[0, 0, 0], [1, 1, 1]])),)),
+        confirmation_source=lambda _: (proof,),
+        lineage_reader=lambda query: lineage if query == token and now[0] == token.native else None)
+    try:
+        assert producer.stage(obs, batch) and producer.update()
+        assert producer.stage(obs, batch) and not producer.update()
+        (manifest,) = producer.root.glob('*/manifest.json')
+        (receipt,) = json.loads(manifest.read_text())['confirmed_receipts']
+        assert receipt['evidence']['link_status'] == 'native_confirmed'
+        assert receipt['canonical_object']['native_id'] == node.ref.native_id
+        key = HydraObjectKey(token.native.episode_id, token.native.run_id, node.ref.native_id, 7)
+        assert producer.index(token.native).resolve(key).refs[0].link_status == 'native_confirmed'
+        now[0] = None
+        assert producer.index(token.native) is None
+    finally:
+        producer.close(1)
