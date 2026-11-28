@@ -648,6 +648,7 @@ def _pipeline_impl(config,assets,root,domain,now_ns,*,recorded=None,publisher=No
             return HydraGraphRuntime(session,calibration=calibration,taxonomy=taxonomy,
                 detector_profile_id=scene_config['detector_profile_id'],
                 reasoninggraph_enabled=scene_config.get('reasoninggraph_evidence',False),
+                semantic_memory=scene_config.get('semantic_memory'),
                 display_robot=None if mapper is None else mapper.robot)
     pipeline=Pipeline(root,episode_id=e['id'],primary_sensor_id=e['primary_sensor_id'],clock_domain=domain,
         floor_id=e['floor_id'],owner_factory=None if hydra_runtime_factory else owner,detector_factory=detector,

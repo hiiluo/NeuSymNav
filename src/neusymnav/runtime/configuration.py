@@ -111,7 +111,7 @@ def load_config(path):
                 raise ValueError('Hydra backend requires scene_graph.hydra and workers.hydra configuration')
             h=_mapping(scene_graph['hydra'],'scene_graph.hydra',
                 {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration',
-                 'detail_queries','reasoninggraph_evidence','object_event_journal'},
+                 'detail_queries','reasoninggraph_evidence','object_event_journal','semantic_memory'},
                 {'config_root','dataset_sha256','labelspace_sha256','detector_profile_id','calibration'})
             if type(h.get('detail_queries', False)) is not bool:
                 raise ValueError('scene_graph.hydra.detail_queries must be boolean')
@@ -119,6 +119,18 @@ def load_config(path):
                 raise ValueError('scene_graph.hydra.reasoninggraph_evidence must be boolean')
             if type(h.get('object_event_journal', False)) is not bool:
                 raise ValueError('scene_graph.hydra.object_event_journal must be boolean')
+            if 'semantic_memory' in h:
+                memory = _mapping(h['semantic_memory'], 'scene_graph.hydra.semantic_memory',
+                                  {'mode', 'max_receipts', 'max_payload_bytes'})
+                if memory.get('mode', 'off') not in ('off', 'shadow'):
+                    raise ValueError('semantic memory mode must be off or shadow')
+                for key, cap in (('max_receipts', 16384), ('max_payload_bytes', 16777216)):
+                    limit = memory.get(key, cap)
+                    if type(limit) is not int or not 1 <= limit <= cap:
+                        raise ValueError(f'invalid semantic memory {key}')
+                if memory.get('mode') == 'shadow' and not all(
+                        h.get(k, False) for k in ('detail_queries', 'reasoninggraph_evidence', 'object_event_journal')):
+                    raise ValueError('semantic memory shadow needs detail, evidence and object journal')
             for key in ('dataset_sha256','labelspace_sha256'):
                 if type(h[key]) is not str or not SHA.fullmatch(h[key]):raise ValueError('scene_graph.hydra.'+key+' must be a SHA-256')
             if not isinstance(h['config_root'],str) or not h['config_root'].strip():raise ValueError('scene_graph.hydra.config_root is required')

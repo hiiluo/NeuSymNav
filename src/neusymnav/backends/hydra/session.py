@@ -487,6 +487,14 @@ class HydraSession:
         with self._condition:
             return self._detail_token_locked() == token
 
+    def try_has_detail_token(self, token):
+        if not self._condition.acquire(blocking=False):
+            return False
+        try:
+            return self._detail_token_locked() == token
+        finally:
+            self._condition.release()
+
     def current_read_token(self):
         with self._condition:
             return self._detail_token_locked()

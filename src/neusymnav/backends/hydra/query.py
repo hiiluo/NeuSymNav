@@ -21,6 +21,7 @@ from ...contracts.hydra_evidence import EvidencePage, HydraEvidenceIndex, HydraO
 from ...geometry.frames import CANONICAL_Z_UP
 from .graph_adapter import HydraDisplayNode, HydraGraphProjection
 from .labels import HydraLabelRasterizer
+from .semantic_queries import SemanticQueries
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +115,7 @@ def _page(items, token, scope, limit, cursor):
     return HydraPage(tuple(items[offset:end]), f'{stamp}:{end}' if end < len(items) else None)
 
 
-class HydraSceneGraphQuery:
+class HydraSceneGraphQuery(SemanticQueries):
     """Query layer-2 nodes without changing graph state or owning new IDs.
 
     ``semantic_labels`` maps each native node ID to the explicit integer
@@ -127,7 +128,8 @@ class HydraSceneGraphQuery:
                  semantic_labels: Mapping[str, int | None], calibration_id: str,
                  evidence_index: HydraEvidenceIndex | None = None,
                  detail_reader=None, relationship_reader=None, room_publications=None,
-                 room_request_keys=None, room_label_reader=None, live_token=None, feature_reader=None):
+                 room_request_keys=None, room_label_reader=None, live_token=None, feature_reader=None,
+                 belief_reader=None):
         if not isinstance(projection, HydraGraphProjection):
             raise TypeError('projection must be HydraGraphProjection')
         if not isinstance(taxonomy, Taxonomy):
@@ -208,6 +210,7 @@ class HydraSceneGraphQuery:
         self._room_request_keys = dict(room_request_keys or {})
         self._room_label_reader = room_label_reader
         self._live_token = live_token
+        self._belief_reader = belief_reader
         self._topology = None
 
     @property

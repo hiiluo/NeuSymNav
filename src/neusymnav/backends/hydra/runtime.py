@@ -22,13 +22,16 @@ class HydraGraphRuntime:
     """Turn an already-produced detector batch into a nonblocking session offer."""
 
     def __init__(self, session, *, calibration: HydraCalibration, taxonomy: Taxonomy,
-                 detector_profile_id: str, display_robot=None, reasoninggraph_enabled=False):
+                 detector_profile_id: str, display_robot=None, reasoninggraph_enabled=False,
+                 reasoninggraph_confirmation_source=None, semantic_memory=None):
         if not isinstance(calibration, HydraCalibration):
             raise TypeError('calibration must be HydraCalibration')
         if not isinstance(taxonomy, Taxonomy):
             raise TypeError('taxonomy must be Taxonomy')
         if not isinstance(detector_profile_id, str) or not detector_profile_id:
             raise ValueError('detector_profile_id is required')
+        if reasoninggraph_confirmation_source is not None and not callable(reasoninggraph_confirmation_source):
+            raise TypeError('reasoninggraph_confirmation_source must be callable')
         self.session = session
         self.calibration = calibration
         self.taxonomy = taxonomy
@@ -37,8 +40,17 @@ class HydraGraphRuntime:
         self._category_by_label = {label: name for name, label in self.rasterizer.class_to_label.items()}
         self._display_robot = display_robot
         self._reasoninggraph_enabled = reasoninggraph_enabled
+        self._confirmation_source = reasoninggraph_confirmation_source
         self._reasoninggraph = None
         self._reasoninggraph_start_error = None
+        self._semantic_memory = None
+        if semantic_memory is not None and semantic_memory.get('mode', 'off') == 'shadow':
+            if not (reasoninggraph_enabled and getattr(session, 'detail_queries', False)
+                    and getattr(session, 'object_event_journal', False)):
+                raise ValueError('semantic memory needs evidence, exact detail tokens and the native journal')
+            from ...reasoninggraph.semantic_belief_store import SemanticBeliefStore
+            limits = {k: semantic_memory[k] for k in ('max_receipts', 'max_payload_bytes') if k in semantic_memory}
+            self._semantic_memory = SemanticBeliefStore(taxonomy, native_is_current=session.has_detail_token, **limits)
 
     def start_reasoninggraph(self, root, quota):
         if not self._reasoninggraph_enabled:
@@ -46,13 +58,23 @@ class HydraGraphRuntime:
         from ...reasoninggraph.producer import EvidenceProducer
         try:
             self._reasoninggraph = EvidenceProducer(root, self.session.run_id,
-                accepted=self._reasoninggraph_source, native_is_current=self.session.has_detail_token, quota=quota)
+                accepted=self._reasoninggraph_source, native_is_current=self.session.has_detail_token, quota=quota,
+                confirmation_source=self._confirmation_source,
+                lineage_reader=self.reasoninggraph_lineage if self._confirmation_source is not None else None,
+                receipt_commit=self._commit_belief_revision if self._semantic_memory is not None else None)
             self._reasoninggraph.start()
         except (OSError, ValueError, RuntimeError) as exc:
             self._reasoninggraph_start_error = str(exc)
             if self._reasoninggraph is not None:
                 self._reasoninggraph.close(0.)
                 self._reasoninggraph = None
+
+    def _commit_belief_revision(self, token, receipts):
+        return self._semantic_memory.apply_revision(token, self.reasoninggraph_lineage(token), receipts,
+            revision_complete=True, journal=self.session.object_event_batch(token.native))
+
+    def semantic_belief_view(self, token):
+        return None if self._semantic_memory is None else self._semantic_memory.read(token)
 
     def _reasoninggraph_source(self):
         state = self.state_token()
@@ -130,7 +152,7 @@ class HydraGraphRuntime:
             replay_required=snapshot.replay_required,failure_reason=snapshot.failure_reason,
             last_source=last_source,native_metadata=metadata)
 
-    def scene_graph_query(self):
+    def scene_graph_query(self, *, pinned_beliefs=False):
         """Return a read-only semantic view of one accepted native generation.
 
         This reads canonical session data directly. It does not read the GUI,
@@ -145,13 +167,25 @@ class HydraGraphRuntime:
         evidence = None
         if self._reasoninggraph is not None:
             evidence = self._reasoninggraph.index(self._native_read_token(snapshot))
-        return HydraSceneGraphQuery(projection,self.taxonomy,
+        reader = self.semantic_belief_view if self._semantic_memory is not None else None
+        live_token = getattr(self.session, 'has_detail_token', None)
+        if pinned_beliefs:
+            view = self.semantic_belief_view(self._native_read_token(snapshot))
+            if view is None:
+                return None
+            reader = lambda token: view if token == view.token.native else None
+            live_token = self.session.try_has_detail_token
+        query = HydraSceneGraphQuery(projection,self.taxonomy,
             labelspace_id=self.rasterizer.LABELSPACE_ID,
             labelspace_hash=self.rasterizer.labelspace_hash,
             semantic_labels=semantic_labels, calibration_id=self.calibration.calibration_id,
             evidence_index=evidence,
-            detail_reader=self.session if getattr(self.session, 'detail_queries', False) else None,
-            live_token=getattr(self.session, 'has_detail_token', None))
+            belief_reader=reader,
+            detail_reader=self.session if not pinned_beliefs and getattr(self.session, 'detail_queries', False) else None,
+            live_token=live_token)
+        if pinned_beliefs:
+            query._index()
+        return query
 
     def _native_read_token(self, state):
         from ...contracts.hydra_graph import HydraReadToken
