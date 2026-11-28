@@ -92,7 +92,9 @@ class PaperB0Policy:
 
     def __init__(self, config: PaperB0Config, *, categories, detector_factory: Callable[[], object],
                  evidence_dir: Optional[Path] = None, projector=None, plant_detector_factory=None,
-                 shadow_root: Optional[Path] = None):
+                 shadow_root: Optional[Path] = None, semantic_candidates=None, semantic_tap=None):
+        from .semantic_candidates import PaperSemanticTap, SemanticCandidateConfig
+
         self.cfg = config
         self.categories = categories
         self.rule = json.loads(config.resolve('detection_rule').read_text())
@@ -104,6 +106,13 @@ class PaperB0Policy:
         self.evidence_dir = Path(evidence_dir) if evidence_dir else None
         self.shadow_root = Path(shadow_root).absolute() if shadow_root is not None else None
         self._shadow_capture = None
+        self._semantic_config = semantic_candidates or SemanticCandidateConfig()
+        if not isinstance(self._semantic_config, SemanticCandidateConfig) or (
+                semantic_tap is not None and not isinstance(semantic_tap, PaperSemanticTap)):
+            raise TypeError('invalid Paper semantic candidate configuration')
+        if self._semantic_config.mode == 'probabilistic' and semantic_tap is None:
+            raise ValueError('probabilistic mode requires a causal native publication tap')
+        self._semantic_tap = semantic_tap
         if projector is None:
             from ...perception.projector import Projector
             projector = Projector()
@@ -112,6 +121,14 @@ class PaperB0Policy:
 
     # ------------------------------------------------------------ lifecycle
     def reset(self, episode) -> None:
+        if self._semantic_config.mode != 'off':
+            from collections import deque
+            self._semantic_observations = deque(maxlen=4096)
+            self._semantic_decisions = []
+            self._semantic_publications = []
+            self._semantic_revision = None
+            if self._semantic_tap is not None:
+                self._semantic_tap.publish(None)
         if episode.object_category not in self.rule['categories']:
             raise ValueError('no confirmation rule for category %r' % episode.object_category)
         self.episode, self.target = episode, episode.object_category
@@ -147,6 +164,12 @@ class PaperB0Policy:
             self._client.close()
         self._client = None
         self._shadow_capture = None
+        self._close_semantic_tap()
+
+    def _close_semantic_tap(self):
+        if self._semantic_tap is not None and hasattr(self._semantic_tap, 'close'):
+            return self._semantic_tap.close()
+        return None
 
     # ------------------------------------------------------------ perception (synchronous)
     def _perceive(self, obs) -> None:
@@ -158,6 +181,9 @@ class PaperB0Policy:
         t0 = time.perf_counter()
         batch = self._client.infer(observation)
         self.detector_wall_s.append(time.perf_counter() - t0)
+        native_offer = getattr(self._semantic_tap, 'offer', None)
+        if native_offer is not None and self._semantic_config.mode != 'off':
+            native_offer(observation, batch, ((*obs.robot_xy, obs.z_m), obs.yaw_rad, obs.tilt_rad))
         projected = {o.detection_id: o for o in self.projector.project(observation, batch)}
         if self._shadow_capture is not None:
             self._shadow_capture.offer(observation, batch, robot_xyz=(*obs.robot_xy, obs.z_m),
@@ -183,6 +209,16 @@ class PaperB0Policy:
             o = projected.get(det.detection_id)
             cid = self.memory.add(obs.observation.key.frame_index, det.raw_label, float(det.score),
                                   o.points_world) if o is not None else None
+            if cid is not None and self._semantic_tap is not None and self._semantic_config.mode != 'off':
+                from hashlib import sha256
+                from .semantic_candidates import CandidateObservation
+
+                source = obs.observation
+                x0, y0, x1, y1 = bbox_xyxy(det.mask)
+                mask_sha = sha256(det.mask[y0:y1, x0:x1].tobytes(order='C')).hexdigest()
+                self._semantic_observations.append(CandidateObservation(cid, source.key, det.detection_id,
+                    source.capture_monotonic_ns, source.geometry_hash, batch.vocabulary_id,
+                    source.calibration_id, source.pose_version, mask_sha, det.raw_label, float(det.score)))
             rows.append(dict(label=det.raw_label, goal=goal, score=round(float(det.score), 4),
                              bbox=bbox_xyxy(det.mask), rle=rle_encode(det.mask), cid=cid,
                              points=0 if o is None else int(len(o.points_world))))
@@ -233,6 +269,15 @@ class PaperB0Policy:
     def act(self, ctx):
         obs = ctx.obs
         self.step = obs.step
+        if self._semantic_config.mode != 'off':
+            self._semantic_frame = obs.observation.key.frame_index
+            query = self._semantic_tap.latest() if self._semantic_tap is not None else None
+            if query is not None and query.status == 'available' and query.read_token != self._semantic_revision:
+                source = query.projection.last_source
+                self._semantic_revision = query.read_token
+                self._semantic_publications.append(dict(step=self.step, source_frame=source['frame_index'],
+                    policy_frame=self._semantic_frame, revision=query.read_token.graph_revision,
+                    input_prefix_sha256=query.read_token.input_prefix_sha256))
         if self.nav is None:
             self.nav = PaperNav(ctx.protocol, NavConfig(**self.cfg.nav))
             self.memory = self._new_memory(obs)
@@ -295,10 +340,41 @@ class PaperB0Policy:
         pool = self.memory.confirmed_for(self.target)
         if pool:
             cand = min(pool, key=lambda c: math.dist(c.centroid_xy, self.nav.robot_xy))
+            if self._semantic_config.mode != 'off':
+                cand = self._semantic_choice(pool, cand)
+            if cand is None:
+                return self._explore_frontiers()
             self._target_cid, self._fallback = cand.cid, False
             self._to('APPROACH', 'confirmed')
             return None
         return self._explore_frontiers()
+
+    def _semantic_choice(self, pool, deterministic):
+        from .semantic_candidates import retrieve_candidates
+
+        query = self._semantic_tap.latest() if self._semantic_tap is not None else None
+        token = None if query is None else query.read_token
+        publication = None
+        if token is not None:
+            publication = dict(revision=token.graph_revision, input_prefix_sha256=token.input_prefix_sha256,
+                               source_frame=query.projection.last_source.get('frame_index'),
+                               policy_frame=self._semantic_frame)
+        eligible = {c.cid: c for c in pool}
+        labels = self.categories.labels[self.target]
+        category = self.target if self.target in labels else labels[0]
+        aliases = {old: candidate.cid for candidate in getattr(getattr(self, 'memory', None), 'candidates', {}).values()
+                   for old in candidate.merged_from}
+        ranked = retrieve_candidates(query, self._semantic_observations, category, self._semantic_config, token,
+            eligible_cids=eligible, current_frame=self._semantic_frame, cid_aliases=aliases)
+        semantic = ranked[0] if ranked else None
+        self._semantic_decisions.append(dict(step=self.step, deterministic=deterministic.cid,
+                                             semantic=semantic, status='available' if ranked else 'unavailable',
+                                             publication=publication))
+        if self._semantic_config.mode == 'shadow':
+            return deterministic
+        if semantic is not None:
+            return eligible[semantic]
+        return deterministic if self._semantic_config.fallback == 'deterministic' else None
 
     def _choose_frontier(self, frontiers):
         return min(frontiers, key=lambda frontier: self.nav.path_length_m(frontier.cell))
@@ -452,11 +528,19 @@ class PaperB0Policy:
                                   gave_up={str(k): dict(n=v['n'], reason=v['reason']) for k, v in self._gave_up.items()})
         if self._shadow_capture is not None:
             rec['reasoninggraph_shadow'] = self._shadow_capture.close()
+        if self._semantic_config.mode != 'off':
+            rec['semantic_candidates'] = dict(mode=self._semantic_config.mode,
+                causal_tap_available=self._semantic_tap is not None, decisions=self._semantic_decisions,
+                publications=self._semantic_publications)
+            status = self._close_semantic_tap()
+            if status is not None:
+                rec['semantic_candidates']['native_tap'] = status
         return rec
 
 
 def make_policy_factory(cfg: PaperB0Config, *, evidence_dir=None,
-                        base_launch=None, plant_launch=None, shadow_root=None):
+                        base_launch=None, plant_launch=None, shadow_root=None,
+                        semantic_candidates=None, semantic_tap_factory=None):
     """Build the paper baseline with a detector confirmed by the local profile."""
     from ..b0.detection import client_from_launch, recipe_from_profile, with_taxonomy
     from ..detector_eval.categories import GoalCategories
@@ -475,5 +559,9 @@ def make_policy_factory(cfg: PaperB0Config, *, evidence_dir=None,
             args['plant_detector_factory'] = make_plant
         if shadow_root is not None:
             args['shadow_root'] = shadow_root
+        if semantic_candidates is not None:
+            args['semantic_candidates'] = semantic_candidates
+        if semantic_tap_factory is not None:
+            args['semantic_tap'] = semantic_tap_factory()
         return PaperB0Policy(cfg, **args)
     return factory

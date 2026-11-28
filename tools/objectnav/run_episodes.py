@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'src'))
 
 from neusymnav.objectnav.b0.trace import lock_run  # noqa: E402
-from neusymnav.objectnav.run_lock import build_lock  # noqa: E402
+from neusymnav.objectnav.run_lock import build_lock, file_pin, interpreter_pin  # noqa: E402
 from neusymnav.objectnav.episodes import DEFAULT_HABITAT_DATA, load_episode_set, read_manifest, select  # noqa: E402
 from neusymnav.objectnav.runner import ExplorePolicy, LockstepRunner, RunnerConfig  # noqa: E402
 
@@ -49,7 +49,14 @@ def main(argv=None):
     ap.add_argument('--habitat-data', type=Path, default=DEFAULT_HABITAT_DATA)
     ap.add_argument('--habitat-python', type=Path, default=Path.home() / 'miniconda3/envs/habitat/bin/python')
     ap.add_argument('--trace', action='store_true', help='write bounded per-episode decision traces')
+    ap.add_argument('--semantic-candidate-mode', choices=('off', 'shadow', 'probabilistic'), default='off')
+    ap.add_argument('--semantic-native-config', type=Path)
+    ap.add_argument('--semantic-native-python', type=Path, default=ROOT / '.runtime/hydra_ws/.venv/bin/python')
     a = ap.parse_args(argv)
+    if a.semantic_candidate_mode != 'off' and (a.policy != 'b0' or not a.trace or a.semantic_native_config is None):
+        ap.error('semantic candidates require B0, --trace and --semantic-native-config')
+    if a.semantic_candidate_mode == 'off' and a.semantic_native_config is not None:
+        ap.error('--semantic-native-config requires a semantic candidate mode')
     a.habitat_python = a.habitat_python.absolute()
     if a.b0_config is None:
         a.b0_config = ROOT / 'configs/objectnav/b0-policy-v1.json'
@@ -62,6 +69,7 @@ def main(argv=None):
     policy_factory = lambda: ExplorePolicy(stop_after_cycles=a.stop_after_cycles)
     b0_sha = None
     b0 = None
+    semantic_pins = None
     if a.policy == 'b0':
         from neusymnav.objectnav.b0.policy import B0Config, B0Policy
         from neusymnav.objectnav.b0.detection import client_factory
@@ -72,11 +80,33 @@ def main(argv=None):
         categories = GoalCategories.load(b0.resolve('mapping'))
         profile = b0.resolve('detector_profile')
         make_client = client_factory(profile)
+        semantic_options = {}
+        if a.semantic_candidate_mode != 'off':
+            from neusymnav.contracts.observations import Taxonomy
+            from neusymnav.objectnav.b0.detection import recipe_from_profile
+            from neusymnav.objectnav.paper.native_tap import PaperHydraOwner, PaperNativeTap, lockstep_primary_mount
+            from neusymnav.objectnav.paper.semantic_candidates import SemanticCandidateConfig
+
+            config_root = a.semantic_native_config.resolve()
+            native_python = a.semantic_native_python.absolute()
+            semantic_pins = dict(
+                mode=a.semantic_candidate_mode,
+                config=[file_pin(path) for path in sorted(config_root.rglob('*.yaml'))],
+                interpreter=interpreter_pin(native_python, module='hydra_python'))
+            recipe = recipe_from_profile(profile)['recipe']
+            taxonomy = Taxonomy.load(Path(recipe['taxonomy_path']))
+            command = (str(native_python), str(ROOT / 'src/neusymnav/backends/hydra/entry.py'))
+            mount = lockstep_primary_mount(config.sensor['primary'])
+            semantic_options = dict(
+                semantic_candidates=SemanticCandidateConfig(mode=a.semantic_candidate_mode),
+                semantic_tap_factory=lambda: PaperNativeTap(lambda: PaperHydraOwner(
+                    a.out_dir / 'native-shadow', config_root, command, {taxonomy.vocabulary_id: recipe},
+                    fixed_mount=mount)))
         policy_factory = lambda: B0Policy(b0, categories=categories, detector_factory=make_client,
                                           robot_height_m=config.robot['height_m'],
                                           robot_radius_m=config.robot['radius_m'],
                                           robot_margin_m=config.robot['margin_m'],
-                                          evidence_dir=a.out_dir / 'evidence')
+                                          evidence_dir=a.out_dir / 'evidence', **semantic_options)
     if not episodes or len({episode.uid for episode in episodes}) != len(episodes):
         raise SystemExit('manifest must contain at least one episode and unique episode UIDs')
     try:
@@ -92,6 +122,9 @@ def main(argv=None):
                     git_commit=commit, git_dirty=dirty, habitat_python=str(a.habitat_python),
                     trace_enabled=a.trace)
     inputs = build_lock(ROOT, a, config, episodes, b0)
+    if semantic_pins is not None:
+        inputs['semantic_candidates'] = semantic_pins
+        run_info['semantic_candidate_mode'] = a.semantic_candidate_mode
     with (a.out_dir / '.run.lock').open('a') as lock_file:
         try:
             fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)

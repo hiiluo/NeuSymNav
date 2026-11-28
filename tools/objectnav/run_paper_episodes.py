@@ -43,6 +43,12 @@ def main(argv=None):
                     help='record ordered simulator dispatch, source pins and pose for parity analysis')
     ap.add_argument('--reasoninggraph-mode', choices=('off', 'shadow'), default='off',
                     help='retain bounded fixed-rig detector inputs for offline ReasoningGraph replay')
+    ap.add_argument('--semantic-candidate-mode', choices=('off', 'shadow'), default='off',
+                    help='audit semantic candidate availability without applying rank changes')
+    ap.add_argument('--semantic-native-config', type=Path,
+                    help='Hydra config root for a causal Paper shadow subprocess')
+    ap.add_argument('--semantic-native-python', type=Path, default=ROOT / '.runtime/hydra_ws/.venv/bin/python',
+                    help='interpreter for the native Paper shadow subprocess')
     a = ap.parse_args(argv)
     if not a.preflight and (not a.out_dir or not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', a.run_id or '')):
         ap.error('run requires --out-dir and --run-id (1–64 letters, digits, dot, underscore or hyphen)')
@@ -52,6 +58,10 @@ def main(argv=None):
         ap.error('--policy-config and --detector-profile require --policy b0')
     if a.policy == 'explore' and a.reasoninggraph_mode == 'shadow':
         ap.error('ReasoningGraph shadow requires a Paper detector policy')
+    if a.policy != 'b0' and a.semantic_candidate_mode != 'off':
+        ap.error('semantic shadow requires the Paper B0 detector policy')
+    if a.semantic_native_config is not None and a.semantic_candidate_mode != 'shadow':
+        ap.error('causal native Paper publication requires --semantic-candidate-mode shadow')
     if a.reasoninggraph_mode == 'shadow':
         a.action_audit = True
     protocol = PaperProtocol.load(a.protocol)
@@ -69,6 +79,7 @@ def main(argv=None):
             ap.error(f'bundled navmesh is missing for {scene}')
     habitat = interpreter_pin(a.habitat_python, module='habitat_sim')
     detector = None
+    native_shadow = None
     if a.policy == 'explore':
         from neusymnav.objectnav.paper.policies import FrontierExplorePolicy
 
@@ -94,6 +105,29 @@ def main(argv=None):
         factory_options = dict(evidence_dir=evidence_dir, base_launch=base_launch, plant_launch=plant_launch)
         if a.reasoninggraph_mode == 'shadow' and not a.preflight:
             factory_options['shadow_root'] = a.out_dir / 'reasoninggraph-shadow'
+        if a.semantic_candidate_mode == 'shadow':
+            from neusymnav.objectnav.paper.semantic_candidates import SemanticCandidateConfig
+            factory_options['semantic_candidates'] = SemanticCandidateConfig(mode='shadow')
+        if a.semantic_native_config is not None:
+            from neusymnav.contracts.observations import Taxonomy
+            from neusymnav.objectnav.paper.native_tap import PaperHydraOwner, PaperNativeTap
+
+            config_root = a.semantic_native_config.resolve()
+            native_python = a.semantic_native_python.absolute()
+            native_shadow = dict(dataset=file_pin(config_root / 'datasets/neusymnav.yaml'),
+                                 labelspace=file_pin(config_root / 'label_spaces/neusymnav_label_space.yaml'),
+                                 interpreter=interpreter_pin(native_python, module='hydra_python'))
+            recipes = {}
+            for launch in (base_launch, plant_launch):
+                if launch is not None:
+                    recipe = launch['recipe']
+                    taxonomy = Taxonomy.load(Path(recipe['taxonomy_path']))
+                    if recipes.setdefault(taxonomy.vocabulary_id, recipe) != recipe:
+                        ap.error('native Paper shadow requires distinct vocabulary IDs for different recipes')
+            command = (str(native_python), str(ROOT / 'src/neusymnav/backends/hydra/entry.py'))
+            if not a.preflight:
+                factory_options['semantic_tap_factory'] = lambda: PaperNativeTap(
+                    lambda: PaperHydraOwner(a.out_dir / 'native-shadow', config_root, command, recipes))
         policy_factory = make_policy_factory(cfg, **factory_options)
     run = dict(schema_version=1, run_id=a.run_id, mode='paper', protocol=protocol.protocol_id,
                protocol_sha256=protocol.sha256, policy=a.policy,
@@ -108,6 +142,10 @@ def main(argv=None):
         run['action_audit'] = True
     if a.reasoninggraph_mode == 'shadow':
         run['reasoninggraph_mode'] = 'shadow'
+    if a.semantic_candidate_mode == 'shadow':
+        run['semantic_candidate_mode'] = 'shadow'
+    if native_shadow is not None:
+        run['semantic_native_shadow'] = native_shadow
     if a.preflight:
         print(json.dumps({**run, 'settings': protocol.worker_config(),
                           'success_distance_m': protocol.success_distance_m}, indent=2))
@@ -117,6 +155,8 @@ def main(argv=None):
                   dataset=dataset_pin(a.habitat_data, a.episode_set, a.split, episodes),
                   protocol=file_pin(a.protocol), detector=detector, uids=uids,
                   policy_config=file_pin(a.policy_config) if a.policy_config else None)
+    if native_shadow is not None:
+        inputs['semantic_native_shadow'] = native_shadow
     NATIVE_LOCK.parent.mkdir(parents=True, exist_ok=True)
     with NATIVE_LOCK.open('a') as lock:
         try:

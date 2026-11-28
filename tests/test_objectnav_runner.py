@@ -131,6 +131,41 @@ def test_explore_policy_stops_on_cycle_budget(tmp_path):
     assert rec['called_stop'] and rec['diagnostics']['end_reason'] == 'policy_stop:cycle_budget' and rec['steps'] == 3
 
 
+def test_fixed_wall_pacing_preserves_lockstep_clock_and_commands(tmp_path, monkeypatch):
+    from neusymnav.objectnav import runner as runner_module
+
+    waits = []
+    monkeypatch.setattr(runner_module.time, 'sleep', waits.append)
+    outputs = []
+    for name, floor in (('baseline', 0.), ('paced', .4)):
+        runner = LockstepRunner(config(cycle_wall_floor_s=floor), habitat_python=tmp_path / 'py',
+            out_dir=tmp_path / name, run_id=name, policy_factory=ForwardPolicy,
+            sensor_factory=FakeSensor, start_snapper=identity_snap, log=lambda *_: None)
+        outputs.append(json.loads(runner.run([episode()]).read_text()))
+    assert waits and all(0. < s <= .4 for s in waits)
+    for field in ('positions', 'steps', 'sim_time_s', 'called_stop'):
+        assert outputs[0][field] == outputs[1][field]
+
+
+def test_benchmark_trace_budget_covers_configured_cycles_and_terminal(tmp_path, monkeypatch):
+    from neusymnav.objectnav import runner as runner_module
+
+    limits = []
+    real = runner_module.TraceWriter
+
+    def writer(path, *, limit=1000):
+        limits.append(limit)
+        return real(path, limit=limit)
+
+    monkeypatch.setattr(runner_module, 'TraceWriter', writer)
+    runner = LockstepRunner(config(max_cycles=3000), habitat_python=tmp_path / 'py',
+                            out_dir=tmp_path / 'trace-run', run_id='trace-run',
+                            policy_factory=ForwardPolicy, sensor_factory=FakeSensor,
+                            start_snapper=identity_snap, trace_enabled=True, log=lambda *_: None)
+    runner.run([episode()])
+    assert limits == [3001]
+
+
 def test_workers_grouped_by_scene_and_start_height_and_bad_run_id():
     groups = group_for_workers([episode('0', .1), episode('1', .1), episode('2', 3.2)])
     assert [len(g) for g in groups] == [2, 1]

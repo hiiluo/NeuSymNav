@@ -95,6 +95,9 @@ class DecisionTrace:
     guarded: tuple[float, float] | None = None
     pose_delta_m: float | None = None
     yaw_delta_rad: float | None = None
+    executor_executed: bool | None = None
+    executor_actions: list | None = None
+    executor_proof_validated: bool | None = None
     schema_version: int = 1
 
 

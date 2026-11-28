@@ -18,7 +18,9 @@ from __future__ import annotations
 import gzip
 import json
 import math
+from collections import deque
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -28,6 +30,7 @@ from ...contracts import NavigationDecision
 from ..runner import PolicyAction
 from .approach import approach_goals, facing_rate, wrap
 from .memory import CandidateMemory, footprint_distance
+from ..paper.semantic_candidates import CandidateObservation, SemanticCandidateConfig, retrieve_candidates
 
 REPO = Path(__file__).resolve().parents[4]
 
@@ -95,7 +98,8 @@ class B0Policy:
 
     def __init__(self, config: B0Config, *, categories, detector_factory: Callable[[], object],
                  robot_height_m: float, evidence_dir: Optional[Path] = None, projector=None,
-                 robot_radius_m: float = 0.2, robot_margin_m: float = 0.05):
+                 robot_radius_m: float = 0.2, robot_margin_m: float = 0.05,
+                 semantic_candidates=None, semantic_tap_factory=None):
         self.cfg = config
         self.categories = categories
         self.rule = json.loads(config.resolve('detection_rule').read_text())
@@ -110,6 +114,11 @@ class B0Policy:
             projector = Projector()
         self.projector = projector
         self.episode = None
+        self._semantic_config = semantic_candidates or SemanticCandidateConfig()
+        if self._semantic_config.mode != 'off' and semantic_tap_factory is None:
+            raise ValueError('guarded semantic candidate mode requires a native tap')
+        self._semantic_tap_factory = semantic_tap_factory
+        self._semantic_tap = None
 
     # ------------------------------------------------------------ episode lifecycle
     def reset(self, episode) -> None:
@@ -134,19 +143,33 @@ class B0Policy:
         self.escapes = []
         self._approach_since_ns = None     # approach timeout clock (v3: kept across escapes)
         self._reached_far = 0
+        self._semantic_observations = deque(maxlen=1024)
+        self._semantic_frame = -1
+        self._semantic_decisions = []
 
     def begin_episode(self, *, floor_z_m: float, episode_tag: str) -> None:
         from .detection import LatencyGate
         self.memory = CandidateMemory(self.categories, self.rule['categories'], floor_z_m=floor_z_m,
                                       robot_height_m=self.robot_height_m)
         self._client = self.detector_factory()
-        self.gate = LatencyGate(self._client.infer, latency_ms=self.cfg.detector_latency_ms)
         self.episode_tag = episode_tag
+        if self._semantic_config.mode != 'off':
+            self._semantic_tap = self._semantic_tap_factory()
+        prepare = None
+        if self._semantic_tap is not None:
+            def prepare(observation, batch):
+                self._semantic_tap.offer(observation, batch, None)
+        self.gate = LatencyGate(self._client.infer, latency_ms=self.cfg.detector_latency_ms, on_submit=prepare)
 
     def close(self) -> None:
+        self._close_semantic_tap()
         if self._client is not None and hasattr(self._client, 'close'):
             self._client.close()
         self._client = None
+
+    def _close_semantic_tap(self):
+        tap, self._semantic_tap = self._semantic_tap, None
+        return None if tap is None else tap.close()
 
     # ------------------------------------------------------------ frames
     def wants_frame(self, now_ns: int, robot_xy, yaw_rad: float) -> bool:
@@ -167,6 +190,9 @@ class B0Policy:
         from ..detector_eval.masks import bbox_xyxy, rle_encode
         for item in self.gate.ready(now_ns):
             obs, batch = item.observation, item.batch
+            if self._semantic_tap is not None:
+                # A prepared graph cannot rank until the exact detector frame is released here.
+                self._semantic_frame = obs.key.frame_index
             projected = {o.detection_id: o for o in self.projector.project(obs, batch)}
             rows = []
             for det in batch.detections:
@@ -177,9 +203,20 @@ class B0Policy:
                     continue
                 if o is not None:
                     cid = self.memory.add(obs.key.frame_index, det.raw_label, float(det.score), o.points_world)
-                rows.append(dict(label=det.raw_label, goal=goal, score=round(float(det.score), 4),
-                                 bbox=bbox_xyxy(det.mask), rle=rle_encode(det.mask), cid=cid,
-                                 points=0 if o is None else int(len(o.points_world))))
+                bounds = bbox_xyxy(det.mask)
+                if cid is not None and self._semantic_tap is not None:
+                    x0, y0, x1, y1 = bounds
+                    mask_sha = sha256(det.mask[y0:y1, x0:x1].tobytes(order='C')).hexdigest()
+                    self._semantic_observations.append(CandidateObservation(
+                        cid, obs.key, det.detection_id, obs.capture_monotonic_ns, obs.geometry_hash,
+                        batch.vocabulary_id, obs.calibration_id, obs.pose_version, mask_sha,
+                        det.raw_label, float(det.score)))
+                row = dict(label=det.raw_label, goal=goal, score=round(float(det.score), 4),
+                                 bbox=bounds, rle=rle_encode(det.mask), cid=cid,
+                                 points=0 if o is None else int(len(o.points_world)))
+                if self._semantic_tap is not None:
+                    row.update(detection_id=det.detection_id, raw_score=float(det.score))
+                rows.append(row)
             self.frames.append(dict(frame_index=obs.key.frame_index, capture_ns=obs.capture_monotonic_ns,
                                     released_ns=now_ns, wall_s=round(item.wall_s, 4),
                                     T_world_camera=np.asarray(obs.T_world_camera).round(6).tolist(),
@@ -188,6 +225,10 @@ class B0Policy:
                                     np.round(np.nan_to_num(np.asarray(obs.depth_m, dtype=np.float64)
                                                            [10::20, 10::20]) * 100).astype(int).tolist(),
                                     cap_reached=bool(batch.cap_reached)))
+            if self._semantic_tap is not None:
+                self.frames[-1]['semantic_source'] = dict(
+                    episode_id=obs.key.episode_id, sensor_id=obs.key.sensor_id, geometry_hash=obs.geometry_hash,
+                    calibration_id=obs.calibration_id, pose_version=obs.pose_version, vocabulary_id=batch.vocabulary_id)
             if (self.state == 'VERIFY' and self._verify_after_ns is not None
                     and obs.capture_monotonic_ns >= self._verify_after_ns):
                 self._verify_after_ns = None
@@ -220,6 +261,46 @@ class B0Policy:
         if not pool:
             return False
         cand = min(pool, key=lambda c: math.dist(c.centroid_xy, ctx.robot_xy))
+        if self._semantic_config.mode != 'off':
+            query = self._semantic_tap.latest()
+            token = None if query is None else query.read_token
+            eligible = {candidate.cid: candidate for candidate in pool}
+            labels = self.categories.labels[self.target]
+            category = self.target if self.target in labels else labels[0]
+            aliases = {old: candidate.cid for candidate in getattr(self.memory, 'candidates', {}).values()
+                       for old in candidate.merged_from}
+            ranked = retrieve_candidates(query, self._semantic_observations, category, self._semantic_config,
+                token, eligible_cids=eligible, current_frame=self._semantic_frame, current_ns=ctx.now_ns,
+                cid_aliases=aliases)
+            deterministic = cand.cid
+            semantic = None
+            for cid in ranked:
+                candidate = eligible[cid]
+                points = candidate.points[:, :2]
+                aim = self.cfg.stop_distance_m - self.cfg.aim_margin_m
+                if (footprint_distance(points, ctx.robot_xy) <= self.cfg.stop_distance_m
+                        or ctx.navigator.can_reach_approach(ctx.nav, ctx.robot_xy, ctx.now_ns,
+                            lambda grid, trav: approach_goals(grid, trav, points, candidate.centroid_xy, aim_m=aim))):
+                    semantic = cid
+                    break
+            if semantic is not None and query.status != 'available':
+                semantic = None
+            if self._semantic_config.mode == 'probabilistic':
+                if semantic is not None:
+                    cand = eligible[semantic]
+                elif self._semantic_config.fallback == 'abstain':
+                    cand = None
+            if len(self._semantic_decisions) < 1024:
+                source = {} if query is None else query.projection.last_source
+                self._semantic_decisions.append(dict(cycle=ctx.cycle, deterministic=deterministic,
+                    ranked=ranked, reachable_rank=semantic, eligible=sorted(eligible), category=category,
+                    applied=None if cand is None else cand.cid,
+                    revision=None if token is None else token.graph_revision,
+                    input_prefix_sha256=None if token is None else token.input_prefix_sha256,
+                    source_frame=source.get('frame_index'), policy_frame=self._semantic_frame,
+                    source_ns=source.get('capture_monotonic_ns'), decision_ns=ctx.now_ns))
+            if cand is None:
+                return False
         self._target_cid, self._no_path, self._fallback = cand.cid, 0, False
         self._to('APPROACH', ctx, 'confirmed')
         return True
@@ -475,6 +556,10 @@ class B0Policy:
                 for row in self.frames:
                     stream.write(json.dumps(row) + '\n')
         walls = self.gate.wall_s if self.gate is not None else []
+        semantic = {}
+        if self._semantic_config.mode != 'off':
+            semantic['semantic_candidates'] = dict(mode=self._semantic_config.mode,
+                decisions=self._semantic_decisions, native_tap=self._close_semantic_tap())
         return dict(config=self.cfg.name, target=self.target, final_state=self.state, stop=self.stop_record,
                     escapes=self.escapes,
                     events=self.events, state_cycles=self.state_cycle_counts,
@@ -482,4 +567,4 @@ class B0Policy:
                                     wall_s_max=round(float(np.max(walls)), 4) if walls else None),
                     candidates=self.memory.summary(self.target) if self.memory is not None else [],
                     detector_runtime=getattr(self._client, 'runtime_metadata', None),
-                    evidence_file=None if evidence_file is None else str(evidence_file))
+                    evidence_file=None if evidence_file is None else str(evidence_file), **semantic)

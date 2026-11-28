@@ -92,6 +92,17 @@ def test_latency_gate_releases_after_simulated_latency_one_at_a_time():
         LatencyGate(lambda o: o, latency_ms=-1)
 
 
+def test_latency_gate_can_prepare_the_sidecar_without_releasing_a_detection():
+    staged = []
+    observation = SimpleNamespace(capture_monotonic_ns=1_000_000_000)
+    gate = LatencyGate(lambda _: 'batch', latency_ms=400,
+                       on_submit=lambda obs, batch: staged.append((obs, batch)))
+    assert gate.submit(observation)
+    assert staged == [(observation, 'batch')]
+    assert gate.ready(1_399_999_999) == []
+    assert gate.ready(1_400_000_000)[0].batch == 'batch'
+
+
 def test_recipe_from_profile_checks_pins(tmp_path):
     asset = tmp_path / 'a.bin'
     asset.write_bytes(b'x')

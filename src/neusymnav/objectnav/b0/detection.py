@@ -92,13 +92,14 @@ class Pending:
 class LatencyGate:
     """At most one frame in flight; results released at capture + latency (simulated)."""
 
-    def __init__(self, infer: Callable, *, latency_ms: float, clock=None):
+    def __init__(self, infer: Callable, *, latency_ms: float, clock=None, on_submit=None):
         if not 0 <= latency_ms <= 5000:
             raise ValueError('detector latency must be in [0, 5000] ms')
         self.infer = infer
         self.latency_ns = int(round(latency_ms * 1e6))
         self._pending: Optional[Pending] = None
         self._clock = clock
+        self._on_submit = on_submit
         self.submitted = 0
         self.wall_s: List[float] = []
 
@@ -115,6 +116,8 @@ class LatencyGate:
         self.wall_s.append(wall)
         self.submitted += 1
         self._pending = Pending(observation, batch, observation.capture_monotonic_ns + self.latency_ns, wall)
+        if self._on_submit is not None:
+            self._on_submit(observation, batch)
         return True
 
     def ready(self, now_ns: int) -> List[Pending]:

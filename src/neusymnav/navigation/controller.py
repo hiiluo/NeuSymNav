@@ -183,19 +183,40 @@ class Navigator:
             nav,cleared=tolerate_robot_footprint(nav,robot_xy,self.robot,self.start_unknown_tolerance)
             self.start_unknown_cleared+=cleared>0
         grid=adapt(nav,self.robot.height_m,self.robot.geometry_id)
-        cells,extra,tag=select_goals(grid,self.planner.core.traversable(grid))
+        best, cells, tag = self._approach_plan(grid, robot_xy, select_goals)
         self.last_approach=dict(tag=tag,goal_cells=len(cells))
         if not cells:return stop('approach_no_goal_cells')
-        results=self.planner.core.plan_many(grid,robot_xy,cells)
-        best=None
-        for cell,result in results.items():
-            if result.success and (best is None or result.cost_m+extra.get(cell,0.)<best[0]):
-                best=(result.cost_m+extra.get(cell,0.),cell,result)
         if best is None:return stop('approach_no_path')
         _,cell,path_result=best
         self.last_approach.update(cost_m=round(path_result.cost_m,3),goal_xy=list(grid.cell_to_world(*cell)))
         return self._emit(nav,grid,age,goal_id,path_result,tuple(grid.cell_to_world(*cell)),
             robot_xy,yaw_rad,now_ns,latch_goal=False)
+
+    def _approach_plan(self, grid, robot_xy, select_goals):
+        cells,extra,tag=select_goals(grid,self.planner.core.traversable(grid))
+        if not cells:
+            return None, cells, tag
+        results=self.planner.core.plan_many(grid,robot_xy,cells)
+        best=None
+        for cell,result in results.items():
+            if result.success and (best is None or result.cost_m+extra.get(cell,0.)<best[0]):
+                best=(result.cost_m+extra.get(cell,0.),cell,result)
+        return best, cells, tag
+
+    def can_reach_approach(self, nav, robot_xy, now_ns, select_goals):
+        """Check the existing approach plan without changing controller or frontier state."""
+        try:
+            age = age_ns(nav.capture_monotonic_ns, nav.clock_domain, now_ns, self.clock_domain)
+        except ValueError:
+            return False
+        if age > self._selection_age_limit_ns:
+            return False
+        if self.start_unknown_tolerance:
+            from .start_footprint import tolerate_robot_footprint
+            nav, _ = tolerate_robot_footprint(nav, robot_xy, self.robot, self.start_unknown_tolerance)
+        grid = adapt(nav, self.robot.height_m, self.robot.geometry_id)
+        best, _, _ = self._approach_plan(grid, robot_xy, select_goals)
+        return best is not None
 
     def start_traversable(self, nav, robot_xy) -> bool:
         """True when the planner's footprint-safe mask holds the robot's own cell.

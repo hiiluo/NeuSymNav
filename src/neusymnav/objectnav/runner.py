@@ -178,6 +178,7 @@ class RunnerConfig:
     planar_height_tolerance_m: float = 0.05   # planar adapter accepts navmesh steps within this height
     escape: bool = False                      # MotionGuard(escape=True): body-radius escape commands
     column_fallback_cells: int = 0            # MotionGuard body-column fallback (approved 12/11/2026); 0 = off
+    cycle_wall_floor_s: float = 0.0           # opt-in lockstep harness pacing for asynchronous A/B
 
     def __post_init__(self):
         if not 0.05 <= float(self.planar_height_tolerance_m) <= 0.15:
@@ -186,6 +187,8 @@ class RunnerConfig:
             raise ValueError('escape must be boolean')
         if type(self.column_fallback_cells) is not int or not 0 <= self.column_fallback_cells <= 12:
             raise ValueError('column_fallback_cells must be an int in [0, 12]')
+        if type(self.cycle_wall_floor_s) not in (int, float) or not 0 <= self.cycle_wall_floor_s <= 1:
+            raise ValueError('cycle_wall_floor_s must be in [0, 1]')
 
     @classmethod
     def load(cls, path: Path) -> 'RunnerConfig':
@@ -324,7 +327,9 @@ class LockstepRunner:
     def run_episode(self, sensor, episode: Episode) -> dict:
         tag = re.sub(r'[^A-Za-z0-9_.-]', '_', episode.uid)
         suffix = hashlib.sha256(episode.uid.encode()).hexdigest()[:12]
-        writer = TraceWriter(self.out_dir / 'trace' / f'{tag}-{suffix}.jsonl') if self.trace_enabled else nullcontext()
+        writer = (TraceWriter(self.out_dir / 'trace' / f'{tag}-{suffix}.jsonl',
+                              limit=max(1000, self.config.max_cycles + 1))
+                  if self.trace_enabled else nullcontext())
         with writer as trace:
             return self._run_episode(sensor, episode, trace)
 
@@ -393,6 +398,7 @@ class LockstepRunner:
         executed = blocked = 0
         called_stop, end_reason, cycle = False, 'max_cycles', 0
         policy_record = None
+        next_wall_tick = 0.
         try:
             if hasattr(policy, 'begin_episode'):
                 policy.begin_episode(floor_z_m=floor['floor_z_m'],
@@ -403,6 +409,12 @@ class LockstepRunner:
                 if (obs.capture_monotonic_ns - start_ns) / 1e9 >= cfg.max_sim_s:
                     end_reason = 'max_sim_time'
                     break
+                if cfg.cycle_wall_floor_s:
+                    # Fixed host schedule, independent of detector or graph readiness.
+                    remaining = next_wall_tick - time.monotonic()
+                    if remaining > 0.:
+                        time.sleep(remaining)
+                    next_wall_tick = time.monotonic() + cfg.cycle_wall_floor_s
                 nav = timed('mapper', mapper.update_for_control, obs)
                 pose = sensor.robot_pose(obs)
                 xy, yaw, now = tuple(pose['robot_xy']), float(pose['yaw_rad']), obs.capture_monotonic_ns
@@ -434,6 +446,7 @@ class LockstepRunner:
                     except Exception as exc:          # diagnosis must never break an episode
                         probes.append(dict(cycle=cycle, reason=command.reason, error=repr(exc)[:200]))
                 result = timed('execute', sensor.execute, command)
+                proof = getattr(sensor, 'last_actuation_proof', None) if trace else None
                 moved = isinstance(result, dict) and result.get('executed') is True and (
                     command.linear_mps or command.yaw_radps)
                 executed += 1 if moved else 0
@@ -467,6 +480,9 @@ class LockstepRunner:
                         **trace_fields, reason=decision.reason, goal_id=decision.goal_id,
                         guard_reason=command.reason,
                         worker_reason=result.get('reason') if isinstance(result, dict) else None,
+                        executor_executed=result.get('executed') if isinstance(result, dict) else None,
+                        executor_actions=result.get('actions') if isinstance(result, dict) else None,
+                        executor_proof_validated=proof is not None,
                         requested=(decision.desired_linear_mps, decision.desired_yaw_radps),
                         guarded=(command.linear_mps, command.yaw_radps),
                         pose_delta_m=math.dist(xy, after['robot_xy']),
