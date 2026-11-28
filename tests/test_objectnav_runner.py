@@ -132,17 +132,31 @@ def test_explore_policy_stops_on_cycle_budget(tmp_path):
 
 
 def test_fixed_wall_pacing_preserves_lockstep_clock_and_commands(tmp_path, monkeypatch):
+    from time import perf_counter, perf_counter_ns
+    from types import SimpleNamespace
+
     from neusymnav.objectnav import runner as runner_module
 
+    now = 0.
     waits = []
-    monkeypatch.setattr(runner_module.time, 'sleep', waits.append)
+
+    def sleep(delay):
+        nonlocal now
+        waits.append(delay)
+        now += delay
+
+    monkeypatch.setattr(runner_module, 'time', SimpleNamespace(
+        monotonic=lambda: now, sleep=sleep, perf_counter=perf_counter, perf_counter_ns=perf_counter_ns,
+    ))
     outputs = []
     for name, floor in (('baseline', 0.), ('paced', .4)):
         runner = LockstepRunner(config(cycle_wall_floor_s=floor), habitat_python=tmp_path / 'py',
             out_dir=tmp_path / name, run_id=name, policy_factory=ForwardPolicy,
             sensor_factory=FakeSensor, start_snapper=identity_snap, log=lambda *_: None)
         outputs.append(json.loads(runner.run([episode()]).read_text()))
-    assert waits and all(0. < s <= .4 for s in waits)
+        if floor == 0.:
+            assert waits == []
+    assert waits == pytest.approx([.4] * outputs[1]['steps'])
     for field in ('positions', 'steps', 'sim_time_s', 'called_stop'):
         assert outputs[0][field] == outputs[1][field]
 

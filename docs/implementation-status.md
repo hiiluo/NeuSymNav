@@ -13,6 +13,7 @@
 - **Correctness-verified.** Suite CPU exit 0, 519 đạt và 1 skip. Verifier, semantic audit, scorer và kiểm SHA exit 0. [Hồi quy](../runs/psg-nav/m5-acceptance-20261128/full-regression.log) · [Pins](../runs/psg-nav/m5-acceptance-20261128/pin-check.log)
 - **Runtime-validated và nghiệm thu M5 trong dev lockstep có cadence cố định.** OFF/shadow/B2 khớp 166 chu kỳ và STOP. B2 áp dụng rank ở cycle 85 với hai receipt cùng O(7) ↔ CID 2, tổ chức VERIFY tại 157 và STOP hợp lệ ở 166. Offline audit khớp cùng TV `hm3d:349` và scorer báo success, DTG 0,043 m. [Biên bản nghiệm thu](../runs/psg-nav/m5-acceptance-20261128/m5-signoff.json)
 - **Phần chưa được chứng minh.** B2 chọn trùng CID với deterministic trong ca live. Lượt unpaced fallback do publication đến sau điểm quyết định. Kết quả held-out và ảnh hưởng đến hiệu suất điều hướng thuộc M6, đã đủ prerequisite để bắt đầu.
+- **Sửa CPU checks ngày 2026-11-29.** Test wall pacing dùng đồng hồ giả chỉ trong runner để kiểm thời gian chờ và giữ parity lockstep. Probe đồng hồ CI chậm tái hiện lỗi trước sửa (exit 1) và đạt sau sửa (exit 0). [Run gốc](https://github.com/hiiluo/NeuSymNav/actions/runs/46140499461) · [RED](../runs/psg-nav/cpu-check-fix-20261129/red.log) · [GREEN](../runs/psg-nav/cpu-check-fix-20261129/green.log)
 
 ### PSG-Nav M5 causal join ở điểm xếp hạng và baseline MotionGuard — 2026-11-28
 
